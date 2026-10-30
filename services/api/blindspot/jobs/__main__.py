@@ -17,13 +17,12 @@ import time
 
 from blindspot.config import get_settings, setup_logging
 from blindspot.db import init_db
-from blindspot.jobs import (
+from blindspot.jobs import (  # importing the package registers every job module
     IMPORT_ERRORS,
     JOBS,
     JobResult,
     build_scheduler,
     last_runs,
-    load_jobs,
     run_all_order,
     run_job,
 )
@@ -85,7 +84,7 @@ def _run_all() -> int:
 
 
 def _serve() -> int:
-    scheduler = build_scheduler(load=False)
+    scheduler = build_scheduler()
     if not scheduler.get_jobs():
         print("No scheduled jobs registered; nothing to run.")
         return 0
@@ -115,7 +114,6 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     setup_logging()
-    load_jobs()
     for module, error in IMPORT_ERRORS.items():
         print(f"warning: {module} did not import: {error}", file=sys.stderr)
 

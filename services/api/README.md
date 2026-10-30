@@ -51,6 +51,9 @@ curl http://localhost:8000/api/sources     # freshness of every upstream source
 
 Interactive docs: <http://localhost:8000/docs>.
 
+If the database is not up yet when the API starts, the API serves anyway (`/api/health` says
+`"db": false`) and keeps retrying `init_db()` in the background until the tables are in place.
+
 ## 4. Run jobs
 
 ```sh
@@ -170,7 +173,7 @@ def fires(session: SessionDep, bbox: BBoxDep, hours: int = 24):
 
 `respond()` adds `generated_at` and `sources`, writes datetimes as UTC with `Z`, handles numpy
 arrays, and is much faster than returning a big dict. Errors are JSON
-(`{detail, status, path, generated_at}`); an uncaught `FetchError` becomes a 502 and
+(`{detail, status, path, generated_at, sources}`); an uncaught `FetchError` becomes a 502 and
 `SourceUnavailable` a 503 with `Retry-After`.
 
 **Places**: `blindspot.geo` has `district_for_point`, `admin_for_points` (many points, one query),
@@ -185,3 +188,110 @@ until the boundaries module has loaded `boundary` and `place`; leave a name blan
 - **Provenance.** Every upstream call leaves a `source_fetch` row; every response lists its `sources`.
 - **Times** are stored and served in UTC (ISO-8601 with `Z`); IST is for display and schedules.
 - **Secrets** never appear in code, URLs that get logged, error messages or commits.
+
+## For module authors
+
+Short rules for adding a module (fires, orbits, air, met, smoke, sentinel, risk, agent). §7 has
+longer examples; `docs/architecture.md` §4–6 fixes the table, endpoint and job names.
+
+**Files.** Add yours in `models/<m>.py`, `sources/<m>.py`, `analytics/<m>.py`, `jobs/<m>.py`,
+`api/routers/<m>.py` and `tests/test_<m>.py`. Nothing else needs editing: each folder imports every
+file in it. A file that fails to import is logged ("could not import ...") and skipped, so check
+the log when your table, route or job is missing. Never edit the foundation files; ask instead.
+
+**Models.** Subclass `blindspot.db.Base`, use SRID 4326, and give every row the fetch it came from:
+
+```python
+from datetime import datetime
+
+from geoalchemy2 import Geometry, WKBElement
+from sqlalchemy import BigInteger, DateTime, ForeignKey, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column
+
+from blindspot.db import Base
+
+
+class FireDetection(Base):  # a few of its columns; the full list is in architecture.md section 4
+    __tablename__ = "fire_detection"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    source: Mapped[str]
+    acq_utc: Mapped[datetime] = mapped_column(DateTime(timezone=True))  # always tz-aware UTC
+    lat: Mapped[float]
+    lon: Mapped[float]
+    geom: Mapped[WKBElement] = mapped_column(Geometry("POINT", srid=4326))  # GiST index is automatic
+    fetch_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("source_fetch.id", ondelete="SET NULL"), index=True
+    )
+    __table_args__ = (UniqueConstraint("source", "acq_utc", "lat", "lon"),)  # idempotent upserts
+```
+
+- A model file may import `blindspot.db`, `blindspot.models.core`, `blindspot.provenance`,
+  `blindspot.http`, `blindspot.geo` and `blindspot.config`; never `blindspot.api` or `blindspot.jobs`.
+- `init_db()` creates missing tables but never alters one: after changing columns, drop your own
+  table in the dev database and restart.
+- The dev database (the PostGIS Docker image) also has `tiger` and `topology` schemas on its search
+  path, with tables named `place`, `state`, `county`, `layer`... `init_db()` puts ours in `public`,
+  which comes first. In psql, use `\dt public.*` to see only ours.
+- Insert points with `geom=point_ewkt(lon, lat)` (from `blindspot.geo`). Upsert with
+  `sqlalchemy.dialects.postgresql.insert(...).on_conflict_do_nothing(...)` or `on_conflict_do_update`.
+
+**Upstream calls.** Use `fetch()`. It returns `FetchResult(data, fetch_id, status_code, latency_ms,
+url_logged, source_key, fetched_at, headers)` and has already written the `source_fetch` row:
+
+```python
+from blindspot.config import get_settings
+from blindspot.http import fetch, set_fetch_records
+
+# inside a job (or a sources/ function the job calls)
+key = get_settings().firms_map_key                 # SecretStr, or None when not configured
+if key is None:
+    return {"skipped": "FIRMS_MAP_KEY is not set"}  # say so; never substitute made-up values
+result = fetch("firms", f"{FIRMS}/api/area/csv/{key.get_secret_value()}/{product}/{area}/1/{day}",
+               expect="text", meta={"product": product})
+rows = parse_csv(result.data)
+set_fetch_records(result.fetch_id, len(rows))      # how many records this call produced
+# ...then store result.fetch_id on every row you write
+```
+
+- Keys go in params, headers or (FIRMS) the path, at the call site only. `fetch` masks key-like
+  parameter names and any configured key wherever it appears, in the URL, error, meta and logs.
+  Still, never print a key or copy one into an exception message.
+- `FetchError` means the call failed after its retries and is already recorded. `SourceUnavailable`
+  means the source is paused after repeated failures and nothing was sent. In a job, let them
+  propagate (the run is recorded as failed) or catch them per item to keep partial results. In a
+  route they become 502 or 503 on their own.
+- For an SDK call that cannot go through `fetch` (pystac-client, google-genai, rasterio), wrap it in
+  `with track_fetch("stac_pc", url=...) as t:` and set `t.records`. Use a key from
+  `SOURCE_REGISTRY`, or add yours with `register_source(SourceInfo(...))` in your own file.
+
+**Jobs.** A plain function in `jobs/<m>.py`, named as in architecture.md §6:
+`@job("firms_nrt", every_minutes=30)`, `@job("bulletin", cron="30 7 * * *")` (crontab in IST;
+APScheduler counts day-of-week from 0 = Monday, so write `mon-fri`, not numbers), or
+`@job("smoke", after="met")`. It must be idempotent and should return a small JSON-able summary
+(kept in `job_run.result`). Raise to fail: `run_job` records the error and never lets it reach the
+scheduler or the API. Try it with `uv run python -m blindspot.jobs run <name>`. Importing
+`blindspot.jobs` registers every job, so `run_job("<name>")` also works in tests.
+
+**Routes.** `api/routers/<area>.py` defines `router = APIRouter(prefix="/api/<area>", tags=[...])`.
+
+- Routes are plain `def` (the database and `fetch` calls block) and read the database only.
+- Take `session: SessionDep` and `bbox: BBoxDep` from `blindspot.api`.
+- Always `return respond(payload, sources, max_age=30)`. A plain `dict` gets no `generated_at`
+  or `sources`, and its times come out as `+00:00` instead of `Z`.
+- Build GeoJSON in SQL (`ST_AsGeoJSON(geom)::json`); coordinates are `[lon, lat]`.
+- `raise HTTPException(404, "no such scar")` gives the standard JSON error body.
+
+**SourceRef.** Every response lists where its numbers came from.
+
+- Data served from tables: `latest_refs(session, ["firms"])` gives the last successful fetch per
+  source; a source never fetched comes back with nulls, which is honest.
+- Exact rows: `ref_for_fetch(session, row.fetch_id)`.
+- An on-demand call: `result.ref()`.
+
+**Places and time.** `admin_for_points`, `district_for_point`, `nearest_place` and
+`fill_admin(session, "<table>")` return `None` (or change 0 rows) until the boundaries module has
+loaded `boundary` and `place`; leave the name blank, never guess it. Store and serve UTC
+(`provenance.utcnow()`); use `geo.IST` only for display and day boundaries.
+
+**Tests.** `uv run pytest` runs against `blindspot_test`, never the dev database. Use real recorded
+responses only, under `tests/fixtures/`. Check that your routes return `generated_at` and `sources`.

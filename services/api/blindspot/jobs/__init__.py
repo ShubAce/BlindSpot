@@ -16,6 +16,8 @@ A job is a plain function in blindspot/jobs/<module>.py:
 Jobs must be idempotent and may raise: run_job() catches, logs and records every run in job_run
 and never lets an exception reach the scheduler. Run one with
 `uv run python -m blindspot.jobs run firms_nrt`; the API runs them all when ENABLE_SCHEDULER=1.
+Importing this package imports every module in blindspot/jobs/ (see the end of this file), so
+JOBS is complete for whoever imports it: the CLI, the scheduler, a test that calls run_job().
 """
 
 from __future__ import annotations
@@ -118,7 +120,9 @@ def job(
 
 
 def load_jobs() -> dict[str, Job]:
-    """Import every module in blindspot/jobs/ so that its @job functions register. Idempotent."""
+    """Import every module in blindspot/jobs/ so that its @job functions register. Idempotent.
+
+    It runs when this package is imported; call it again only to pick up files added since."""
     _, failed = import_submodules(__name__, __path__)
     IMPORT_ERRORS.clear()
     IMPORT_ERRORS.update(failed)
@@ -274,13 +278,14 @@ def _last_successes() -> dict[str, datetime]:
         return {}
 
 
-def build_scheduler(*, load: bool = True) -> BackgroundScheduler:
+def build_scheduler(*, load: bool = False) -> BackgroundScheduler:
     """An APScheduler BackgroundScheduler holding every scheduled job (not started yet).
 
     An interval job first runs when it is next due according to job_run, so a restart does not
     re-run a job that ran a minute ago; overdue jobs start a few seconds apart. Cron jobs follow
     their crontab in IST. Runs are coalesced, never overlap (max_instances=1) and get up to
     JITTER_S seconds of jitter. Jobs with only `after=` are not scheduled: they are chained.
+    The jobs were registered when this package was imported; `load=True` re-scans the folder.
     """
     if load:
         load_jobs()
@@ -324,3 +329,7 @@ def build_scheduler(*, load: bool = True) -> BackgroundScheduler:
             replace_existing=True,
         )
     return scheduler
+
+
+# Last, so that every name above exists when the job modules do `from blindspot.jobs import job`.
+load_jobs()

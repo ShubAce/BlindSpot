@@ -2,8 +2,9 @@
 
 create_app() builds it: CORS, gzip, orjson responses, JSON errors (sent from inside CORS, so the
 browser can read them), the core routes /api/health and /api/sources, and every router module in
-blindspot/api/routers/. The lifespan creates missing tables and, when ENABLE_SCHEDULER=1, starts
-the job scheduler inside this process (run exactly one such process).
+blindspot/api/routers/. The lifespan creates missing tables (retrying in the background if the
+database is not up yet) and, when ENABLE_SCHEDULER=1, starts the job scheduler inside this
+process (run exactly one such process).
 
     uv run uvicorn blindspot.api.main:app --reload --port 8000
 """
@@ -11,6 +12,7 @@ the job scheduler inside this process (run exactly one such process).
 from __future__ import annotations
 
 import logging
+import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -37,12 +39,22 @@ from blindspot.provenance import source_status, utcnow
 
 log = logging.getLogger(__name__)
 
+INIT_DB_RETRY_S = 5.0  # first wait before trying init_db() again; it doubles up to a minute
 
-# --- errors: always JSON, one shape: {detail, status, path, generated_at, ...} -------------------
+
+# --- errors: always JSON, one shape: {detail, status, path, generated_at, sources, ...} ----------
 
 
 def _error_body(status: int, detail: Any, path: str, **extra: Any) -> dict[str, Any]:
-    return {"detail": detail, "status": status, "path": path, "generated_at": utcnow(), **extra}
+    # `sources` too: architecture.md says every JSON response carries generated_at and sources.
+    return {
+        "detail": detail,
+        "status": status,
+        "path": path,
+        "generated_at": utcnow(),
+        "sources": [],
+        **extra,
+    }
 
 
 async def _http_error(request: Request, exc: Exception) -> Response:
@@ -138,10 +150,51 @@ def sources(session: SessionDep) -> ORJSONResponse:
 # --- app -----------------------------------------------------------------------------------------
 
 
+def _first_line(exc: BaseException) -> str:
+    message = str(exc).strip()
+    return get_settings().redact(message.splitlines()[0] if message else type(exc).__name__)
+
+
+def init_db_until_ready(stop: threading.Event) -> bool:
+    """Retry init_db() after it failed at start-up because the database was not reachable (a fresh
+    Docker volume takes a few seconds to accept connections). Without this, a database that came
+    up a moment after the API would be left without its tables until the next restart.
+
+    Returns True once the tables are in place, False when `stop` is set (the app is shutting down)
+    or the failure is not about reaching the database (then retrying would not help).
+    """
+    wait = INIT_DB_RETRY_S
+    while not stop.wait(wait):
+        try:
+            init_db()
+        except OperationalError as exc:
+            wait = min(wait * 2, 60.0)
+            log.warning(
+                "database still not reachable (%s); next try in %.0f s", _first_line(exc), wait
+            )
+        except Exception:
+            log.exception("database setup failed; not retrying")
+            return False
+        else:
+            log.info("database reachable: tables are in place")
+            return True
+    return False
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    stop = threading.Event()
     try:
         await run_in_threadpool(init_db)
+    except OperationalError as exc:
+        log.error(
+            "database not reachable (%s); serving anyway (/api/health reports db=false) and "
+            "retrying in the background",
+            _first_line(exc),
+        )
+        threading.Thread(
+            target=init_db_until_ready, args=(stop,), name="init-db-retry", daemon=True
+        ).start()
     except Exception:
         log.exception("database setup failed; serving anyway, and /api/health reports db=false")
     if get_settings().enable_scheduler:
@@ -158,6 +211,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
+        stop.set()
         if app.state.scheduler is not None:
             app.state.scheduler.shutdown(wait=False)
             app.state.scheduler = None

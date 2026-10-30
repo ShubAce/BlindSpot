@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 import logging
 import pkgutil
+import traceback
 from collections.abc import Iterable
 from types import ModuleType
 
@@ -29,6 +30,11 @@ def import_submodules(package: str, path: Iterable[str]) -> tuple[list[ModuleTyp
         try:
             modules.append(importlib.import_module(name))
         except Exception as exc:  # one broken module must not break the others
-            log.exception("could not import %s", name)
-            failed[name] = f"{type(exc).__name__}: {exc}"
+            # Mask keys here rather than rely on the log formatter: jobs/ is scanned on import,
+            # before the CLI has set up logging.
+            from blindspot.config import get_settings
+
+            redact = get_settings().redact
+            log.error("could not import %s\n%s", name, redact(traceback.format_exc()).rstrip())
+            failed[name] = redact(f"{type(exc).__name__}: {exc}")
     return modules, failed

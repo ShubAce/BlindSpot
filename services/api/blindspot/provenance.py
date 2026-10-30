@@ -17,15 +17,22 @@ from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+import orjson
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from blindspot.config import get_settings
 from blindspot.db import session_scope
-from blindspot.models.core import SourceFetch
+
+# SourceFetch is imported inside the functions that use it, not up here. Importing
+# blindspot.models runs every model file, and a model file may import this module (for utcnow or
+# SourceRef): a top-level import would hand that file a half-loaded module, and its table would
+# silently go missing (a circular import).
+if TYPE_CHECKING:
+    from blindspot.models.core import SourceFetch
 
 log = logging.getLogger(__name__)
 
@@ -168,25 +175,28 @@ def record_fetch(
 
     The row commits independently of the caller, so a job that later fails still leaves a record
     of what it fetched. Recording never breaks the caller: on a database error it logs and
-    returns None. URL and error text are passed through Settings.redact() as a last line of defence.
+    returns None. URL, error and meta are passed through Settings.redact() as a last line of
+    defence.
     """
+    from blindspot.models.core import SourceFetch  # see the note at the top of this file
+
     if source_key not in SOURCE_REGISTRY and source_key not in _warned_unregistered:
         _warned_unregistered.add(source_key)
         log.warning("source %r is not in SOURCE_REGISTRY; see register_source()", source_key)
     settings = get_settings()
-    row = SourceFetch(
-        source_key=source_key,
-        url=settings.redact(url) if url else None,
-        started_at=started_at,
-        finished_at=finished_at or utcnow(),
-        ok=ok,
-        http_status=http_status,
-        records=records,
-        latency_ms=latency_ms,
-        error=settings.redact(error)[:2000] if error else None,
-        meta=meta or None,
-    )
     try:
+        row = SourceFetch(
+            source_key=source_key,
+            url=settings.redact(url) if url else None,
+            started_at=started_at,
+            finished_at=finished_at or utcnow(),
+            ok=ok,
+            http_status=http_status,
+            records=records,
+            latency_ms=latency_ms,
+            error=settings.redact(error)[:2000] if error else None,
+            meta=_redact_meta(meta),
+        )
         with session_scope() as session:
             session.add(row)
             session.flush()
@@ -200,6 +210,8 @@ def record_fetch(
 def set_fetch_records(fetch_id: int | None, n: int, meta: dict[str, Any] | None = None) -> None:
     """Store how many records a fetch produced once the caller has parsed it, and merge `meta`
     into the row's meta. Does nothing for fetch_id None (a fetch that could not be recorded)."""
+    from blindspot.models.core import SourceFetch  # see the note at the top of this file
+
     if fetch_id is None:
         return
     try:
@@ -210,9 +222,19 @@ def set_fetch_records(fetch_id: int | None, n: int, meta: dict[str, Any] | None 
                 return
             row.records = n
             if meta:
-                row.meta = {**(row.meta or {}), **meta}
+                row.meta = {**(row.meta or {}), **(_redact_meta(meta) or {})}
     except Exception:
         log.warning("could not update records for fetch %s", fetch_id, exc_info=True)
+
+
+def _redact_meta(meta: dict[str, Any] | None) -> dict[str, Any] | None:
+    """`meta` with every configured key masked, wherever it sits (say, a copy of the params)."""
+    if not meta:
+        return None
+    options = orjson.OPT_NON_STR_KEYS | orjson.OPT_SERIALIZE_NUMPY | orjson.OPT_UTC_Z
+    raw = orjson.dumps(meta, option=options, default=str).decode()
+    redacted = get_settings().redact(raw)
+    return meta if redacted == raw else orjson.loads(redacted)
 
 
 @dataclass
@@ -295,6 +317,8 @@ def _ref(row: SourceFetch) -> SourceRef:
 
 def ref_for_fetch(session: Session, fetch_id: int | None) -> SourceRef | None:
     """The SourceRef for one recorded fetch (e.g. FetchResult.fetch_id), or None."""
+    from blindspot.models.core import SourceFetch  # see the note at the top of this file
+
     if fetch_id is None:
         return None
     row = session.get(SourceFetch, fetch_id)

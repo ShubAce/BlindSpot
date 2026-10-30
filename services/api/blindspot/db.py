@@ -101,6 +101,18 @@ def init_db() -> None:
         # The API and a CLI job may start at the same moment; the lock stops them racing.
         conn.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": _INIT_LOCK_KEY})
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
+        # Our tables live in `public`. The PostGIS Docker image also installs the TIGER geocoder,
+        # whose `tiger` schema is on the search path with its own place, state and county tables:
+        # create_all saw tiger.place, decided `place` existed and skipped ours. So, for this
+        # transaction only, look in public (plus the schema PostGIS lives in, for its types).
+        postgis_schema = conn.execute(
+            text(
+                "SELECT extnamespace::regnamespace::text FROM pg_extension"
+                " WHERE extname = 'postgis'"
+            )
+        ).scalar_one()
+        search_path = ", ".join(dict.fromkeys(["public", postgis_schema]))
+        conn.execute(text("SELECT set_config('search_path', :path, true)"), {"path": search_path})
         Base.metadata.create_all(conn)
 
 
