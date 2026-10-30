@@ -1,0 +1,41 @@
+# secrets
+.env
+.env.*
+!.env.example
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# node
+node_modules/
+.next/
+out/
+.turbo/
+.vercel/
+*.tsbuildinfo
+next-env.d.ts
+
+# data caches (raw satellite reads, downloads) - never commit
+data/cache/
+data/raw/
+*.tif
+*.tiff
+*.nc
+*.zip
+
+# local tooling / editor
+.agents/
+.claude/
+skills-lock.json
+context.md
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+.taste-skill/

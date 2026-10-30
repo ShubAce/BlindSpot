@@ -1,0 +1,22 @@
+# Local development database: PostgreSQL + PostGIS.
+# Start:  docker compose -f infra/docker-compose.yml up -d
+services:
+  db:
+    image: postgis/postgis:17-3.5
+    container_name: blindspot-db
+    environment:
+      POSTGRES_USER: blindspot
+      POSTGRES_PASSWORD: blindspot
+      POSTGRES_DB: blindspot
+    ports:
+      - "5433:5432"
+    volumes:
+      - blindspot-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U blindspot -d blindspot"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  blindspot-pg:

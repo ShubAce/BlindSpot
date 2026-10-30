@@ -1,0 +1,36 @@
+[project]
+name = "blindspot-api"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "apscheduler>=3.11.3",
+    "fastapi>=0.162.0",
+    "geoalchemy2>=0.20.0",
+    "geopandas>=1.2.0",
+    "google-genai>=2.34.0",
+    "httpx>=0.28.1",
+    "lightgbm>=4.7.0",
+    "numpy>=2.5.4",
+    "odc-stac>=0.5.3",
+    "orjson>=3.13.0",
+    "pandas>=3.1.0",
+    "planetary-computer>=1.0.0",
+    "psycopg[binary]>=3.3.6",
+    "pydantic-settings>=2.16.2",
+    "pyogrio>=0.13.0",
+    "pyproj>=3.8.0",
+    "pystac-client>=0.9.1",
+    "python-dotenv>=1.2.4",
+    "rasterio>=1.5.2",
+    "scikit-learn>=1.9.1",
+    "scipy>=1.18.1",
+    "shapely>=2.2.0",
+    "skyfield>=1.55",
+    "sqlalchemy>=2.1.6",
+    "sse-starlette>=3.6.0",
+    "tenacity>=9.1.4",
+    "uvicorn[standard]>=0.54.0",
+    "xarray>=2026.9.0",
+]
