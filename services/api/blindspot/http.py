@@ -45,9 +45,11 @@ __all__ = [
 
 log = logging.getLogger(__name__)
 
+# No "python-httpx/<ver>" token: data.gov.in tarpits requests whose User-Agent contains it
+# (verified 20.4 s ReadTimeout, docs/research/SYNTHESIS.md).
 USER_AGENT = (
     f"BlindSpot/{__version__} (crop-residue fire monitoring for Punjab and Haryana; "
-    f"python-httpx/{httpx.__version__})"
+    "+https://github.com/ShubAce/BlindSpot)"
 )
 TIMEOUT = httpx.Timeout(30.0, connect=10.0)  # read, write and pool 30 s; connect 10 s
 MAX_ATTEMPTS = 3

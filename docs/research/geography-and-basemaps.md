@@ -42,7 +42,7 @@ What the stock basemaps actually encode (decoded live tiles over Kashmir: z5/22/
 - **Format:** GeoParquet 1.1, CRS84, with a `bbox` covering column (bbox pushdown works).
 - **Upstream:** SOI `onlinemaps.surveyofindia.gov.in/Digital_Product_Show.aspx`.
 - **Licence:** compilation is CC0, with a request to credit SOI and DataMeet. The display permission comes from para xiii above.
-- **States:** 40 rows = 36 states/UTs with `State_LGD`, plus 4 inter-state `DISPUTED (...)` polygons (`State_LGD=0`). Keep these when dissolving the India outline.
+- **States:** 40 rows = 36 states/UTs with `State_LGD`, plus 4 inter-state `DISPUTED (...)` polygons (`State_LGD=0`). Keep these when dissolving the India outline. Point-in-polygon check: Muzaffarabad falls in J&K; Gilgit, Skardu, Aksai Chin (79.3E, 35.3N) and Shaksgam (76.5E, 36.0N) fall in Ladakh; Lahore falls in none.
 - **Districts:** 742 rows; PB 22 (**no Malerkotla**), HR 22 (has Charkhi Dadri, still says "MEWAT" for Nuh), DL 11, CH 1. Vintage is roughly 2016-2020. Columns: `District, STATE, State_LGD, DISTRICT_L` (= LGD district code), `STATE_C, District_C` (ASCII).
 - **Tehsils:** PB 78, HR 77, DL 35, CH 1. Columns `TEHSIL, TEHSIL_C, District_C, STATE_C` only. **No LGD codes**, so tehsils have to be matched by name.
 - **Gotchas:** `STATE`/`District` carry diacritics (`HARYĀNA`, `SANGRŪR`), so filter on the `_C` columns. 2 invalid geometries among the PB/HR/DL/CH districts and 4 among the tehsils.

@@ -6,9 +6,11 @@ Research date: **2026-10-30** (IST = UTC+5:30). Legend: **[V]** = verified with 
 ## 0. TL;DR
 
 - **Primary live source = data.gov.in resource `3b01bcb8-…`** (CPCB's official open-data feed, GODL-India). Works
-  keyless-ish with the public sample key, hourly, ~550 CAAQMS stations (3836 rows). **Two traps:** (1) the values are **CPCB AQI
-  sub-indices, not µg/m³** (shown below by cross-check with the CPCB bulletin); (2) the WAF **tarpits `python-httpx`/`urllib`
-  User-Agents** (read timeout, 0 bytes) — always send a custom UA. [V]
+  keyless-ish with the public sample key, hourly, 3836 rows all-India (≈550 stations × 7 pollutants). **Two traps:** (1) the values are **CPCB AQI
+  sub-indices, not µg/m³** (shown below by cross-check with the CPCB bulletin); (2) the WAF **tarpits any User-Agent
+  containing `httpx`, and `Python-urllib`** (read timeout, 0 bytes). [V] **The repo's shared `blindspot/http.py`
+  `USER_AGENT` ends in `python-httpx/0.28.1` → tested 17:08Z: 25 s timeout; the same string minus that token → 200 in
+  0.8 s.** Fix before wiring `datagov_aqi`: drop the library token (or override the UA for this source).
 - **Best validation target = IITM DSS** `https://ews.tropmet.res.in/dss/`: it publishes the **daily % contribution of
   stubble burning to Delhi PM2.5** (season-to-date series) plus a 4-day per-source/per-district forecast. No JSON
   endpoint, but the numbers are **server-rendered inline as Chart.js arrays** → one GET + regex. [V]
@@ -16,8 +18,8 @@ Research date: **2026-10-30** (IST = UTC+5:30). Legend: **[V]** = verified with 
   BlindSpot says misses ~5 PM burns. Pitch: "DSS is VIIRS-blind too; we correct its fire input."
 - **Secondary = OpenAQ v3** (needs free key; **401 without key** [V]). CPCB is provider **id 168** [V]; gives
   concentrations (µg/m³, 15-min) + history. Keyless **S3 archive** works but lags 3–7 days [V].
-- **Tertiary / daily truth = CPCB AQI Bulletin PDF** (keyless, daily 4 PM city AQI, published ~16:05 IST, years of
-  archive) [V]. **Agent context = IITM/IMD daily Delhi AQ & weather bulletin text** on `ews.tropmet.res.in` [V].
+- **Tertiary / daily truth = CPCB AQI Bulletin PDF** (keyless, daily 4 PM city AQI, published ~16:05 IST, dated
+  archive — 2025-11-05 fetched fine) [V]. **Agent context = IITM/IMD daily Delhi AQ & weather bulletin text** [V].
 - Not usable today: CPCB CCR portal (legacy JSON 404; new portal = AES-encrypted proxy + captcha), SAFAR (TCP connect
   timeout), WAQI `demo` token (always returns Shanghai). [V]
 - **Coverage reality (good pitch material):** nearest CPCB station to Sangrur is **Patiala, 51.8 km**; Punjab had
@@ -39,17 +41,17 @@ Rules: one in-flight request per host; ≥1 s spacing with personal keys, ≥30 
 back off 30→45→60→75→90 s (max 6 tries) [V: 429s cleared after 45–135 s today]. Store `source_url`, `fetched_at`,
 payload hash with every row (provenance for the no-mock-data rule). **data.gov.in keeps no history** (only the current
 24 h window) and is a **24-h rolling sub-index** (smooths spikes) → start the hourly archiver on day 1, and get the
-OpenAQ key on day 1 too: hourly µg/m³ (`/v3/sensors/{id}/hours`) is what the spike-investigating agent needs.
-Suggested tables (PostGIS):
+OpenAQ key on day 1 too: hourly µg/m³ (`/v3/sensors/{id}/hours`) is what the spike-investigating agent needs. The repo
+registers `datagov_aqi` at a 30-min cadence: fine if each run first does a `limit=1` call and skips when `updated_date` is
+unchanged. Suggested tables (PostGIS; a design sketch, DDL not executed):
 ```sql
 create table aq_obs (source text, station text, city text, state text, geom geography(Point,4326), pollutant text,
-  value double precision, unit text /* 'naqi_subindex' | 'ug/m3' | 'ppb' */, window_h int /* 24|8|1 */,
-  obs_time timestamptz, feed_updated timestamptz, fetched_at timestamptz default now(),
-  primary key (source, station, pollutant, obs_time));
+  value double precision, unit text /* naqi_subindex|ug/m3|ppb */, window_h int, obs_time timestamptz,
+  feed_updated timestamptz, fetched_at timestamptz default now(), primary key (source, station, pollutant, obs_time));
 create table dss_snapshot (fetched_at timestamptz primary key, run_date date, daily_stubble_pct jsonb, forecast_pct jsonb,
   data_sha256 text /* hash the extracted arrays: raw HTML changes every hit (visitor counter) */);
-create table cpcb_bulletin (bulletin_date date, city text, aqi int, category text, prominent text[],
-  stations_used int, stations_total int, primary key (bulletin_date, city));
+create table cpcb_bulletin (bulletin_date date, city text, aqi int, category text, prominent text[], stations_used int,
+  stations_total int, primary key (bulletin_date, city));
 ```
 
 ## 2. PRIMARY — data.gov.in "Real time Air Quality Index from various locations" (CPCB)
@@ -61,8 +63,12 @@ GET https://api.data.gov.in/resource/3b01bcb8-0b14-4abf-b6f2-c1bfd384ba69
     &filters[state]=Delhi&filters[pollutant_id]=PM2.5      # exact, case-sensitive, AND-combined
     &sort[station]=asc                                       # deterministic paging
     &fields=station,pollutant_id,avg_value,last_update,latitude,longitude   # projection (ids, not names)
-Header: User-Agent: BlindSpot/0.1 (...)   # REQUIRED - python-httpx/urllib UAs hang until timeout
+Header: User-Agent: BlindSpot/0.1 (...)   # REQUIRED - see UA tests below
 ```
+- UA tests [V]: ✓ `curl/8.7.1`, `Mozilla/5.0`, `BlindSpot/0.1 (research)`, `BlindSpot/0.1.0 (crop-residue fire
+  monitoring for Punjab and Haryana)`; ✗ (0 bytes until timeout) `python-httpx/0.28.1` (httpx default), `Python-urllib`,
+  the repo UA `BlindSpot/0.1.0 (…; python-httpx/0.28.1)`, and the same with `httpx/0.28.1`. The repo client (3 × 30 s
+  read timeout) would burn 90 s then trip its 5-min cooldown; for sample-key 429s it also needs ≥30 s backoff (no `Retry-After`).
 - Sample key (public): `579b464db66ec23bdd000001cdd3946e44ce4aad7209ff7b23ac571b`. **Caps `limit` at 10**: asked
   `limit=1000`, got `"limit": 10, "count": 10` [V]. A full Delhi+Punjab+Haryana pull = 665 rows = 67 calls → use it only for dev.
 - Filters: exact match, **case-sensitive** (`punjab` → `total: 0`) [V]; **no OR** (`filters[state]=Punjab,Haryana`
@@ -74,8 +80,8 @@ Header: User-Agent: BlindSpot/0.1 (...)   # REQUIRED - python-httpx/urllib UAs h
 - CSV uses the *names* as headers (`pollutant_min,pollutant_max,pollutant_avg`), JSON uses the *ids*
   (`min_value,max_value,avg_value`) [V]. XML wraps the same envelope [V].
 - 429 body: `{"error": "Rate limit exceeded"}`; no `Retry-After`. `X-Ratelimit-Limit: -1`, `X-Ratelimit-Remaining: -1`,
-  `X-Ratelimit-Reset: 1790676954` (constant) → headers are meaningless; 429s are the shared sample key's throttle (5 in
-  ~50 calls today: 3 at 4 s spacing, 2 at 30 s spacing; a 5-page pull at 30 s spacing took 122.6 s with none) [V].
+  `X-Ratelimit-Reset: 1790676954` (constant) → headers are meaningless; 429s are the shared sample key's throttle (6 in
+  ~65 calls today: 3 at 4 s spacing, 3 at ≥30 s spacing; a 5-page pull at 30 s spacing took 122.6 s with none) [V].
   `Access-Control-Allow-Origin: *` (browser-callable, but keep the key server-side).
 
 ### 2.2 Trimmed real responses [V]
@@ -112,16 +118,17 @@ cities, data.gov.in at 21:00 IST vs official CPCB bulletin at 16:00 IST (same da
 | Ludhiana | 100 (PM10) | 99 (PM10) | — |
 | Patiala | 46 (PM10) | 48 (PM10) | — |
 
-Also CO values of 20–105 are impossible as mg/m³. → Treat `avg_value` as the pollutant sub-index (24-h window for
-PM/NO2/SO2/NH3, 8-h for CO/O3); `min/max` = extremes of the hourly sub-index over the window (inferred [U]). For
+Also CO values of 20–105 are impossible as mg/m³. → Treat `avg_value` as the pollutant sub-index (NAQI windows: 24-h
+for PM/NO2/SO2/NH3, 8-h for CO/O3); `min/max` = extremes of the hourly sub-index over the window (inferred [U]). For
 µg/m³ either invert the breakpoints (§9) or use OpenAQ.
 
 ### 2.4 Cadence and latency [V]
-Observed refresh: at 15:58:47Z rows said `last_update 20:00` (`updated_date 15:03:00Z`); at **16:03:33Z rows already
-said 21:00 while `updated_date` was still 15:03:00Z**; at 16:04:03Z `updated_date` = 16:03:41Z. → hourly refresh at
-~HH:03 UTC (≈HH:33 IST), ~33 min after the window end; data age 33–93 min. The row flip precedes the metadata stamp
-by seconds, so a multi-page pull can straddle it → restart if either `updated_date` or the newest `last_update`
-changes between pages (implemented in §8). Latency: 0.34–0.96 s typical (n≈35), max 3.6 s; 429s return in ~0.25–0.42 s.
+Two refreshes observed (8-min poller + spot calls): rows `20:00→21:00 IST` between 15:58:47Z and **16:03:33Z**, while
+`updated_date` stayed 15:03:00Z until 16:03:41Z; rows `21:00→22:00` by **17:03:38Z** (Anand Vihar PM2.5 46→43), `updated_date`
+17:04:46Z. → hourly refresh at ~HH:03–05 UTC (≈HH:33–35 IST), ~33 min after the window end; data age 33–95 min. Rows
+flip seconds-to-a-minute **before** the metadata stamp, so a multi-page pull can straddle it → restart if either
+`updated_date` or the newest `last_update` changes between pages (implemented in §8). Latency (httpx, n=24): median
+0.67 s, p90 1.0 s, max 3.6 s; curl 0.34–0.63 s; 429s return in ~0.25–0.42 s.
 
 ### 2.5 Coverage today [V]
 - All India: `total` 3836 rows. Delhi 413 rows / **59 PM2.5 stations** (DPCC 43, IITM 10, CPCB 6); Haryana 203 rows /
@@ -130,7 +137,7 @@ changes between pages (implemented in §8). Latency: 0.34–0.96 s typical (n≈
 - Nearest to test points: **Sangrur → Patiala 51.8 km, Khanna 64.6 km, Mandi Gobindgarh 64.8 km, Ludhiana 72.7 km.
   Delhi (28.61, 77.21) → Talkatora Garden 2.0 km, IMD Lodhi Road 2.6 km.**
 
-### 2.6 Personal key [U — no account/key exists; sign-up needs email/mobile OTP]
+### 2.6 Personal key [U — no account/key exists; sign-up not attempted]
 - Flow (from the R `datagovindia` docs + portal nav): register/login at https://www.data.gov.in → "My Account"/dashboard
   → API key shown there → put in `DATA_GOV_IN_API_KEY`. Same URL, just a different `api-key`.
 - What it should unlock: `limit` > 10 (all 3 states in ~3 calls, all-India 3836 rows in a few pages) and no shared-key
@@ -159,8 +166,8 @@ What the main page contains (today's extract):
    *climatological* fire counts/emissions → treat them as forecasts, only day 0 as the "official" value.
    The day-0 forecast value equals the history series' last point (1.749125 vs 1.74913).
 
-Other pages (same inline pattern; my generic extractor handles all):
-- `https://ews.tropmet.res.in/ob_fire_count.php` — **hourly "Fire CO%"** (fire share of Delhi CO, 663 h, 10-02 10:00 →
+Other pages (same inline pattern; a generic `labels:[…]` / `label:'…'` / `data:[…]` scan extracts them all):
+- `https://ews.tropmet.res.in/ob_fire_count.php` — **hourly "Fire CO%"** (section "CO Fire % Hourly", 663 h, 10-02 10:00 →
   10-30 00:00, newest first, max 10.13 %), daily "CO"/"PM2.5" fire contribution (PM2.5 identical to item 1), MODIS/VIIRS
   daily fire counts 2012–2026 — **stale: 2026 series stops at 2026-05-22**.
 - `dss/DSSmean.php` — 20 %/40 % emission-reduction scenarios (4 days). `dss/hourly_mean.php` — **dead** (`labels:null`,
@@ -184,8 +191,9 @@ disclaimers live in comments). Daily publish time **[U]**: today's run was alrea
 - **Key required for data endpoints**: `/v3/locations…`, `/v3/providers`, `/v3/locations/tiles/…` → `401 {"message":
   "Unauthorized. A valid API key must be provided in the X-API-Key header."}` [V]; only `/openapi.json` and `/docs` are
   keyless [V]. v1/v2 → `410 Gone … Please migrate to Version 3 endpoints.` [V].
-- Free key: https://explore.openaq.org/register → account page; header `X-API-Key`. Free tier **60 req/min, 2,000
-  req/h**; headers `x-ratelimit-used/limit/remaining/reset`; 429 on excess; repeated abuse → ban (docs.openaq.org).
+- Free key: https://explore.openaq.org/register → account page; header `X-API-Key`. Per docs.openaq.org (not
+  call-tested): free tier **60 req/min, 2,000 req/h**; headers `x-ratelimit-used/limit/remaining/reset`; 429 on excess;
+  repeated abuse → ban. Spec: `limit` default 100, max not stated (try 1000, trust `meta.found`).
 - Endpoints (from the live keyless `https://api.openaq.org/openapi.json`, version 3.0.0 [V]; responses [U] — no key):
   ```
   GET /v3/locations?coordinates=28.61,77.21&radius=25000&limit=100     # lat,lon ; radius m, max 25000
@@ -213,7 +221,7 @@ disclaimers live in comments). Daily publish time **[U]**: today's run was alrea
 (10-31 tested). Archive works (2025-11-05 → 200). Content: "Air Quality Index on Oct 30, 2026 @ 4 PM (Average of past
 24 hours)", one row per city (256 today) + "cities absent … insufficient data" list. `pdfplumber` `extract_tables()`
 gives clean rows (parser in §8). Today: **Delhi 60 Satisfactory (53/59 stations)**; yesterday **Delhi 222 Poor (58/59)** —
-rain on 10-29/30 (IITM bulletin) explains the drop. Punjab/Haryana today: Amritsar 178, Khanna 173, Sonipat 125,
+the drop coincides with the rain reported in the IITM bulletin (§6). Punjab/Haryana today: Amritsar 178, Khanna 173, Sonipat 125,
 Ludhiana 99, Jalandhar 90, Panipat 88, Patiala 48, Bathinda 42, Jind 28. City AQI = mean of station AQIs (bulletin note).
 Attribution "CPCB National AQI Bulletin"; no explicit licence text checked on cpcb.gov.in [U].
 
@@ -229,7 +237,7 @@ slice from `1. Past Weather and Air Quality Observation`. Forecast maps are PNGs
   `aqi_station_all_india` → **404**. Data now flows through `insight_proxy_api_v2_0/service.php` (GET → 500) with
   `createEncryptedRequest`/`decryptResponse` (AES, client ids/secrets in the bundle) and captcha verification → not a
   public API; do not reverse-engineer. Use data.gov.in (CPCB's sanctioned open channel) + bulletin instead.
-- **SAFAR** `safar.tropmet.res.in` (103.251.186.104): TCP connect timeout on 80 and 443 (21 s). Treat as dead.
+- **SAFAR** `safar.tropmet.res.in` (103.251.186.104): TCP connect timeout on 80 and 443 (21 s). Treat as unavailable.
 - **WAQI/aqicn**: `token=demo` returns Shanghai (idx 1437) for `geo:28.61;77.21` and `delhi` alike; `/v2/map/bounds` →
   `"Invalid key"` [V]. Unverified (no token): free token at https://aqicn.org/data-platform/token/, values on the
   **US-EPA AQI** scale re-computed from CPCB raw data, attribution required by WAQI terms [U] → last resort only, never
@@ -312,16 +320,11 @@ def fetch_dss_stubble():
 Output of the verbatim run (sample key):
 ```
 fetch_cpcb_stations(Punjab): 49 rows in 122.6s, feed=2026-10-30T16:03:41Z, obs=['2026-10-30T15:30:00+00:00']
-   Golden Temple, Amritsar - PPCB {'aqi': 167, 'prominent': ['PM2.5']}
-   Punjab Agricultural University, Ludhiana - PPCB {'aqi': 100, 'prominent': ['PM10']}      (… 5 more)
-fetch_dss_stubble: 1.7s; n_days=27; last=('2026-10-30', 1.74913);
-   forecast={'2026-10-30': 1.749, '2026-10-31': 19.162, '2026-11-01': 33.486, '2026-11-02': 13.404}
-parse_bulletin: 256 cities; [{'city': 'Delhi', 'category': 'Satisfactory', 'aqi': 60, 'prominent': ['CO'],
-   'stations_used': 53, 'stations_total': 59}, …]
+   Golden Temple, Amritsar - PPCB {'aqi': 167, 'prominent': ['PM2.5']}      (… 6 more, see §2.3)
+fetch_dss_stubble: 1.7s; n_days=27; last=('2026-10-30', 1.74913); forecast={'2026-10-30': 1.749, '2026-10-31': 19.162, '2026-11-01': 33.486, '2026-11-02': 13.404}
+parse_bulletin: 256 cities; [{'city': 'Delhi', 'category': 'Satisfactory', 'aqi': 60, 'prominent': ['CO'], 'stations_used': 53, 'stations_total': 59}, …]
 ```
-Same paging logic in a scratch script, `Haryana`+`PM2.5` (3 pages): 29 rows / 29 stations in 61.7 s; the 4-day
-forecast shares summed to 100.0 % on every day.
-Station AQI (CPCB rule) — tested on all 49 Punjab rows (reproduces the §2.3 table):
+(Same paging logic, `Haryana`+`PM2.5`, 3 pages: 29 rows in 61.7 s.) Station AQI (CPCB rule) — tested on all 49 Punjab rows:
 ```python
 def station_aqi(rows):
     by = {}
@@ -388,13 +391,11 @@ Severe is open-ended (380 µg/m³ for PM2.5 and 510 for PM10 at index 500 are my
 analysis use OpenAQ concentrations.
 
 ## 10. Latency measured today
-data.gov.in 0.34–0.96 s (worst 3.6 s; 20 s hang with a python UA) · DSS 1.5–1.7 s (worst 21 s stall / 22 s TLS fail) ·
-AQEWS 0.5 s · CPCB bulletin 0.2–0.9 s · OpenAQ 401 0.4 s, S3 list 1.0–1.8 s, S3 file 1.5 s · explore.openaq.org 1.4–1.9 s ·
-WAQI demo 0.8–1.8 s.
+data.gov.in median 0.67 s (worst 3.6 s; hang with an httpx UA) · DSS 1.5–1.7 s (worst 21 s stall / 22 s TLS fail) · AQEWS 0.5 s ·
+CPCB bulletin 0.2–0.9 s · OpenAQ 401 0.4 s, S3 list 1.0–1.8 s, file 1.5 s · explore.openaq.org 1.4–1.9 s · WAQI demo 0.8–1.8 s.
 
 ## 11. Still UNVERIFIED (and how to close)
 1. data.gov.in personal-key max `limit` and quota — no key; first call with a key: `limit=1000`, check `count`.
 2. OpenAQ v3 response shapes and Punjab/Haryana CPCB coverage — no key; run the `bbox` + `providers_id=168` query.
 3. DSS daily publish time and whether past daily values get revised — single-day observation; snapshot 3×/day.
-4. data.gov.in `min/max` semantics (assumed: extremes of hourly sub-index over the 24-h window).
-5. WAQI behaviour with a real token.
+4. data.gov.in `min/max` semantics (assumed: extremes of hourly sub-index over the 24-h window). 5. WAQI with a real token.

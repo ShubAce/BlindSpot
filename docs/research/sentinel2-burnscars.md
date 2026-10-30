@@ -1,63 +1,45 @@
 # Sentinel-2 burn scars and crop state: feasibility (BlindSpot)
 
-I verified everything below with real calls on **2026-10-30, 15:45–16:40 UTC**, from Windows 11 on a residential connection in India.
-Items that were not verified are marked **UNVERIFIED**. The scratch scripts that produced these numbers are in the session scratch dir `.../scratchpad/sentinel2/` (`s01`–`s06`, `snippet_burns.py`). That directory is ephemeral and is not part of the repo.
+I verified everything below with real calls on **2026-10-30, 15:45–16:40 UTC**, from Windows 11 on a residential connection in India. Items that were not verified are marked **UNVERIFIED**. The scripts that produced these numbers are in the ephemeral session scratch dir `…/scratchpad/sentinel2/` (`s01…s06*.py`, `snippet_burns.py`) and are not in the repo.
 
 ## 0. TL;DR
 
-- **Both keyless STAC catalogues work.** Use **Earth Search `sentinel-2-c1-l2a` for analytics**, for three reasons:
-  - Its latency is 4.2 h from sensing to STAC. On PC, the 2026-10-30 items were still missing at 16:24 UTC.
-  - It carries `scale/offset` metadata.
-  - It needs no URL signing.
-
-  Use **Planetary Computer (PC) for XYZ tiles, ESA WorldCover and Sentinel-1 RTC**.
-- **PC is serving corrupted pixels for every 2026-10-28 Sentinel-2 item over Punjab** (16/16 items, orbits R005 and R048).
-  - Reflectance bands hold noise (DN 0–255, correlation with Earth Search ≈ 0). SCL is intact.
-  - All 49 other PC items from Oct 18–28 matched Earth Search byte-for-byte.
-  - The PC tiler and the "latest clear" mosaic therefore render black for this region. As of 16:36 UTC the problem was not fixed.
-  - **A data-plausibility check on every scene is therefore mandatory** (§7).
-- **20 m is the working resolution.** Punjab plots are 0.9 ha median and 1.4 ha mean (Walker et al. 2022), which is ≈ 22 px at 20 m but only 5.6 px at 40 m. Use 40 m or 80 m overviews only for quick-looks and state maps.
-- **dNBR on its own detects harvest, not burning.** Harvested fields with no FIRMS fire within 2 km had a median dNBR of **0.40** (Oct 18→28). VIIRS fire neighbourhoods had **0.10**.
-- **Bi-temporal NIR+SWIR darkening plus a post-date "char" state worked best.** The darkening is measured between consecutive clear passes ≤5 days apart. The char state uses CEEW's BAIS2 ≥ 0.78 & TBI ≤ 0.34.
-  - At footprint level it scored TPR 0.66 against FPR 0.35.
-  - The FPR is an upper bound, because the negative footprints probably contain unseen burns.
-  - The best single features reach AUC ≈ 0.70 (ΔB8A 0.716, ΔNBR2 0.702).
-- **Burnt and harvested-unburnt pixels are only weakly separable** in this real sample. A naive FIRMS-bag LightGBM model reached spatial-CV AUC 0.59, which is worse than the single features, so **do not ship it as-is** (§3.6).
-- **Candidate unseen burns.** In a 40×40 km hotspot (tile 43REQ), the rule flagged **2,773 clusters ≥0.52 ha (4,382 ha)** that appeared between the Oct 23 and Oct 28 passes.
-  - **87%** of those clusters (84% of the area) have no VIIRS detection within 750 m in that interval.
-  - Tillage is a known confound (Walker et al. 2022), so present these as *candidates* with an evidence viewer.
-- **Smoke haze is the main data risk in this season.** The Oct 23 pass was visibly hazy: blue reflectance went ×1.9 and NDVI fell 0.31→0.20.
-  - SCL flagged only about 1% cloud, and Sen2Cor AOT was only 0.38.
-  - B11/B12 were almost unaffected, so SWIR features are the robust ones.
-- **Volume per full refresh of Punjab + Haryana** (23 MGRS tiles, 19 material) is about **4.6 GB at 20 m for 10 assets**, or 1.6 GB for the minimal B8A/B11/B12/SCL set. At 40 m it is 1.2 GB (0.4 GB minimal). On this link that takes about 13 min at 20 m, and the job is network-bound. The CPU cost on 4 cores is about 1–2 min for rules.
-- **The PC tiler works for the evidence viewer.** I verified true colour, SWIR, NBR expressions with colormaps, bbox crops and search-based mosaics. Expressions must remove the +1000 DN offset. The mosaic needs a date filter while the Oct 28 problem persists.
-- **Sentinel-1 RTC is available on PC.** In October 2026 the satellite is S1D, every 3–5 days with mixed geometry.
-  - It helps with crop state: standing vs harvested gives VH AUC 0.77.
-  - It is useless for burnt vs harvested-unburnt (AUC ≤ 0.57).
+- **Both keyless catalogues work.** Use Earth Search `sentinel-2-c1-l2a` for analytics: 4.2 h sensing→STAC latency (PC still lacked the Oct-30 pass at 16:24 UTC), scale/offset metadata, no signing. Use Planetary Computer (PC) for XYZ tiles, ESA WorldCover and Sentinel-1 RTC.
+- **PC serves corrupted pixels for every 2026-10-28 S2 item over Punjab** (16/16 items, R005 and R048). Reflectance is noise (DN 0–255, correlation ≈ 0 with Earth Search) while SCL is intact; the other 49 PC items from Oct 18–28 are byte-identical to Earth Search. The PC tiler and its "latest clear" mosaic render black there (still broken at 16:36 UTC). **Every scene needs a plausibility gate** (§7).
+- **Work at 20 m.** Punjab plots are 0.9 ha median / 1.4 ha mean (Walker et al. 2022) ≈ 22 px at 20 m but 5.6 px at 40 m. Keep 40/80 m overviews for quick-looks and state maps.
+- **dNBR alone detects harvest, not burning.** Over Oct 18→28, harvested fields >2 km from any fire had median dNBR **0.40**; VIIRS fire neighbourhoods had **0.10**.
+- **Best detector: bi-temporal NIR+SWIR darkening** between clear passes ≤5 days apart (ΔB8A>0.07, ΔB11>0.07, ΔB12>0.03) **plus a post-date char state** (CEEW 2025: BAIS2 ≥ 0.78 & TBI ≤ 0.34). Footprint-level TPR 0.66 at FPR 0.35 (an upper bound, since negatives likely contain unseen burns); best single features reach AUC ≈ 0.70.
+- **Burnt vs harvested-unburnt separates only weakly in real data.** A naive FIRMS-bag LightGBM scored spatial-CV AUC 0.59, worse than single features; do not ship it (§3.6).
+- **Candidate "unseen burns".** In a 40×40 km hotspot (43REQ) the rule found 2,773 clusters ≥0.52 ha (4,382 ha) appearing between the Oct 23 and Oct 28 passes; **87%** (84% of area) have no VIIRS detection within 750 m in that interval. Tillage is a known confound, so present them as candidates with an evidence viewer.
+- **Smoke haze is the main data risk.** The Oct 23 pass had blue ×1.9 and NDVI 0.31→0.20, yet SCL flagged ~1% cloud and Sen2Cor AOT was 0.38. B11/B12 were nearly unaffected, so lead with SWIR features.
+- **Volume and time.** Punjab+Haryana spans 23 MGRS tiles (19 material). A full 20 m refresh is ≈4.6 GB for 10 assets or ≈1.6 GB for B8A/B11/B12/SCL; at 40 m, 1.2 GB / 0.4 GB. On this link a 20 m refresh takes ~13 min, network-bound; rule CPU is 1–2 min on 4 cores.
+- **PC tiler verified** for true colour, SWIR, NBR expressions with a colormap, bbox crops and mosaics. Expressions must remove the +1000 DN offset.
+- **S1 RTC is available** (S1D, every 3–5 days, mixed geometry). It helps with crop state (VH AUC 0.77 standing vs harvested), not with burnt vs harvested (AUC ≤ 0.57).
 
 ## 1. STAC catalogues
 
 | | Planetary Computer | Earth Search v1 (Element84) |
 |---|---|---|
 | STAC root | `https://planetarycomputer.microsoft.com/api/stac/v1` | `https://earth-search.aws.element84.com/v1` |
-| S2 collections | `sentinel-2-l2a` | `sentinel-2-l2a` (legacy) and `sentinel-2-c1-l2a` (Collection-1, recommended) |
-| Auth | Keyless. Asset hrefs must be signed with `planetary_computer.sign_inplace` or `GET /api/sas/v1/token/{collection}`. | None. Plain public `https://…s3.us-west-2.amazonaws.com` COGs. |
+| S2 collections | `sentinel-2-l2a` | `sentinel-2-l2a` (legacy), `sentinel-2-c1-l2a` (Collection-1, use this) |
+| Auth | keyless; hrefs must be signed (`planetary_computer.sign_inplace`) | none; public `https://…s3.us-west-2.amazonaws.com` COGs |
 | Open + point search, Oct 1–30 | 1.26 s + 1.83 s (14 items) | 1.24–1.37 s + 2.1–2.5 s (15 items) |
-| AOI polygon search (PB+HR, Oct 18–30) | n/a | 114 items in 13.5 s (paginated) |
-| Latency (Oct 30 pass, sensed 05:40 UTC) | not ingested at 16:24 UTC (>10.7 h) | `created` 09:50 UTC (**4.2 h**) |
-| Data region | Azure West Europe | AWS us-west-2 |
+| AOI polygon search (PB+HR, Oct 18–30) | — | 114 items in 13.5 s (paginated) |
+| Latency, Oct-30 pass (sensed 05:40 UTC) | absent at 16:24 UTC (>10.7 h) | `created` 09:50 UTC (**4.2 h**) |
+| Hosting | Azure West Europe | AWS us-west-2 |
 
-**SAS token** (`GET https://planetarycomputer.microsoft.com/api/sas/v1/token/sentinel-2-l2a`, keyless):
+**SAS tokens.**
 
-```
-{"msft:expiry":"2026-10-30T17:11:49Z","token":"st=…&se=2026-10-30T17%3A11%3A49Z&sp=rl&sv=2025-07-05&sr=c&…&sig=…"}
-```
+- Request: `GET https://planetarycomputer.microsoft.com/api/sas/v1/token/sentinel-2-l2a`, no key needed.
+- Response: `{"msft:expiry":"2026-10-30T17:11:49Z","token":"st=…&se=…&sp=rl&sv=2025-07-05&sr=c&…&sig=…"}`.
+- Lifetime: issued 16:26 UTC, so about 45 min. The SDK caches and renews the token, but long jobs must re-sign hrefs.
+- Rate limits are not published. An optional `Ocp-Apim-Subscription-Key` / `PC_SDK_SUBSCRIPTION_KEY` reportedly only raises the token rate (community sources, **UNVERIFIED**).
+- I sent about 300 COG and tile requests across both catalogues and saw no throttling.
 
-- The token was issued at 16:26 UTC, so it is valid for about 45 min. `planetary_computer` caches and renews it automatically, but long jobs must re-sign hrefs.
-- The rate limit is undocumented. Community sources say an optional `Ocp-Apim-Subscription-Key` / `PC_SDK_SUBSCRIPTION_KEY` only raises the *token* rate limit, and personal keys may no longer be issued (**UNVERIFIED**).
-- In my session, ~300 COG and tile requests went through with no throttling. Earth Search has no published limit, and I hit none.
+**Items over Sangrur (75.84E, 30.25N), 2026-10-01..30.** All are tile **43REP**, baseline **05.13**, EPSG:32643; cloud is `eo:cloud_cover` %.
 
-**Items over Sangrur (75.84E, 30.25N), 2026-10-01..30.** All are tile **43REP**, processing baseline **05.13**, EPSG:32643. Cloud is `eo:cloud_cover` in %. R105 is a swath-edge orbit with about 71% nodata in the tile, and it covers only 62% of a 10 km Sangrur box.
+- R105 is a swath-edge orbit: about 71% of the tile is nodata, and it covers only 62% of a 10 km Sangrur box.
+- Three satellites (S2A, S2B, S2C) are active, so each orbit repeats every 5 days.
 
 | date | sat | orbit | cloud | note | date | sat | orbit | cloud | note |
 |---|---|---|---|---|---|---|---|---|---|
@@ -67,48 +49,49 @@ Items that were not verified are marked **UNVERIFIED**. The scratch scripts that
 | 10-08 | S2B | R005 | 41.3 | | 10-23 | S2C | R005 | 45.1 | smoke haze |
 | 10-10 | S2C | R105 | 44.8 | edge | 10-25 | S2B | R105 | 0.00 | edge |
 | 10-13 | S2C | R005 | 24.3 | | 10-28 | S2B | R005 | 0.00 | **PC corrupt** |
-| 10-15 | S2B+S2A | R105+R005 | 34.1 / 28.5 | | 10-30 | S2C | R105 | 25.2 | Earth Search only |
-
-Three satellites are active: S2A, S2B and S2C. The same orbit repeats every 5 days.
+| 10-15 | S2B / S2A | R105 / R005 | 34.1 / 28.5 | | 10-30 | S2C | R105 | 25.2 | Earth Search only |
 
 **Naming differences**
 
-| concept | PC `sentinel-2-l2a` | E84 `sentinel-2-l2a` / `-c1-l2a` |
+| concept | PC `sentinel-2-l2a` | E84 `sentinel-2-l2a` / `sentinel-2-c1-l2a` |
 |---|---|---|
 | Item id | `S2B_MSIL2A_20261028T053929_R005_T43REP_20261028T092239` | `S2B_43REP_20261028_0_L2A` / `S2B_T43REP_20261028T054808_L2A` |
-| Band assets | `B01…B12,B8A,SCL,AOT,WVP,visual` | `coastal,blue,green,red,rededge1-3,nir,nir08,nir09,swir16,swir22,scl,aot,wvp,visual` |
-| Extra assets | `tilejson`, `rendered_preview` (tiler links) | l2a: `*-jp2` assets on **requester-pays** `s3://sentinel-s2-l2a`. c1: `cloud`/`snow` probabilities as COGs, `preview`, `storage:requester_pays=false`. |
-| MGRS tile property | `s2:mgrs_tile="43REP"` | `grid:code="MGRS-43REP"` (plus `mgrs:*`) |
+| Band assets | `B01…B12, B8A, SCL, AOT, WVP, visual` | `coastal, blue, green, red, rededge1-3, nir, nir08, nir09, swir16, swir22, scl, aot, wvp, visual` |
+| Extras | `tilejson`, `rendered_preview` | legacy: `*-jp2` assets on requester-pays `s3://sentinel-s2-l2a`. c1: `cloud`/`snow` probability COGs, `storage:requester_pays=false` |
+| MGRS tile | `s2:mgrs_tile="43REP"` | `grid:code="MGRS-43REP"`, `mgrs:*` |
 | Relative orbit | `sat:relative_orbit=5` | absent; parse `_R005_` from `s2:product_uri` |
 | `datetime` | datatake start (05:38:29) | tile sensing time (05:50:35) |
-| Scale/offset | **no `raster:bands`** | `raster:bands: scale 0.0001, offset -0.1` (l2a also has `earthsearch:boa_offset_applied=true`) |
+| Scale/offset | **no `raster:bands`** | `raster:bands: scale 0.0001, offset -0.1` (legacy also has `earthsearch:boa_offset_applied=true`) |
 | Tile filter | `query={"s2:mgrs_tile":{"eq":"43REQ"}}` | `query={"grid:code":{"eq":"MGRS-43REQ"}}` |
 
 **Gotchas**
 
-- Baseline 05.13 L2A DNs include **+1000**. Reflectance is `(DN−1000)/10000`, and DN 0 means nodata.
-  - PC and E84-c1 DNs are identical on good dates. I did not compare pixels for E84 legacy l2a.
-  - odc-stac returns **float32 for PC** (no `raster:bands`) and uint16 for E84.
-- E84 `sentinel-2-l2a` is slower from India: 41 s vs 21 s single-threaded for the same window (Table 2).
-- PC COG overviews of reflectance bands are **cubic**; SCL overviews are nearest. E84 does not tag the overview resampling, but the SCL overviews held only valid classes.
+- **DN offset.** Baseline 05.13 DNs include **+1000**, so reflectance = (DN−1000)/10⁴ and DN 0 is nodata.
+- **PC and E84-c1 DNs are identical** on good dates. I did not compare pixels for the legacy E84 collection.
+- **odc-stac dtype.** It returns float32 for PC, because there is no `raster:bands`, and uint16 for E84.
+- **Overviews.** PC reflectance overviews are **cubic** and its SCL overviews are nearest (`OVERVIEW_RESAMPLING` tag). E84 has no tag, but its SCL overviews contained only valid class values (2/4/5/7).
+- **Speed from India.** E84 (us-west-2) is about 2× slower than PC: 41 s vs 21 s single-threaded for the same window.
 
 ## 2. Window reads (rasterio / odc-stac)
 
-The box is 10.24 km × 10.24 km around Sangrur: `EPSG:32643 [575660, 3341620, 585900, 3351860]`. It is snapped to a 160 m grid so that the 20, 40 and 80 m grids nest. Each run reads 10 assets (B02 B03 B04 B06 B07 B08 B8A B11 B12 SCL) × 2 dates (Oct 18 and Oct 28) = 20 COGs. 10 m bands were read through `out_shape`, so GDAL picks the 2×/4×/8× overview. Bytes are from `CPL_VSIL_SHOW_NETWORK_STATS`.
+- **Box:** 10.24 × 10.24 km around Sangrur, `EPSG:32643 [575660, 3341620, 585900, 3351860]`, snapped to 160 m so the 20/40/80 m grids nest.
+- **Assets:** 10 per date (B02 B03 B04 B06 B07 B08 B8A B11 B12 SCL) × 2 dates (Oct 18, Oct 28) = 20 COGs.
+- **Lower resolutions:** `ds.read(…, out_shape=…)` makes GDAL use the 2×/4×/8× COG overviews. Bytes are from `CPL_VSIL_SHOW_NETWORK_STATS`.
 
-| source | res | threads | wall | MB downloaded | source | res | threads | wall | MB |
-|---|---|---|---|---|---|---|---|---|---|
-| PC | 20 m | 1 | 21.0 s | 29.4 | E84-c1 | 20 m | 1 | 41.2 s | 29.1 |
-| PC | 20 m | 8 | **5.2 s** | 29.4 | E84-c1 | 20 m | 8 | 8.0 s | 29.1 |
-| PC | 40 m | 8 | 4.0 s | 14.8 | E84-c1 | 40 m | 8 | 10.4 s | 11.3 |
-| PC | 80 m | 8 | 4.1 s | 12.2 | E84-c1 | 80 m | 8 | 5.8 s | 8.5 |
+| source | res | threads | wall | MB | | source | res | threads | wall | MB |
+|---|---|---|---|---|---|---|---|---|---|---|
+| PC | 20 m | 1 | 21.0 s | 29.4 | | E84-c1 | 20 m | 1 | 41.2 s | 29.1 |
+| PC | 20 m | 8 | **5.2 s** | 29.4 | | E84-c1 | 20 m | 8 | 8.0 s | 29.1 |
+| PC | 40 m | 8 | 4.0 s | 14.8 | | E84-c1 | 40 m | 8 | 10.4 s | 11.3 |
+| PC | 80 m | 8 | 4.1 s | 12.2 | | E84-c1 | 80 m | 8 | 5.8 s | 8.5 |
 
-- **odc-stac** loaded 6 bands × 2 dates with `pool=8`:
+- **odc-stac** (6 bands × 2 dates, `pool=8`):
   - E84-c1: 8.7 / 3.5 / 3.3 s at 20 / 40 / 80 m.
   - PC (`patch_url=pc.sign`): 5.2 / 2.3 / 2.2 s.
-- Below 20 m, latency rather than bytes dominates small windows: whole 512² blocks plus headers are fetched.
-- A 40×40 km window (E84-c1, 20 assets) took 29.3 s. ESA WorldCover for it took 3.5 s (PC `esa-worldcover`, item `ESA_WorldCover_10m_2021_v200_N30E075`, asset `map`, mode-reprojected to the 20 m UTM grid).
-- Full-tile reads of a single band (`GDAL_NUM_THREADS=4`):
+  - It snaps the box to 257 px at 40 m; pass a `geobox` for exact grids.
+- **Small windows:** at 40/80 m, latency rather than bytes dominates, because whole 512² blocks and the headers are fetched anyway.
+- **40×40 km hotspot window:** 20 assets from E84-c1 in 29.3 s. ESA WorldCover for the same window (PC `esa-worldcover`, item `ESA_WorldCover_10m_2021_v200_N30E075`, asset `map`, mode-reprojected to 20 m) took 3.5 s.
+- **Full tile, one band** (`GDAL_NUM_THREADS=4`):
 
   | read | time |
   |---|---|
@@ -119,142 +102,134 @@ The box is 10.24 km × 10.24 km around Sangrur: `EPSG:32643 [575660, 3341620, 58
   | PC B04 at 20 m (overview) | 35.4 s |
   | PC SCL | 3.0 s |
 
-  This link sustains about 2–3 MB/s per stream and about 6 MB/s aggregate to PC or 3.6 MB/s to E84.
-- odc-stac snaps to 257×257 px at 40 m for this box. Pass an explicit `geobox` if exact alignment matters.
+  This link sustains about 1.7–2.1 MB/s per stream, or about 5.7 MB/s (PC) and 3.6 MB/s (E84) aggregated over 8 streams.
 
-## 3. Indices, masking, FIRMS cross-check and separability
+## 3. Indices, masks, FIRMS cross-check and separability
 
 ### 3.1 Formulas
 
-All formulas use reflectance ρ = (DN−1000)/10⁴.
+Every index uses reflectance ρ = (DN−1000)/10⁴.
 
 | index | formula |
 |---|---|
 | NDVI | (B08−B04)/(B08+B04) |
 | NBR | (B8A−B12)/(B8A+B12) |
-| NBR2 (≈ NDTI residue index) | (B11−B12)/(B11+B12) |
-| dX | pre − post (MIRBI and BAIS2 are signed post − pre) |
-| BAIS2 (Filipponi 2018, B8A form) | (1−√(B06·B07·B8A/B04))·((B12−B8A)/√(B12+B8A)+1) |
+| NBR2 ≈ NDTI | (B11−B12)/(B11+B12) |
+| dX | pre − post (MIRBI and BAIS2 deltas are taken as post − pre) |
+| BAIS2 (Filipponi 2018) | (1−√(B06·B07·B8A/B04))·((B12−B8A)/√(B12+B8A)+1) |
 | MIRBI | 10·B12 − 9.8·B11 + 2 |
-| Visible albedo (Liang et al. 2002, ETM+ visible, mapped to S2 B02/B03/B04) | 0.443·B02 + 0.317·B03 + 0.240·B04 |
-| TBI (Tasseled-cap brightness, as used by Deshpande 2022 and CEEW 2025) | 0.3510·B02 + 0.3813·B03 + 0.3437·B04 + 0.7196·B08 + 0.2396·B11 + 0.1949·B12 |
+| VIS (visible albedo) | 0.443·B02 + 0.317·B03 + 0.240·B04 |
+| TBI (tasselled-cap brightness) | 0.3510·B02 + 0.3813·B03 + 0.3437·B04 + 0.7196·B08 + 0.2396·B11 + 0.1949·B12 |
+
+- **VIS coefficients:** Liang et al. 2002 (RSE 84:25), the ETM+ total-visible equation, applied to the S2 equivalent bands.
+- **TBI:** the version used by Deshpande et al. 2022 and CEEW 2025.
 
 **Masks**
 
-- Keep SCL ∈ {2, 4, 5, 6, 7} on both dates. Class 2 (dark area) is kept on purpose: no FIRMS-adjacent pixel was classed 2 or 3. Post-date SCL at fire pixels was 5 = 89.6% and 4 = 10.1%.
-- Restrict to cropland with WorldCover 2021 class 40, which covered 88% of the hotspot window.
+- Keep SCL ∈ {2,4,5,6,7} on both dates. Class 2 is kept on purpose: no pixel near a fire was classed 2 or 3, and at fire pixels on the post date SCL was 5 = 89.6% and 4 = 10.1%.
+- Restrict to cropland, WorldCover 2021 class 40, which is 88% of the hotspot window.
 
 ### 3.2 Real sample
 
-- **Sangrur box**: only 1 VIIRS detection in 7 days, so I moved the analysis to the densest Indian-Punjab cell.
-- **Hotspot window**: tile 43REQ, `EPSG:32643 [500000, 3450000, 540000, 3490000]`, centre 31.36N 75.21E, 4.0 Mpx at 20 m.
-- **S2 passes** (E84-c1, R005): Oct 18 (clear), Oct 23 (hazy) and Oct 28 (clear).
-- **FIRMS**: keyless 7-day VIIRS CSVs from NOAA-20 (J1), SNPP and NOAA-21 (J2), covering Oct 23–30.
-  - Inside the PB+HR polygon: 2,017 detections, 95% daytime (07–09 UTC = 12:30–14:30 IST).
-  - In the window: **121 detections between the Oct 23 and Oct 28 overpasses** and 107 after the Oct 28 overpass.
-- **Natural control**: fires detected *after* the post image mark fields that were harvested but **still unburnt** on the image date ("LATER" group).
+- **Location.** The Sangrur box had only 1 VIIRS detection in 7 days, so I moved to the densest Indian cell: 43REQ, `EPSG:32643 [500000, 3450000, 540000, 3490000]`, centre 31.36N 75.21E, 4.0 Mpx at 20 m.
+- **Passes.** E84-c1 R005 on Oct 18 (clear), Oct 23 (hazy) and Oct 28 (clear).
+- **FIRMS.** I used the keyless 7-day VIIRS CSVs from J1, SNPP and J2, covering Oct 23–30.
+  - Inside the PB+HR polygon there were 2,017 detections, 95% of them daytime (07–09 UTC = 12:30–14:30 IST).
+  - In the window, **121 detections fell between the Oct 23 and Oct 28 overpasses** and 107 came after the Oct 28 overpass.
+- **Natural control.** Fires detected *after* the post image mark fields that were harvested but **still unburnt on the image date**. I call these LATER.
 
 ### 3.3 Post-image values (Oct 28) and changes (Oct 18→28)
 
-Medians, IQR in brackets.
+Medians, cropland pixels only.
 
-| group (cropland, valid) | n px | NBR | NBR2 | BAIS2 | MIRBI | VIS | B12 | dNBR | dNDVI |
+| group | n px | NBR | NBR2 | BAIS2 | MIRBI | VIS | B12 | dNBR | dNDVI |
 |---|---|---|---|---|---|---|---|---|---|
-| ≤200 m of VIIRS fire Oct 23–28 | 29,099 | 0.023 [−.09,.13] | 0.104 | 0.724 | 1.633 | 0.090 | 0.198 | 0.098 | 0.058 |
-| ≤200 m of fire *after* Oct 28 (unburnt) | 16,310 | 0.044 | 0.133 | 0.683 | 1.437 | 0.099 | 0.224 | 0.088 | 0.057 |
-| standing crop (NDVI>0.6), >2 km from fires | 147,515 | 0.438 | 0.235 | 0.303 | 1.349 | 0.053 | 0.112 | 0.006 | 0.031 |
-| harvested Oct 18–28 (dNDVI>0.25), >2 km from fires | 191,432 | −0.005 | 0.097 | 0.723 | 1.565 | 0.100 | 0.244 | **0.399** | 0.352 |
+| ≤200 m of a VIIRS fire, Oct 23–28 | 29,099 | 0.023 [−.09,.13] | 0.104 | 0.724 | 1.633 | 0.090 | 0.198 | 0.098 | 0.058 |
+| ≤200 m of a fire after Oct 28 (still unburnt) | 16,310 | 0.044 | 0.133 | 0.683 | 1.437 | 0.099 | 0.224 | 0.088 | 0.057 |
+| Standing crop (NDVI>0.6), >2 km from fires | 147,515 | 0.438 | 0.235 | 0.303 | 1.349 | 0.053 | 0.112 | 0.006 | 0.031 |
+| Harvested Oct 18–28 (dNDVI>0.25), >2 km from fires | 191,432 | −0.005 | 0.097 | 0.723 | 1.565 | 0.100 | 0.244 | **0.399** | 0.352 |
 
-What the table shows:
-
-- Pixel-level separation is negligible. Comparing all pixels within 200 m of a fire with the LATER group gives Kaufman–Remer M ≤ 0.20 and AUC 0.50–0.62 for every index. A 200 m disc is 12.5 ha and covers 6–12 fields, so the burnt field is diluted.
-- Burnt neighbourhoods are darker in SWIR: B11 0.232 vs 0.273, B12 0.198 vs 0.224, MIRBI 1.63 vs 1.44.
-- **Harvest alone produces a larger dNBR than burning**, so the generic USGS dNBR classes (low severity from ≈0.1; not re-verified today) cannot be used on crop residue.
+- **Pixel level:** fire vs LATER pixels give Kaufman–Remer M ≤ 0.20 and AUC 0.50–0.62 for every index. A 200 m disc is 12.5 ha, or 6–12 fields, so the burnt field is diluted.
+- **Burnt neighbourhoods are darker in SWIR:** B11 0.232 vs 0.273, B12 0.198 vs 0.224, MIRBI 1.63 vs 1.44.
+- **Harvest alone produces a larger dNBR than burning.** Generic dNBR severity classes (low severity from ≈0.1, Key & Benson; not re-verified today) are therefore unusable here.
 
 ### 3.4 Footprint-level separability
 
-Unit: P80 of each feature over the cropland pixels of a 200 m VIIRS disc. Positives: 116 discs with a fire between the overpasses. Negatives: 60 discs with a fire after Oct 28 that are >1 km from any earlier fire.
+- **Unit:** P80 of each feature within a 200 m VIIRS disc, cropland pixels only.
+- **Positives:** 116 discs with a fire between the two passes.
+- **Negatives:** 60 discs with a fire after Oct 28, each more than 1 km from any earlier fire.
 
 | pair | ΔB8A | ΔNBR2 | ΔB12 | ΔB11 | MIRBI_post | NBR_post | ΔMIRBI | dNBR | dNDVI |
 |---|---|---|---|---|---|---|---|---|---|
-| Oct 23→28 (5 d) AUC | **0.716** | 0.702 | 0.696 | 0.695 | 0.691 | 0.684 | 0.679 | 0.670 | 0.617 |
-| Oct 18→28 (10 d) AUC | 0.707 | 0.686 | 0.625 | 0.665 | 0.693 | 0.686 | 0.707 | **0.580** | 0.483 |
+| Oct 23→28 (5 d), AUC | **0.716** | 0.702 | 0.696 | 0.695 | 0.691 | 0.684 | 0.679 | 0.670 | 0.617 |
+| Oct 18→28 (10 d), AUC | 0.707 | 0.686 | 0.625 | 0.665 | 0.693 | 0.686 | 0.707 | **0.580** | 0.483 |
 
-- Youden-optimal cuts on the 5-day pair: ΔB8A ≥ 0.073, ΔNBR2 ≥ 0.078, ΔB11 ≥ 0.072, ΔB12 ≥ 0.028, MIRBI_post ≥ 1.86.
-- The longer gap degrades dNBR because harvest contaminates it. This is consistent with Walker et al. 2022, who found the burn signal persists only days and that tillage mimics the NIR/SWIR drop.
-- Visual check: before/after chips of the top-FRP fires show distinct black or dark-brown fields appearing inside the VIIRS circles.
+- **Youden cut-offs (5-day pair):** ΔB8A ≥ 0.073, ΔNBR2 ≥ 0.078, ΔB11 ≥ 0.072, ΔB12 ≥ 0.028, MIRBI_post ≥ 1.86.
+- **A longer gap hurts dNBR**, because harvest contaminates it. This matches Walker et al. 2022: the burn signal lasts only days, and tillage mimics the NIR/SWIR drop.
+- **Visual check:** before/after chips of the highest-FRP fires show black or dark-brown fields appearing inside the VIIRS circles.
 
-### 3.5 Rules tested
+### 3.5 Rules (Oct 23→28)
 
-Bag counts as "detected" if ≥0.52 ha of the disc is flagged.
+A bag (disc) counts as "detected" if ≥0.52 ha of it is flagged.
 
 | rule | crop flagged | bag TPR | bag FPR* | bag AUC |
 |---|---|---|---|---|
-| Darkening Oct 23→28: ΔB8A>0.07 & ΔB11>0.07 & ΔB12>0.03, 2×2 opening, ≥13 px | 4.9% | 0.69 | 0.47 | 0.699 |
-| **Darkening + CEEW char state (BAIS2≥0.78 & TBI≤0.34 on post)** | 3.2% | **0.66** | **0.35** | 0.699 |
-| CEEW T3 single-date only (Oct 28) | 21.1% | 0.87 | 0.77 | 0.701 |
-| Grid-search best darkening (ΔB8A>0.09, ΔB11>0.03, ΔB12>0.03) | 5.1% | 0.72 | 0.45 | 0.684 |
+| Darkening: ΔB8A>0.07 & ΔB11>0.07 & ΔB12>0.03, 2×2 opening, clusters ≥13 px | 4.9% | 0.69 | 0.47 | 0.699 |
+| **Darkening + char state on post (BAIS2≥0.78 & TBI≤0.34)** | 3.2% | **0.66** | **0.35** | 0.699 |
+| CEEW T3 alone, single date (Oct 28) | 21.1% | 0.87 | 0.77 | 0.701 |
+| Grid-search best darkening, ΔB8A>0.09 & ΔB11>0.03 & ΔB12>0.03 (pixel counts, no cluster filter) | 5.1% | 0.72 | 0.45 | 0.684 |
 
-\* The negative discs sit inside a hotspot, so part of the FPR is real unseen burns or tillage. Treat it as an upper bound.
+\* The negative discs sit inside a hotspot, so part of this "FPR" is real unseen burns or tillage; treat it as an upper bound.
 
-A single-date char rule flags any char of any age plus dark soil, which is why it hits 21% of cropland. **Use it only as a state constraint on a bi-temporal change.**
+A single-date char rule flags char of any age plus dark soil. Use it **only as a state constraint on a bi-temporal change**.
 
-### 3.6 Literature thresholds and validation
+### 3.6 Literature thresholds, and a weak-supervision attempt that failed
 
-- **CEEW 2025** ("Monitoring Crop Residue Burning Better", §Data & methodology, Tables 2 and 7):
-  - Thresholds: **BAIS2 ≥ 0.78 & TBI ≤ 0.34**.
-  - Validated in Hoshiarpur/Jalandhar on 29 Oct 2021: pixel accuracy 0.75, TPR 0.59, FPR 0.006. It flagged 262/287 burnt fields and 13/95 unburnt fields.
-  - CEEW uses B8 inside the BAIS2 square root. With B8A the result was identical in our sample.
-- **Deshpande et al. 2022** (MethodsX 9:101741): BAIS2 + TBI with 5th–95th percentile cuts, which separated better than MIRBI and NBR.
-- **NRSC/ISRO**: operational MIRBI on 10 m, 5-day Sentinel-2 for Punjab/Haryana in 2022–23. The threshold is not public, and the NRSC PDF links now return 404, so this is cited from a search snippet.
-- **Walker et al. 2022** (arXiv 2209.10148):
-  - Ground truth of 441 burnt and 240 unburnt plots in Punjab, 2019.
-  - The char index and NIR change are best right after a burn. M > 1.5 is reached only within days.
-  - RF plot accuracy 0.82 (Sentinel-only 0.81). Tilled-unburnt plots show almost the same NIR/SWIR change.
-- **Naive weak supervision (tested)**:
-  - LightGBM on 36 features (post bands and indices, deltas vs Oct 23 and Oct 18), 300 trees, 31 leaves.
-  - Labels: all pixels in fire discs = 1, LATER discs and green crop = 0, with one multiple-instance refinement round (keep the top 30% of positive pixels).
-  - Spatial GroupKFold over 10 km blocks gave **bag AUC 0.597 (round 0) and 0.587 (round 1)**, below the single features.
-  - The resulting map flagged 12% of cropland, including river sand bars. Label noise dominates, so **reject this design**.
+- **CEEW 2025**, *Monitoring Crop Residue Burning Better* (Tables 2 and 7): **BAIS2 ≥ 0.78 & TBI ≤ 0.34**.
+  - Validated in Hoshiarpur/Jalandhar on 29 Oct 2021: pixel accuracy 0.75, TPR 0.59, FPR 0.006; it caught 262 of 287 burnt fields and falsely flagged 13 of 95 unburnt ones.
+  - CEEW puts B8 inside the BAIS2 square root; using B8A gave near-identical results here.
+- **Deshpande et al. 2022** (MethodsX 9:101741): BAIS2 + TBI with 5th–95th percentile cut-offs, which separate better than MIRBI or NBR.
+- **NRSC/ISRO:** operational MIRBI on 10 m, 5-day Sentinel-2 for Punjab/Haryana (2022–23). The threshold is not public, and the PDFs now return 404, so this is cited from a search snippet.
+- **Walker et al. 2022** (arXiv 2209.10148): 441 burnt and 240 unburnt plots in Punjab.
+  - The char index and NIR work best within days of the burn, where M > 1.5.
+  - Random-forest plot accuracy was 0.82 (0.81 with Sentinel-2 only).
+  - Tilled-but-unburnt plots show almost the same NIR/SWIR change.
+- **Naive weak supervision, tested here — reject.**
+  - Setup: LightGBM with 36 features (post bands and indices plus deltas vs Oct 23 and Oct 18), 300 trees, 31 leaves. Fire discs labelled 1; LATER discs and green crop labelled 0; one multiple-instance refinement round keeping the top 30% of positive pixels.
+  - Spatial GroupKFold over 10 km blocks gave **bag AUC 0.597 (round 0) and 0.587 (round 1)**.
+  - The model flags ≈14% of valid cropland (19,347 ha), including river sand bars. Label noise dominates.
 
-### 3.7 Recommended weak-supervision scheme for the LightGBM pixel classifier
+### 3.7 Recommended weak-supervision scheme for the LightGBM pixel model (UNVERIFIED end-to-end)
 
-This scheme is **UNVERIFIED** end-to-end.
-
-1. **Positives (precision first).** Take pixels of rule clusters from §3.5 (row 2) whose observation interval contains a VIIRS or MODIS detection ≤375 m away with confidence ≠ low. This yields field-shaped labels instead of 12.5 ha discs.
+1. **Positives.** Pixels of §3.5 row-2 clusters whose interval contains a VIIRS or MODIS detection ≤375 m away with confidence ≠ low. These give field-shaped labels instead of 12.5 ha discs.
 2. **Negatives.**
-   - (a) Pixels in a "harvested residue" state on the post date that **did not darken** and sit ≤375 m from a fire detected *after* the post image. These are ready to burn but not yet burnt, and they also serve as labels for the "burns next" model.
-   - (b) Standing crop (NDVI > 0.6).
-   - (c) Water, built-up and other non-crop pixels from WorldCover.
-   - Leave tilled-without-char pixels unlabeled.
-3. **Training.** Use positive-unlabeled learning: Elkan–Noto calibration, or a weight of 0.3 on unlabeled-as-negative. Include features from §3.4 plus days since the last clear observation and a haze flag.
-4. **Evaluation.**
-   - Spatial block CV, reported as FIRMS-bag AUC (positive vs LATER discs), must beat 0.72.
-   - Manually audit ~200 random "unseen" clusters in the before/after viewer (§5) and report their precision.
-5. With a `FIRMS_MAP_KEY`, extend the labels to the whole season (Oct 1–Nov 30) instead of the last 7 days (§7).
+   - Harvested-residue pixels on the post date that did **not** darken and lie ≤375 m from a fire detected *after* the post image ("ready to burn"). These are also the labels for the "burns next" model.
+   - Standing crop (NDVI > 0.6).
+   - Non-crop pixels from WorldCover.
+   - Leave pixels that darkened without char unlabelled.
+3. **Training.** Positive-unlabelled learning (Elkan–Noto calibration, or a 0.3 weight on unlabelled pixels used as negatives). Add the §3.4 features, days since the last clear pass, and a haze flag.
+4. **Acceptance.** The spatial-block-CV FIRMS-bag AUC must beat 0.72. Also audit about 200 random "unseen" clusters in the evidence viewer (§5) and report their precision.
+5. **Season-long labels.** With a `FIRMS_MAP_KEY`, extend labels to Oct 1–Nov 30 (§7).
 
-### 3.8 Smoke haze (observed)
+### 3.8 Smoke haze (observed in the hotspot window)
 
-On Oct 23 in the hotspot window:
-
-| measure | Oct 18 | Oct 23 | Oct 28 |
+| metric | Oct 18 | Oct 23 | Oct 28 |
 |---|---|---|---|
-| `eo:cloud_cover` (tile) | — | 22.4% | — |
-| SCL cloud + cirrus (window) | — | ≈1.3% | — |
 | B02 median | 0.063 | **0.117** | 0.073 |
 | NDVI median | 0.305 | 0.203 | 0.249 |
 | B12 median | 0.189 | 0.197 | 0.210 |
 | Sen2Cor AOT | 0.26 | 0.38 | 0.19 |
 
-Sen2Cor AOT is near-constant per scene, so it is a weak flag. Flag a scene as hazy when the cropland B02 median rises by >0.03 over the previous clear pass. On hazy scenes use SWIR-only features (ΔB11, ΔB12, ΔNBR2, MIRBI) and lower the confidence.
+- On Oct 23 the tile's `eo:cloud_cover` was 22.4%, yet SCL marked only about 1.3% of the window as cloud or cirrus. Sen2Cor AOT is near-constant per scene, so it is a weak haze flag.
+- **Rule:** flag a scene as hazy if the cropland B02 median rises by more than 0.03 over the previous clear pass. Then use SWIR-only features (ΔB11, ΔB12, ΔNBR2, MIRBI) and lower the confidence.
 
 ## 4. Volume and compute: all Punjab + Haryana
 
-**AOI.** Source: geoBoundaries `gbOpen/IND/ADM1`, `shapeISO` IN-PB and IN-HR. Endpoint: `https://www.geoboundaries.org/api/current/gbOpen/IND/ADM1/`, which returns the GeoJSON URLs. Use `shapeISO`, because the name is "Haryāna" with a diacritic. Area: PB 50,321 km² + HR 44,182 km² = **94,503 km²**.
+**AOI.** geoBoundaries `https://www.geoboundaries.org/api/current/gbOpen/IND/ADM1/` returns the GeoJSON URL. Select by `shapeISO` IN-PB / IN-HR, not by name ("Haryāna" has a macron). Area 50,321 + 44,182 = **94,503 km²**.
 
-**MGRS tiles.** 23 tiles intersect the AOI, and 19 have ≥250 km² of overlap: 43RDN RDP RDQ REL REM REN REP REQ RFL RFM RFN RFP RFQ RGL RGM RGN RGP SDR SER. The slivers are 43RCP, RGQ, SES and SFR.
+**MGRS tiles.** 23 intersect the AOI; 19 have ≥250 km² inside it: 43RDN RDP RDQ REL REM REN REP REQ RFL RFM RFN RFP RFQ RGL RGM RGN RGP SDR SER. Slivers: 43RCP, RGQ, SES, SFR.
 
-Passes from Oct 18–30:
+**Passes, Oct 18–30.**
 
 | orbit | dates | tiles |
 |---|---|---|
@@ -262,9 +237,9 @@ Passes from Oct 18–30:
 | R105 | Oct 20, 22, 25, 30 | 15 |
 | R048 | Oct 21, 26 | 2 |
 
-The AOI is fully covered every ≤5 days. The central strip (RE*/RF*) is seen by two orbits, which gives a 2–3 day revisit.
+At tile level (not checked per pixel), R005 + R105 together reach all 23 tiles about every 5 days, and the central RE*/RF* strip is seen by both orbits, every 2–3 days.
 
-**MB per tile-band.** Exact compressed bytes per overview level from the COG headers, tile 43REQ, 2026-10-18:
+**MB per tile-band** (exact, from the COG headers; 43REQ, 2026-10-18):
 
 | asset | PC 10 m | PC 20 m | PC 40 m | PC 80 m | E84-c1 20 m | E84-c1 40 m |
 |---|---|---|---|---|---|---|
@@ -272,77 +247,62 @@ The AOI is fully covered every ≤5 days. The central strip (RE*/RF*) is seen by
 | 20 m band (B06/B8A/B11/B12) | — | 54–55 | 13.7–13.8 | 3.5 | 46–47 | 11.8–12.0 |
 | SCL | — | 2.8 | 1.0 | 0.3 | 2.9 | 1.0 |
 
-PC files are DEFLATE without a predictor, 512² blocks. E84 uses predictor 2, with 1024² blocks on 10 m bands.
+PC files are DEFLATE without a predictor in 512² blocks. E84 uses predictor 2 and 1024² blocks for the 10 m bands.
 
-**Per full AOI refresh.** These figures are derived from the measurements above (≈4.5 KB/km²/band at 20 m, ≈1.15 KB at 40 m, plus 20% for tile overlap). A single pass covers roughly 0.5–0.7× of this.
+**Per full-AOI refresh** (derived: ≈4.5 KB/km²/band at 20 m and ≈1.15 at 40 m, plus 20% for tile overlap; a single pass covers an estimated 0.5–0.7× of this):
 
-| asset set | 20 m volume | 20 m time on this link (~6 MB/s) | 40 m volume | 40 m time |
+| asset set | 20 m volume | 20 m time at ~6 MB/s | 40 m volume | 40 m time |
 |---|---|---|---|---|
 | Minimal: B8A, B11, B12, SCL | 1.6 GB | ≈4.5 min | 0.4 GB | ≈1.1 min |
-| Detection set: 9 bands + SCL | 4.6 GB | ≈13 min (≈21 min from E84) | 1.2 GB | ≈3.3 min |
+| Detection: 9 bands + SCL | 4.6 GB | ≈13 min (≈21 min from E84) | 1.2 GB | ≈3.3 min |
 
-On an in-region cloud VM this drops below about 1 min.
+- An in-region VM brings either set under about 1 min.
+- **CPU, 4 cores, ≈200 M cropland px at 20 m:**
 
-**CPU (4 cores).** Cropland is about 200 M px at 20 m (about 50 M at 40 m).
+  | step | rate | time |
+  |---|---|---|
+  | 36-feature build | 1.2 Mpx/s per core | ≈45 s |
+  | Rules + labelling + vectorising | — | ≈1–2 min |
+  | LightGBM, 300 trees, 4 threads | 0.19 Mpx/s | ≈17 min (≈4.4 min at 40 m) |
 
-| step | measured rate | full AOI at 20 m |
-|---|---|---|
-| Feature build (36 features, numpy) | 1.2 Mpx/s per core | ≈45 s |
-| Rules, labelling, vectorising | — | ≈1–2 min |
-| LightGBM (300 trees, 4 threads) | 0.19 Mpx/s | ≈17 min (≈4.4 min at 40 m) |
+  Run LightGBM on candidate pixels only (5–20%) to get it under about 3 min. Process in 2048² blocks, about 170 MB per date.
 
-To cut the LightGBM cost, run inference only on candidate pixels (harvested or darkened, 5–20%), which takes ≤3 min, or use fewer trees. Process in 2048² blocks (about 170 MB per date for 10 float32 bands).
+**Incremental pipeline**
 
-**Incremental pipeline (recommended)**
-
-1. **Poll.** Every 30 min between 06 and 14 UTC, run an E84-c1 STAC search with `intersects=AOI` and `datetime≥last_seen`. Skip items with `s2:nodata_pixel_percentage>95` or `eo:cloud_cover>70`. Process each (tile, date) once and record it in PostGIS.
-2. **Read.** For blocks that contain WorldCover-40 pixels, read B02 B03 B04 B06 B07 B08 B8A B11 B12 SCL at 20 m. Cache the cropland mask per tile at 20 m once.
-3. **Validate.**
-   - The B12 median of SCL-valid pixels must lie in (0.02, 0.6).
-   - The correlation with the previous clear pass of the same tile must be > 0.3.
-   - If the scene fails, fall back to the other catalogue. That check is what catches PC 2026-10-28.
-   - Set a haze flag as in §3.8.
-4. **Per-pixel state.** Store per tile at 20 m, cropland only, as Zarr/npz (about 12 B/px, about 2.4 GB for the AOI):
-   - `last_clear_doy`, last B8A/B11/B12/NDVI/TBI as float16
-   - `state` ∈ {standing, harvested-residue, burnt, dark-soil/tilled, green-again}
-   - `harvest_doy`, `burn_doy`, `burn_conf`
-
-   Transitions:
-   - standing→harvested when NDVI drops >0.25 to <0.35 and B11 rises.
-   - harvested→burnt when the §3.5 darkening + char rule fires between consecutive clear observations ≤6 days apart.
-   - harvested→tilled when there is darkening without char.
-   - burnt→tilled when char fades.
-5. **Events.** Label 8-connected new-burnt pixels after a 2×2 opening, keep clusters ≥13 px (0.52 ha), run `rasterio.features.shapes`, simplify by 10 m, and store in PostGIS with:
-   - observation interval (prev_clear, this_pass)
-   - area, mean ΔB8A/ΔB11/ΔB12, BAIS2, TBI, confidence
-   - FIRMS match: any VIIRS/MODIS detection ≤750 m inside the interval ⇒ `seen`, otherwise **`unseen`**
-
-   In the sample, detected clusters had a median of 1.2 ha and a p90 of 3.6 ha.
-6. **Next-burn candidates.** Every harvested-residue pixel or field, with features: days since harvest, burn rate of neighbours within 2 km over the last 5 days, district, wind and rain forecast. Train on LATER-type transitions (§3.7, item 2a).
+1. **Poll** E84-c1 every 30 min between 06 and 14 UTC, using `intersects=AOI` and `datetime≥last_seen`. Skip items with `s2:nodata_pixel_percentage>95` or `eo:cloud_cover>70`. Record each (tile, date) in PostGIS.
+2. **Read** B02 B03 B04 B06 B07 B08 B8A B11 B12 SCL at 20 m, only for blocks that contain WorldCover-40 pixels. Cache the 20 m cropland mask per tile.
+3. **Validate.** The B12 median over SCL-valid pixels must be in (0.02, 0.6) and the correlation with the previous clear pass > 0.3; on failure switch catalogue (this catches PC's 10-28 data). Set the haze flag (§3.8).
+4. **Per-pixel state**, cropland only, Zarr/npz at ~12 B/px (≈2.4 GB): `last_clear_doy`, last B8A/B11/B12/NDVI/TBI (float16), `state` ∈ {standing, harvested, burnt, tilled, green-again}, `harvest_doy`, `burn_doy`, `burn_conf`. Transitions:
+   - standing → harvested: NDVI drops >0.25 to <0.35 and B11 rises.
+   - harvested → burnt: the §3.5 darkening+char rule fires between clear observations ≤6 days apart.
+   - harvested → tilled: darkening without char. burnt → tilled: the char fades.
+5. **Events.** Label 8-connected new-burn pixels after a 2×2 opening; keep clusters ≥13 px (0.52 ha; sample median 1.2 ha, p90 3.6 ha). Polygonise (`rasterio.features.shapes`), simplify at 10 m, and store in PostGIS with interval, area, mean deltas, BAIS2, TBI and confidence. A cluster is `seen` if a VIIRS/MODIS detection lies ≤750 m away within the interval, else **`unseen`**.
+6. **Next-burn candidates**: harvested-residue fields, with features days since harvest, neighbour burn rate within 2 km over 5 days, district and wind/rain forecast. Train on LATER-type labels (§3.7, step 2).
 
 ## 5. PC data API tiles (verified)
 
-The base is `https://planetarycomputer.microsoft.com/api/data/v1`; routes were read from `/openapi.json`. All responses below were `200 image/png`, item tiles took 0.5–1.4 s and were 70–165 KB at 256².
+- Base: `https://planetarycomputer.microsoft.com/api/data/v1`; routes are from its `/openapi.json`.
+- Every response below was `200 image/png`. Item tiles took 0.5–1.4 s and were 70–165 KB at 256².
+- Tested at Sangrur, z13, x5821/y3373, with item `S2B_MSIL2A_20261018T053829_R005_T43REP_20261018T092057`.
 
 ```
 # (a) true colour (PC's own "Natural color" render)
 /item/tiles/WebMercatorQuad/{z}/{x}/{y}@1x.png?collection=sentinel-2-l2a&item={ITEM}&assets=B04&assets=B03&assets=B02&nodata=0&color_formula=Gamma RGB 3.2 Saturation 0.8 Sigmoidal RGB 25 0.35
 # (b) SWIR false colour
 /item/tiles/WebMercatorQuad/{z}/{x}/{y}@1x.png?collection=sentinel-2-l2a&item={ITEM}&assets=B12&assets=B8A&assets=B04&nodata=0&color_formula=Gamma RGB 3.7 Saturation 1.5 Sigmoidal RGB 15 0.35
-# (c) NBR with colormap: remove the +1000 DN offset (PC's default NDVI render does NOT and is washed out)
+# (c) NBR + colormap, offset-corrected (PC's default NDVI render ignores the +1000 DN offset and looks washed out)
 /item/tiles/WebMercatorQuad/{z}/{x}/{y}@1x.png?collection=sentinel-2-l2a&item={ITEM}&expression=(B8A-B12)/(B8A%2BB12-2000)&asset_as_band=true&nodata=0&rescale=-0.5,0.7&colormap_name=rdylgn
-# TileJSON for MapLibre (same query string):     /item/WebMercatorQuad/tilejson.json?collection=…&item=…&expression=…
-# Evidence chip for one field (bbox in lon/lat):  /item/bbox/75.08,31.31,75.12,31.35/512x512.png?collection=…&item=…&assets=B12&assets=B8A&assets=B04&nodata=0&…   (2.1 s)
+# TileJSON (same query string), 0.8 s:  /item/WebMercatorQuad/tilejson.json?collection=…&item=…&expression=…
+# Field evidence chip, lon/lat bbox, 2.1 s:  /item/bbox/75.08,31.31,75.12,31.35/512x512.png?collection=…&item=…&assets=B12&assets=B8A&assets=B04&nodata=0&…
 ```
 
-- Tested on Sangrur z13 tile 5821/3373 with item `S2B_MSIL2A_20261018T053829_R005_T43REP_20261018T092057`. All renders were correct.
-- The same request for the 10-28 item returns noise or black. That is a data problem, not a URL problem.
-- In URLs, encode `+` as `%2B`. Expressions use asset names with `asset_as_band=true`.
-- dNBR needs two items, so the tiler cannot produce it in one request. Show pre and post side by side or with a swipe, and serve our own burn polygons as GeoJSON or MVT.
+- The same requests for the 10-28 item return noise or black. That is a data fault, not a URL fault.
+- Encode `+` as `%2B`.
+- dNBR needs two items, so no single tile request can produce it. Show pre and post side by side or with a swipe, and serve our own burn polygons as GeoJSON or MVT.
 
-**Mosaic (latest clear imagery across Punjab).** First register the search:
+**Mosaic ("latest clear" across Punjab)**
 
-`POST /mosaic/register` with body:
+`POST /mosaic/register`, body:
 
 ```
 {"collections":["sentinel-2-l2a"],"filter-lang":"cql2-json","filter":{"op":"and","args":[
@@ -351,74 +311,67 @@ The base is `https://planetarycomputer.microsoft.com/api/data/v1`; routes were r
  {"op":"<=","args":[{"property":"eo:cloud_cover"},10]}]},"sortby":[{"field":"datetime","direction":"desc"}]}
 ```
 
-The response took 0.24–0.55 s:
+- The response took 0.24–0.55 s: `{"id":"pc1.1793463471.2889764adaee4f188a47344207a03d11","links":[…/info, …/tilejson.json, …/WMTSCapabilities.xml]}`.
+- Tiles: `GET /mosaic/{id}/tiles/WebMercatorQuad/{z}/{x}/{y}@1x.png?collection=sentinel-2-l2a&assets=B04&assets=B03&assets=B02&nodata=0&color_formula=…`. This works at z9 and z12 in 0.85–2.5 s, and the NBR expression works too.
+- TileJSON: `/mosaic/{id}/WebMercatorQuad/tilejson.json?collection=…`.
 
-```
-{"id":"pc1.1793463471.2889764adaee4f188a47344207a03d11","links":[…/mosaic/{id}/info, …/tilejson.json, …/WMTSCapabilities.xml]}
-```
+**Mosaic gotchas**
 
-Then request tiles:
-
-`GET /mosaic/{id}/tiles/WebMercatorQuad/{z}/{x}/{y}@1x.png?collection=sentinel-2-l2a&assets=B04&assets=B03&assets=B02&nodata=0&color_formula=…`
-
-These took 0.85–2.5 s at z9 and z12, and the NBR expression also works. The tilejson is at `/mosaic/{id}/WebMercatorQuad/tilejson.json?collection=…`.
-
-Mosaic gotchas:
-
-- An interval that included Oct 28 rendered **black** tiles at z9 and z12, because the corrupt Oct 28 items sort first.
+- With the interval running to Oct 30, tiles came back **black**, because the corrupt 10-28 items sort first. Exclude dates that fail validation.
 - `/mosaic/{id}/point/{lon},{lat}` returned HTTP 500.
-- `/mosaic/{id}/tiles/…/assets` returned 422 ("must contain a collection parameter") even with `collection=`.
-- Default pixel selection is "first", and the PgSTAC `time_limit` is 5 s.
-- Recommendation: keep Oct 28 (or any date that fails validation) out of the interval, or select explicit item IDs with an `ids` / `in` filter (**UNVERIFIED**).
+- `/mosaic/{id}/tiles/…/assets` returned 422 ("must contain a collection parameter") even with `collection` set.
+- The OpenAPI shows `pixel_selection`, `items_limit` and `time_limit` (default 5 s) parameters.
+- A mosaic of explicit item ids via a CQL2 `in` filter is **UNVERIFIED**.
 
-Other tile layers verified:
+**Other layers verified** (same item-tile route):
 
-- S1 RTC: `…?collection=sentinel-1-rtc&item={id}&assets=vv&rescale=0,0.5&colormap_name=gray`, 1.8 s.
-- WorldCover: `…?collection=esa-worldcover&item=ESA_WorldCover_10m_2021_v200_N30E075&assets=map&colormap_name=esa-worldcover`, 0.9 s.
+- S1 RTC: `collection=sentinel-1-rtc&item={id}&assets=vv&rescale=0,0.5&colormap_name=gray` (1.8 s).
+- WorldCover: `collection=esa-worldcover&item=ESA_WorldCover_10m_2021_v200_N30E075&assets=map&colormap_name=esa-worldcover` (0.9 s).
 
 ## 6. Sentinel-1 RTC (PC `sentinel-1-rtc`)
 
-Availability, verified:
+**Availability (verified)**
 
-- 8 items in Oct 2026 over Sangrur, **all S1D**: Oct 4/16/28 ascending orbit 100, Oct 11/23 ascending 27, Oct 12/24 descending 34, Oct 19 descending 136. The same geometry repeats every 12 days, and any geometry is available every 3–5 days.
-- The latest item anywhere was S1C 2026-10-30 05:58 UTC, already ingested in the afternoon.
-- Assets: `vv` and `vh` as float32 linear γ⁰, `…/measurement/iw-vv.rtc.tiff`, EPSG:32643, 10 m, overviews 2–64, nodata −32768, 512² DEFLATE.
-- **`.tiff` extension**: set `CPL_VSIL_CURL_ALLOWED_EXTENSIONS=".tif,.tiff"`, otherwise GDAL fails with "not recognized as a supported dataset name".
-- Licence `CC-BY-4.0` (providers Catalyst and Microsoft). The GRD collection is `proprietary` (Copernicus terms).
-- Reading the 40 km window at about 20 m took 11.5–15.4 s per polarisation.
-- Check footprints: the frame that covers Sangrur did not cover the 43REQ window. Use the adjacent frame, the T130339 one.
+- Over Sangrur, Oct 1–30 2026, there are 8 items. The six most recent are all **S1D**: Oct 12 D34, 16 A100, 19 D136, 23 A27, 24 D34, 28 A100.
+- Over the 43REQ window there are 9 items, all S1D: Oct 4/16/28 A100, Oct 11/23 A27, and Oct 12/24 D34 (two frames each).
+- The same geometry repeats every 12 days; some acquisition arrives every 3–5 days.
+- The newest RTC item anywhere was S1C 2026-10-30 05:58 UTC, already ingested by about 16 UTC.
 
-Test: Oct 16 → Oct 28, same geometry (ascending 100), footprint P20/P50/P80 of ΔVV, ΔVH, Δ(VH−VV), VH_post and VV_post.
+**Assets and access**
 
-- Fire discs (n=159) vs LATER discs (n=31): **AUC 0.50–0.57**. For example, ΔVH P50 was −0.81 dB vs −0.88 dB.
-- Crop state on the Oct 28 pass:
-  - **VH: standing −15.05 dB vs harvested −17.98 dB, pixel AUC 0.77.**
-  - VV: AUC 0.64.
-  - VH−VV: AUC 0.65.
-- Literature:
-  - No study found that detects post-harvest residue burning with C-band SAR.
-  - Wildfire studies report VH decreases over burnt *forest*, and Belenguer-Plomer et al. 2019 (RSE) use VV/VH change together with hotspots.
-  - Harvest-date detection from VH peaks or coherence is established.
-- **Verdict:** use S1 only as a cloud and haze fallback for the standing→harvested transition. It cannot confirm or deny burning.
+- `vv` and `vh`: float32 linear γ⁰, files named `…/measurement/iw-vv.rtc.tiff`, EPSG:32643, 10 m, overviews 2–64, nodata −32768.
+- **The extension is `.tiff`.** Set `CPL_VSIL_CURL_ALLOWED_EXTENSIONS=".tif,.tiff"`, or GDAL fails with "not recognized as a supported dataset name".
+- Licence: CC-BY-4.0 (Catalyst, Microsoft). The `sentinel-1-grd` collection is `proprietary` (Copernicus terms).
+- Reading the 40 km window at 20 m took 11.5–15.4 s per polarisation.
+- Check the frame footprint: the frame over Sangrur (T130310) did not cover 43REQ, so the next frame (T130339) was needed.
+
+**Test** (A100, Oct 16 → Oct 28, P20/P50/P80 per 200 m disc)
+
+- ΔVV, ΔVH and Δ(VH−VV) separate fire discs (n=159) from LATER discs (n=31) at only **AUC 0.50–0.57** (e.g. ΔVH P50 −0.81 vs −0.88 dB).
+- Crop state on Oct 28 is the useful part: **VH standing −15.05 dB vs harvested −17.98 dB, pixel AUC 0.77**; VV AUC 0.64; VH−VV AUC 0.65.
+
+**Literature.** I found no study that detects post-harvest residue burning with C-band SAR. Wildfire studies show VH drops over burnt forest, and Belenguer-Plomer et al. 2019 (RSE) combine VV/VH change with hotspots. Harvest detection from VH peaks or coherence is established.
+
+**Verdict:** use S1 only as the cloud/haze fallback for the standing → harvested transition, never as evidence of burning.
 
 ## 7. Recommended approach and tested code
 
-**Data roles**
+**Sources**
 
-- Earth Search `sentinel-2-c1-l2a` is the analytics source, with PC `sentinel-2-l2a` as a validated fallback.
-- WorldCover 2021 from PC is the cropland mask.
-- FIRMS supplies labels and the seen/unseen join:
-  - Keyless 7-day CSVs today: `https://firms.modaps.eosdis.nasa.gov/data/active_fire/{noaa-20-viirs-c2|suomi-npp-viirs-c2|noaa-21-viirs-c2|modis-c6.1}/csv/{J1_VIIRS_C2|SUOMI_VIIRS_C2|J2_VIIRS_C2|MODIS_C6_1}_South_Asia_7d.csv`.
-  - Each took 1.9–2.9 s and was 0.15–1.24 MB. Last-Modified was 15:42 UTC, and range requests work (206).
-  - Columns: `latitude,longitude,bright_ti4,scan,track,acq_date,acq_time,satellite,confidence,version,bright_ti5,frp,daynight`.
+- **Analytics:** E84 `sentinel-2-c1-l2a`, with PC as a validated fallback.
+- **Cropland mask:** WorldCover 2021 from PC.
+- **Evidence viewer:** the PC tiler.
+- **FIRMS (keyless, verified):** `https://firms.modaps.eosdis.nasa.gov/data/active_fire/{noaa-20-viirs-c2|suomi-npp-viirs-c2|noaa-21-viirs-c2|modis-c6.1}/csv/{J1_VIIRS_C2|SUOMI_VIIRS_C2|J2_VIIRS_C2|MODIS_C6_1}_South_Asia_7d.csv`.
+  - Each took 1.9–2.9 s and was 0.15–1.24 MB. Last-Modified was 15:42 UTC, and range requests return 206.
+  - Header: `latitude,longitude,bright_ti4,scan,track,acq_date,acq_time,satellite,confidence,version,bright_ti5,frp,daynight`.
   - Sample row: `28.96295,79.78813,330.52,0.55,0.68,2026-10-23,0659,N20,nominal,2.0NRT,297.77,6.05,D`.
-- `FIRMS_MAP_KEY` unlocks `/api/area/csv/{MAP_KEY}/{VIIRS_NOAA20_NRT|…}/{w,s,e,n}/{1..10}[/{YYYY-MM-DD}]` for season-long history. With an invalid key it returns `HTTP 400 "Invalid MAP_KEY."`; a valid key is **UNVERIFIED**.
-- The PC tiler serves the evidence viewer.
+- **FIRMS with `FIRMS_MAP_KEY`:** unlocks season history via `/api/area/csv/{MAP_KEY}/{VIIRS_NOAA20_NRT|…}/{w,s,e,n}/{1..10}[/{YYYY-MM-DD}]`. An invalid key returns `HTTP 400 "Invalid MAP_KEY."`; a valid key is **UNVERIFIED**.
 
-**Tested snippet.** I ran it today on box `[500000,3460000,510240,3470240]` with pre `S2C_T43REQ_20261023T054822_L2A` and post `S2B_T43REQ_20261028T054808_L2A`.
+**Tested snippet.** I ran it verbatim today (26.5 s, including FIRMS):
 
-- Wall time was 24.5 s, including the FIRMS download.
-- Output: `n_clusters=327, area_ha=555.7, unseen=263`. This run had no WorldCover mask, so add one in production.
+- Box `[500000,3460000,510240,3470240]`, pre = `S2C_T43REQ_20261023T054822_L2A`, post = `S2B_T43REQ_20261028T054808_L2A`.
+- Output: `n_clusters=327, area_ha=555.7, unseen=263`.
+- No WorldCover mask was applied in this run; add one in production.
 
 ```python
 import os, io, json, numpy as np, pandas as pd, httpx, rasterio, shapely
@@ -489,30 +442,25 @@ for ft in feats:
     ft["nearest_viirs_m"] = float(tree.query([c.x, c.y])[0]); ft["seen_by_firms"] = ft["nearest_viirs_m"] <= 750
 ```
 
-**For PC instead of E84:**
-
-- Use band keys (`B04`, …) and open the client with `modifier=planetary_computer.sign_inplace`.
-- Always run the plausibility gate. Optionally cross-check a 64² window against the other catalogue; identical DNs mean the scene is good.
+**For PC**, use the `B04`-style keys and `Client.open(…, modifier=planetary_computer.sign_inplace)`. Always keep the plausibility gate. You can also cross-check a 64² window against the other catalogue: identical DNs mean the scene is good.
 
 ## 8. Licensing and attribution
 
-| source | licence / terms | attribution |
+| source | licence | attribution |
 |---|---|---|
-| Sentinel-2/-1 (both catalogues) | Copernicus Sentinel Data Terms; STAC `license: proprietary` (free, full, open) | "Contains modified Copernicus Sentinel data 2026" |
+| Sentinel-2 and Sentinel-1 (both catalogues) | Copernicus Sentinel Data Terms (STAC `proprietary`; free, full and open) | "Contains modified Copernicus Sentinel data 2026" |
 | PC `sentinel-1-rtc` | CC-BY-4.0 (Catalyst, Microsoft) | credit Microsoft Planetary Computer |
 | `esa-worldcover` | CC-BY-4.0 | "© ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium" |
 | NASA FIRMS | open | "We acknowledge the use of data from NASA FIRMS (https://earthdata.nasa.gov/firms), part of NASA ESDIS" |
-| geoBoundaries IND ADM1 | CC BY 2.5 IN (DataMeet / Election Commission of India) | per API record |
-| CEEW 2025 thresholds | cited publication | — |
-| Walker et al. 2022 | arXiv | cite |
+| geoBoundaries IND ADM1 | CC BY 2.5 IN (DataMeet / Election Commission of India) | as given in the API record |
 
-Every value shown in the app is derived live from these sources, so no static data is involved. **Do not cache the Oct 28 PC scenes.**
+The licence values were read today from the STAC collection metadata and the geoBoundaries API. The quoted attribution sentences are the providers' standard wording and were not re-checked today. Every value shown in the app is computed live from these sources. **Do not cache PC scenes that fail validation.**
 
 ## 9. Open items / not verified
 
-- A valid FIRMS `MAP_KEY` (season-long labels).
-- Whether PC repairs the 2026-10-28 assets. Re-test with `s02b`-style PC-vs-E84 identity checks.
-- The rule-seeded PU LightGBM from §3.7.
-- Specificity of the "unseen" candidates against ground truth or very-high-resolution imagery, including the tillage confound.
-- Whether a `ids`-filtered mosaic works.
-- Exact dNBR severity breaks (Key & Benson 2006) were not re-verified, and they are not used.
+- Season-long FIRMS history with a valid `MAP_KEY`.
+- Whether PC repairs its 2026-10-28 assets. Re-run the PC-vs-E84 identity check (`s02b`).
+- The rule-seeded PU LightGBM (§3.7).
+- How specific the "unseen" candidates are, checked against ground truth or very-high-resolution imagery (the tillage confound).
+- Mosaics built from explicit item ids.
+- Key & Benson dNBR class breaks were not re-verified, and they are not used.

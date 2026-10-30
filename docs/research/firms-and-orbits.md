@@ -1,6 +1,6 @@
 # FIRMS active fires + overpass prediction (the "blind-spot clock")
 
-Researched and tested live on **2026-10-30, 15:45–17:30 UTC (21:15–23:00 IST)**. Every endpoint below was called today
+Researched and tested live on **2026-10-30, 15:44–16:50 UTC (21:14–22:20 IST)**. Every endpoint below was called today
 from the dev box (Windows, uv env). Anything I could not call is marked **UNVERIFIED** with the reason. The scratch
 scripts that produced the numbers are not in the repo and may be wiped:
 `C:\Users\shubh\AppData\Local\Temp\claude\f--forge\375401be-2a9f-45a8-acfb-c0a0fdbd6c12\scratchpad\firms-orbits\{scripts,js}`.
@@ -8,8 +8,9 @@ The two snippets in section 6 are self-contained copies of them.
 
 ## TL;DR for implementers
 - **Keyless live feed works**: 12 South Asia CSVs (4 sensors x 24h/48h/7d), 42 KB to 1.2 MB each, 1.6–2.6 s to download.
-  Files are **rewritten every ~60 min** but the **ETag (=MD5) only changes when the content changes**. Poll with `HEAD`,
-  `GET` only on ETag change. Conditional GET is ignored (always 200 + full body). **No CORS header**: proxy via FastAPI.
+  Files are **rewritten hourly at fixed minutes** (J1 :42, J2 :44, MODIS :46, SUOMI :49), but the **ETag (=MD5) only
+  changes when the content changes**. Poll with `HEAD` and `GET` only on an ETag change. Conditional GET is ignored
+  (always 200 + full body). **No CORS header**, so proxy through FastAPI. Plan for overpass→CSV latency of 1–3 h.
 - `acq_date`/`acq_time` are **UTC** (FIRMS attribute docs say so; our SGP4 model agrees with the labels to within
   -2.0..+3.2 min for 7,926 detections, so an IST interpretation, off by 5.5 h, is ruled out). The labels come in
   ~2-minute steps, so treat them as **±3 min**.
@@ -70,8 +71,7 @@ MODIS: latitude,longitude,brightness,scan,track,acq_date,acq_time,satellite,conf
   `daynight` is D or N. NRT has no `type` (static-source) field; that field only exists in the SP MCD14ML data.
 
 ### 1.3 Cadence, latency, caching (measured)
-- **Rewrite cadence:** Last-Modified advanced about hourly at ~:40–:50 past the hour (MODIS 14:47:20 → 15:46:45; SUOMI
-  14:49:53 → 15:49:33). The ETag stayed identical when no new passes arrived. The FAQ says "updated every 60 minutes".
+- **Rewrite cadence:** hourly (FAQ: "updated every 60 minutes"). The exact minutes are in section 1.6.
 - `If-None-Match` and `If-Modified-Since` both returned **200 with the full body**, so conditional GET does not work. A `HEAD` takes ~1.1 s.
 - **No `Access-Control-Allow-Origin`** on the CSVs (tested with an `Origin` header), so the browser cannot fetch them.
 - **Latency:** FAQ: NRT is available "within 3 hours of a satellite observation (on a best-effort basis)". RT/URT exist
@@ -114,8 +114,16 @@ Polygons come from geoBoundaries `gbOpen/IND/ADM1` (DataMeet/ECI, CC BY 2.5 IN).
   MODIS rows. "In swath" does not mean "able to see a 1-ha fire". Weight observations by `scan*track`.
 - The South Asia box includes Pakistan, Iran, Myanmar and Thailand, so always clip to state polygons.
 
-### 1.6 Latency poll result
-See the poller log summary appended at the end of this doc (section 7).
+### 1.6 Latency poll result (HEAD every 10 min, 16:07–16:48Z, plus the LANCE listing every 10 min)
+- **Rewrite cadence is exact and hourly**, at fixed minutes past each hour: J1 15:42:19 → 16:42:18, J2 15:44:50 →
+  16:44:43, MODIS 14:47:20 → 15:46:45 → 16:46:39, SUOMI 14:49:53 → 15:49:33. All of these rewrites kept the **same
+  ETag**, because no new South Asia passes had arrived.
+- **Overpass → CSV latency** (bounds, not a point estimate): Terra's 12:48–12:54Z night granule (rows `T 1249`) was
+  already in the MODIS file rewritten at 14:47:20Z, so latency was **≤ 1 h 59 min**. Terra's 14:18–14:33Z pass had
+  added no rows by the 16:46:39Z rewrite (≥ 2 h 13 min, or it had no detections). The next VIIRS passes over the box
+  (17:54Z onward) fell outside this session. **Plan for 1–3 h** (FAQ: ≤ 3 h best effort) **plus ≤ 60 min rewrite lag**:
+  Punjab's 12:30–14:47 IST VIIRS rows should land by roughly 15:30–18:45 IST. That window is an inference; I did not
+  measure it.
 
 ---
 ## 2. FIRMS area API (needs MAP_KEY) and NRT daily archive
