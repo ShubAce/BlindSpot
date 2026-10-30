@@ -3,8 +3,8 @@
 create_app() builds it: CORS, gzip, orjson responses, JSON errors (sent from inside CORS, so the
 browser can read them), the core routes /api/health and /api/sources, and every router module in
 blindspot/api/routers/. The lifespan creates missing tables (retrying in the background if the
-database is not up yet) and, when ENABLE_SCHEDULER=1, starts the job scheduler inside this
-process (run exactly one such process).
+database is not up yet; INIT_DB_ON_STARTUP=false skips this on serverless) and, when
+ENABLE_SCHEDULER=1, starts the job scheduler inside this process (run exactly one such process).
 
     uv run uvicorn blindspot.api.main:app --reload --port 8000
 """
@@ -79,6 +79,16 @@ async def _upstream_error(request: Request, exc: Exception) -> Response:
     headers = {"Retry-After": str(int(exc.retry_after_s) + 1)} if exc.retry_after_s else None
     body = _error_body(status, str(exc), request.url.path, source=exc.source_key)
     return ORJSONResponse(body, status_code=status, headers=headers)
+
+
+async def _missing_dependency(request: Request, exc: Exception) -> Response:
+    # A route that needs an optional heavy library (rasterio/pillow for rendering imagery) on a
+    # deployment that does not ship it (the serverless build): say so, as a 503, not a bare 500.
+    assert isinstance(exc, ImportError)
+    missing = getattr(exc, "name", None) or str(exc)
+    detail = f"this deployment does not include '{missing}', which this endpoint needs"
+    body = _error_body(503, detail, request.url.path, missing_module=missing)
+    return ORJSONResponse(body, status_code=503)
 
 
 async def _database_error(request: Request, exc: Exception) -> Response:
@@ -185,7 +195,10 @@ def init_db_until_ready(stop: threading.Event) -> bool:
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     stop = threading.Event()
     try:
-        await run_in_threadpool(init_db)
+        if get_settings().init_db_on_startup:
+            await run_in_threadpool(init_db)
+        else:  # serverless: tables exist already; skip create_all on every cold start
+            log.info("INIT_DB_ON_STARTUP is off: not creating tables at start-up")
     except OperationalError as exc:
         log.error(
             "database not reachable (%s); serving anyway (/api/health reports db=false) and "
@@ -233,9 +246,12 @@ def create_app() -> FastAPI:
     app.add_exception_handler(RequestValidationError, _validation_error)
     app.add_exception_handler(FetchError, _upstream_error)
     app.add_exception_handler(OperationalError, _database_error)
+    app.add_exception_handler(ImportError, _missing_dependency)
     # The middleware added last runs first: CORS -> gzip -> JSON 500s -> routes.
     app.add_middleware(_JSONServerErrors)
-    app.add_middleware(GZipMiddleware, minimum_size=1024)
+    # Level 6, not Starlette's default 9: on the 1.4 MB boundaries GeoJSON it is 5x faster
+    # (52 vs 251 ms) for a body 0.3 % larger.
+    app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,

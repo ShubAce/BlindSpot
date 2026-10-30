@@ -1,0 +1,1488 @@
+{
+ "question": "Why is Delhi's air bad today, and did it come from Punjab?",
+ "lang": "en",
+ "events": [
+  {
+   "type": "run",
+   "run_id": "02a3f1754ee140e1991793ef8e4b83a6",
+   "model": "gemini-3.5-flash-lite",
+   "lang": "en"
+  },
+  {
+   "type": "thought",
+   "text": "**Investigating Delhi's Air**\n\nI'm delving into the air quality issue in Delhi, specifically examining if the pollution today originates from Punjab. My initial focus is on verifying this potential connection. I'll craft a concise verdict, followed by supporting points.\n\n\n"
+  },
+  {
+   "type": "tool_call",
+   "id": "call_1446684",
+   "name": "get_air_quality",
+   "args": {
+    "hours": 48,
+    "city": "Delhi"
+   }
+  },
+  {
+   "type": "tool_call",
+   "id": "call_1446687",
+   "name": "get_weather",
+   "args": {
+    "city": "Delhi"
+   }
+  },
+  {
+   "type": "tool_call",
+   "id": "call_1446690",
+   "name": "trace_air_back",
+   "args": {
+    "city": "Delhi",
+    "hours": 72
+   }
+  },
+  {
+   "type": "tool_call",
+   "id": "call_1446693",
+   "name": "get_fire_activity",
+   "args": {
+    "region": "punjab",
+    "hours": 24
+   }
+  },
+  {
+   "type": "tool_call",
+   "id": "call_1446696",
+   "name": "show_on_map",
+   "args": {
+    "city": "Delhi",
+    "action": "show_layer",
+    "layer": "smoke_back"
+   }
+  },
+  {
+   "type": "map",
+   "action": "show_layer",
+   "payload": {
+    "layer": "smoke_back",
+    "visible": true,
+    "params": {
+     "city": "Delhi"
+    }
+   }
+  },
+  {
+   "type": "tool_result",
+   "id": "call_1446696",
+   "name": "show_on_map",
+   "ok": true,
+   "summary": "Map: show smoke_back",
+   "sources": []
+  },
+  {
+   "type": "tool_result",
+   "id": "call_1446693",
+   "name": "get_fire_activity",
+   "ok": true,
+   "summary": "227 fire detections in the last 24 h (Punjab); most in Tarn Taran (54)",
+   "sources": [
+    {
+     "key": "firms",
+     "label": "NASA FIRMS active fires",
+     "url": "https://firms.modaps.eosdis.nasa.gov/api/area/csv/***/VIIRS_SNPP_SP/73.8,27.6,77.7,32.6/2/2025-11-29",
+     "fetched_at": "2026-10-30T18:10:21.806785Z",
+     "fetch_id": 2925,
+     "marker": 1
+    },
+    {
+     "key": "firms",
+     "label": "NASA FIRMS active fires",
+     "url": "https://firms.modaps.eosdis.nasa.gov/data/active_fire/noaa-20-viirs-c2/csv/J1_VIIRS_C2_South_Asia_7d.csv",
+     "fetched_at": "2026-10-30T18:01:40.779139Z",
+     "fetch_id": 2457,
+     "marker": 3
+    },
+    {
+     "key": "firms",
+     "label": "NASA FIRMS active fires",
+     "url": "https://firms.modaps.eosdis.nasa.gov/data/active_fire/noaa-21-viirs-c2/csv/J2_VIIRS_C2_South_Asia_7d.csv",
+     "fetched_at": "2026-10-30T18:01:43.170618Z",
+     "fetch_id": 2460,
+     "marker": 4
+    },
+    {
+     "key": "firms",
+     "label": "NASA FIRMS active fires",
+     "url": "https://firms.modaps.eosdis.nasa.gov/data/active_fire/suomi-npp-viirs-c2/csv/SUOMI_VIIRS_C2_South_Asia_7d.csv",
+     "fetched_at": "2026-10-30T18:01:45.118791Z",
+     "fetch_id": 2462,
+     "marker": 5
+    },
+    {
+     "key": "firms",
+     "label": "NASA FIRMS active fires",
+     "url": "https://firms.modaps.eosdis.nasa.gov/data/active_fire/modis-c6.1/csv/MODIS_C6_1_South_Asia_7d.csv",
+     "fetched_at": "2026-10-30T18:01:46.994382Z",
+     "fetch_id": 2464,
+     "marker": 6
+    },
+    {
+     "key": "firms",
+     "label": "NASA FIRMS active fires",
+     "url": "https://firms.modaps.eosdis.nasa.gov/api/area/csv/***/MODIS_NRT/73.8,27.6,77.7,32.6/5/2026-10-20",
+     "fetched_at": "2026-10-30T18:03:46.147691Z",
+     "fetch_id": 2525,
+     "marker": 7
+    },
+    {
+     "key": "firms",
+     "label": "NASA FIRMS active fires",
+     "url": "https://firms.modaps.eosdis.nasa.gov/api/area/csv/***/VIIRS_NOAA20_NRT/73.8,27.6,77.7,32.6/5/2026-10-20",
+     "fetched_at": "2026-10-30T18:02:46.037701Z",
+     "fetch_id": 2494,
+     "marker": 8
+    },
+    {
+     "key": "firms",
+     "label": "NASA FIRMS active fires",
+     "url": "https://firms.modaps.eosdis.nasa.gov/api/area/csv/***/VIIRS_NOAA21_NRT/73.8,27.6,77.7,32.6/5/2026-10-20",
+     "fetched_at": "2026-10-30T18:03:10.298748Z",
+     "fetch_id": 2504,
+     "marker": 9
+    },
+    {
+     "key": "firms",
+     "label": "NASA FIRMS active fires",
+     "url": "https://firms.modaps.eosdis.nasa.gov/api/area/csv/***/VIIRS_SNPP_NRT/73.8,27.6,77.7,32.6/5/2026-10-20",
+     "fetched_at": "2026-10-30T18:03:29.839595Z",
+     "fetch_id": 2515,
+     "marker": 10
+    },
+    {
+     "key": "creams",
+     "label": "creams",
+     "url": "https://creams.iari.res.in/geokrishi/geoserver/wfs?service=WFS&version=2.0.0&request=GetFeature&typeNames=geokrishi_v%3A15_september_2026_rice&outputFormat=application%2Fjson",
+     "fetched_at": "2026-10-30T18:06:13.433387Z",
+     "fetch_id": 2759,
+     "marker": 2
+    },
+    {
+     "key": "creams",
+     "label": "creams",
+     "url": "https://creams.iari.res.in/geokrishi/geoserver/wfs?service=WFS&version=2.0.0&request=GetFeature&typeNames=geokrishi_v%3A16_september_2026_rice&outputFormat=application%2Fjson",
+     "fetched_at": "2026-10-30T18:06:13.378692Z",
+     "fetch_id": 2758,
+     "marker": 11
+    },
+    {
+     "key": "creams",
+     "label": "creams",
+     "url": "https://creams.iari.res.in/geokrishi/geoserver/wfs?service=WFS&version=2.0.0&request=GetFeature&typeNames=geokrishi_v%3A18_september_2026_rice&outputFormat=application%2Fjson",
+     "fetched_at": "2026-10-30T18:06:13.317826Z",
+     "fetch_id": 2757,
+     "marker": 12
+    }
+   ]
+  },
+  {
+   "type": "tool_result",
+   "id": "call_1446684",
+   "name": "get_air_quality",
+   "ok": true,
+   "summary": "Delhi PM2.5 72.0 µg/m³ at 2026-10-30 22:00 IST; 24 h mean 30.3; CPCB AQI 77 (Satisfactory)",
+   "sources": [
+    {
+     "key": "cams",
+     "label": "Copernicus CAMS via Open-Meteo air quality",
+     "url": "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=30.3796%2C31.6200%2C30.9439%2C28.9649%2C28.6701%2C28.3419%2C29.0996%2C30.2330%2C28.2011%2C28.8062%2C30.7356%2C28.5939%2C28.2961%2C28.6363%2C28.2068%2C28.3907%2C29.5037%2C28.6854%2C28.5249%2C28.4251%2C29.6107%2C29.1406%2C31.3219%2C28.1090%2C29.3078%2C29.8006%2C29.6953%2C27.8016%2C30.7361%2C28.6112%2C29.9669%2C30.9028%2C30.6500%2C27.9002%2C28.3607%2C28.9727%2C28.7982%2C29.4689%2C28.0602%2C28.5692%2C28.1486%2C30.7058%2C29.4339%2C30.3494%2C28.6996%2C31.0325%2C29.4604%2C27.6089%2C29.5364%2C29.0272%2C29.9316%2C30.1481&longitude=76.7783%2C74.8765%2C76.8020%2C77.2788%2C76.9254%2C77.3197%2C77.2623%2C74.9078%2C76.8458%2C76.1411%2C76.7629%2C76.2707%2C74.9617%2C77.1843%2C76.7997%2C77.3157%2C75.4679%2C77.3577%2C77.4820%2C77.1066%2C74.2836%2C75.7449%2C75.5789%2C75.3866%2C76.3376%2C76.4155%2C77.0027%2C76.6365%2C76.2097%2C77.3421%2C76.8759%2C75.8086%2C76.3314%2C76.9938%2C76.9361%2C77.6410%2C77.5402%2C77.6684%2C76.1131%2C77.3577%2C77.3321%2C76.8532%2C76.9741%2C76.3666%2C76.4961%2C76.5623%2C77.3410%2C75.1533%2C75.0158%2C77.0621%2C73.8645%2C77.2893&hourly=pm2_5%2Cpm10&past_days=7&forecast_days=5&timeformat=unixtime&timezone=GMT&domains=cams_global&cell_selection=nearest",
+     "fetched_at": "2026-10-30T18:00:26.541835Z",
+     "fetch_id": 2453,
+     "marker": 13
+    },
+    {
+     "key": "datagov_aqi",
+     "label": "data.gov.in CPCB real-time AQI",
+     "url": "https://api.data.gov.in/resource/3b01bcb8-0b14-4abf-b6f2-c1bfd384ba69?api-key=***&format=json&limit=1000&sort%5Bstation%5D=asc&offset=3000",
+     "fetched_at": "2026-10-30T18:04:26.888860Z",
+     "fetch_id": 2536,
+     "marker": 14
+    },
+    {
+     "key": "openaq",
+     "label": "OpenAQ v3 (CPCB stations)",
+     "url": "https://api.openaq.org/v3/locations/6442/latest?limit=1000",
+     "fetched_at": "2026-10-30T18:04:43.466209Z",
+     "fetch_id": 2613,
+     "marker": 15
+    },
+    {
+     "key": "openaq",
+     "label": "OpenAQ v3 (CPCB stations)",
+     "url": "https://api.openaq.org/v3/sensors/12236376/measurements/hourly?datetime_from=2026-10-23T17%3A57%3A00Z&datetime_to=2026-10-30T17%3A57%3A00Z&limit=1000",
+     "fetched_at": "2026-10-30T18:00:15.118343Z",
+     "fetch_id": 2441,
+     "marker": 18
+    },
+    {
+     "key": "naaqs_2009",
+     "label": "CPCB National Ambient Air Quality Standards (2009)",
+     "url": "https://cpcb.nic.in/uploads/National_Ambient_Air_Quality_Standards.pdf",
+     "fetched_at": null,
+     "fetch_id": null,
+     "marker": 16
+    },
+    {
+     "key": "who_aqg_2021",
+     "label": "WHO Global Air Quality Guidelines (2021)",
+     "url": "https://www.who.int/publications/i/item/9789240034228",
+     "fetched_at": null,
+     "fetch_id": null,
+     "marker": 17
+    }
+   ]
+  },
+  {
+   "type": "tool_result",
+   "id": "call_1446687",
+   "name": "get_weather",
+   "ok": true,
+   "summary": "Delhi at 2026-10-30 23:30 IST: transport wind from NNW 3.1 km/h, mixing height 42 m, rain 52.3 mm in 24 h",
+   "sources": [
+    {
+     "key": "openmeteo",
+     "label": "Open-Meteo forecast (winds, boundary layer)",
+     "url": "https://api.open-meteo.com/v1/forecast",
+     "fetched_at": "2026-10-30T17:56:47.653756Z",
+     "fetch_id": 2213,
+     "marker": 20
+    },
+    {
+     "key": "openmeteo",
+     "label": "Open-Meteo forecast (winds, boundary layer)",
+     "url": "https://api.open-meteo.com/v1/forecast",
+     "fetched_at": "2026-10-30T17:57:55.829487Z",
+     "fetch_id": 2286,
+     "marker": 19
+    }
+   ]
+  },
+  {
+   "type": "tool_result",
+   "id": "call_1446690",
+   "name": "trace_air_back",
+   "ok": true,
+   "summary": "Delhi: trajectories verdict mixed, burn-belt share {'h24': 20.2, 'h48': 10.2, 'h72': 7.3} IITM DSS stubble share 1.7% (2026-10-30)",
+   "sources": [
+    {
+     "key": "openmeteo",
+     "label": "Open-Meteo forecast API (winds at 10 m/950/925/850 hPa, boundary layer; CC BY 4.0)",
+     "url": "https://api.open-meteo.com/v1/forecast",
+     "fetched_at": "2026-10-30T17:56:47.653756Z",
+     "fetch_id": 2213,
+     "marker": 20
+    },
+    {
+     "key": "openmeteo",
+     "label": "Open-Meteo forecast API (winds at 10 m/950/925/850 hPa, boundary layer; CC BY 4.0)",
+     "url": "https://api.open-meteo.com/v1/forecast",
+     "fetched_at": "2026-10-30T17:57:55.829487Z",
+     "fetch_id": 2286,
+     "marker": 19
+    },
+    {
+     "key": "firms",
+     "label": "NASA FIRMS active fires (VIIRS 375 m, MODIS 1 km; NRT)",
+     "url": "https://firms.modaps.eosdis.nasa.gov/data/active_fire/modis-c6.1/csv/MODIS_C6_1_South_Asia_7d.csv",
+     "fetched_at": "2026-10-30T18:01:46.994382Z",
+     "fetch_id": 2464,
+     "marker": 6
+    },
+    {
+     "key": "firms",
+     "label": "NASA FIRMS active fires (VIIRS 375 m, MODIS 1 km; NRT)",
+     "url": "https://firms.modaps.eosdis.nasa.gov/data/active_fire/suomi-npp-viirs-c2/csv/SUOMI_VIIRS_C2_South_Asia_7d.csv",
+     "fetched_at": "2026-10-30T18:01:45.118791Z",
+     "fetch_id": 2462,
+     "marker": 5
+    },
+    {
+     "key": "firms",
+     "label": "NASA FIRMS active fires (VIIRS 375 m, MODIS 1 km; NRT)",
+     "url": "https://firms.modaps.eosdis.nasa.gov/data/active_fire/noaa-21-viirs-c2/csv/J2_VIIRS_C2_South_Asia_7d.csv",
+     "fetched_at": "2026-10-30T18:01:43.170618Z",
+     "fetch_id": 2460,
+     "marker": 4
+    },
+    {
+     "key": "firms",
+     "label": "NASA FIRMS active fires (VIIRS 375 m, MODIS 1 km; NRT)",
+     "url": "https://firms.modaps.eosdis.nasa.gov/data/active_fire/noaa-20-viirs-c2/csv/J1_VIIRS_C2_South_Asia_7d.csv",
+     "fetched_at": "2026-10-30T18:01:40.779139Z",
+     "fetch_id": 2457,
+     "marker": 3
+    },
+    {
+     "key": "boundaries",
+     "label": "Survey of India states + LGD/Bharatmaps districts (DataMeet / ramSeraph mirror)",
+     "url": "https://github.com/ramSeraph/indian_admin_boundaries/releases/download/subdistricts/LGD_Subdistricts.parquet",
+     "fetched_at": "2026-10-30T18:02:08.559021Z",
+     "fetch_id": 2479,
+     "marker": 21
+    },
+    {
+     "key": "openmeteo_geocoding",
+     "label": "Open-Meteo geocoding API (GeoNames places)",
+     "url": "https://geocoding-api.open-meteo.com/v1/search?name=Delhi&count=10&language=en&format=json&countryCode=IN",
+     "fetched_at": "2026-10-30T18:05:12.010546Z",
+     "fetch_id": 2643,
+     "marker": 24
+    },
+    {
+     "key": "openmeteo_geocoding",
+     "label": "Open-Meteo geocoding API (GeoNames places)",
+     "url": "https://geocoding-api.open-meteo.com/v1/search?name=Gurugram&count=10&language=en&format=json&countryCode=IN",
+     "fetched_at": "2026-10-30T18:05:12.220529Z",
+     "fetch_id": 2644,
+     "marker": 25
+    },
+    {
+     "key": "openmeteo_geocoding",
+     "label": "Open-Meteo geocoding API (GeoNames places)",
+     "url": "https://geocoding-api.open-meteo.com/v1/search?name=Noida&count=10&language=en&format=json&countryCode=IN",
+     "fetched_at": "2026-10-30T18:05:12.405136Z",
+     "fetch_id": 2645,
+     "marker": 26
+    },
+    {
+     "key": "openmeteo_geocoding",
+     "label": "Open-Meteo geocoding API (GeoNames places)",
+     "url": "https://geocoding-api.open-meteo.com/v1/search?name=Faridabad&count=10&language=en&format=json&countryCode=IN",
+     "fetched_at": "2026-10-30T18:05:12.587922Z",
+     "fetch_id": 2646,
+     "marker": 22
+    },
+    {
+     "key": "iitm_dss",
+     "label": "IITM Decision Support System for Delhi (stubble-burning share of PM2.5)",
+     "url": "https://ews.tropmet.res.in/dss/",
+     "fetched_at": "2026-10-30T17:56:44.860947Z",
+     "fetch_id": 2212,
+     "marker": 23
+    }
+   ]
+  },
+  {
+   "type": "thought",
+   "text": "**Refining the Approach**\n\nI'm now focusing intensely on the strict formatting requirements. I've broken down each constraint, ensuring my output strictly adheres to the one-sentence verdict, the bullet points, and the \"Caveat\" line. I'm testing various sentence structures to ensure brevity and clarity within the word limit.\n\n\n"
+  },
+  {
+   "type": "thought",
+   "text": "**Verifying the Details**\n\nI'm now meticulously cross-referencing all data points against their indicated sources, ensuring complete accuracy. I'm focusing on preserving every detail – time, location, and specific measurement – exactly as provided by the tools. I've rechecked the PM2.5 and AQI values for Delhi, alongside the wind speed and direction, noting Punjab's 227 fire detections [1].\n\n\n"
+  },
+  {
+   "type": "thought",
+   "text": "**Analyzing the Contributions**\n\nI've completed the information integration and formatting. I'm satisfied that I've maintained strict adherence to the output constraints. I’ve ensured the one-sentence verdict concisely states Delhi's air quality, and the bullet points provide all details from the provided sources. I've double-checked my word count to ensure it remains under the limit. Now, I'm verifying the \"Caveat\" line and making sure that all details are included.\n\n\n"
+  },
+  {
+   "type": "answer_delta",
+   "text": "Delhi's air is currently at satisfactory levels rather than severely polluted, and transport from Punjab contributed minimally to it today.\n- Delhi's PM2.5 was 72 µg/m³ at 22:00 IST [1"
+  },
+  {
+   "type": "answer_delta",
+   "text": "5].\n- Delhi's CPCB AQI was 77, falling in the satisfactory category at 2"
+  },
+  {
+   "type": "answer_delta",
+   "text": "3:00 IST [14].\n- IITM DSS estimated that stubble burning contributed 1.7"
+  },
+  {
+   "type": "answer_delta",
+   "text": "5% to Delhi's daily mean PM2.5 on 30 Oct [23].\n- Transport"
+  },
+  {
+   "type": "answer_delta",
+   "text": " wind at Delhi was from NNW at 3.1 km/h at 23:30 IST ["
+  },
+  {
+   "type": "answer_delta",
+   "text": "19].\n- Back-trajectories showed that 20.2% of Delhi's air passed over"
+  },
+  {
+   "type": "answer_delta",
+   "text": " the burn belt in the last 24 hours [19].\n- Punjab recorded 227 fire detections"
+  },
+  {
+   "type": "answer_delta",
+   "text": " in the last 24 hours [1].\nCaveat: Satellite fire counts are a lower bound because polar-"
+  },
+  {
+   "type": "answer_delta",
+   "text": "orbiting satellites see a fire only if it burns during an overpass, and thick smoke or cloud hides fires."
+  },
+  {
+   "type": "answer",
+   "text": "Delhi's air is currently at satisfactory levels rather than severely polluted, and transport from Punjab contributed minimally to it today.\n- Delhi's PM2.5 was 72 µg/m³ at 22:00 IST [15].\n- Delhi's CPCB AQI was 77, falling in the satisfactory category at 23:00 IST [14].\n- IITM DSS estimated that stubble burning contributed 1.75% to Delhi's daily mean PM2.5 on 30 Oct [23].\n- Transport wind at Delhi was from NNW at 3.1 km/h at 23:30 IST [19].\n- Back-trajectories showed that 20.2% of Delhi's air passed over the burn belt in the last 24 hours [19].\n- Punjab recorded 227 fire detections in the last 24 hours [1].\nCaveat: Satellite fire counts are a lower bound because polar-orbiting satellites see a fire only if it burns during an overpass, and thick smoke or cloud hides fires.",
+   "citations": [
+    {
+     "marker": 15,
+     "source": {
+      "key": "openaq",
+      "label": "OpenAQ v3 (CPCB stations)",
+      "url": "https://api.openaq.org/v3/locations/6442/latest?limit=1000",
+      "fetched_at": "2026-10-30T18:04:43.466209Z",
+      "fetch_id": 2613
+     }
+    },
+    {
+     "marker": 14,
+     "source": {
+      "key": "datagov_aqi",
+      "label": "data.gov.in CPCB real-time AQI",
+      "url": "https://api.data.gov.in/resource/3b01bcb8-0b14-4abf-b6f2-c1bfd384ba69?api-key=***&format=json&limit=1000&sort%5Bstation%5D=asc&offset=3000",
+      "fetched_at": "2026-10-30T18:04:26.888860Z",
+      "fetch_id": 2536
+     }
+    },
+    {
+     "marker": 23,
+     "source": {
+      "key": "iitm_dss",
+      "label": "IITM Decision Support System for Delhi (stubble-burning share of PM2.5)",
+      "url": "https://ews.tropmet.res.in/dss/",
+      "fetched_at": "2026-10-30T17:56:44.860947Z",
+      "fetch_id": 2212
+     }
+    },
+    {
+     "marker": 19,
+     "source": {
+      "key": "openmeteo",
+      "label": "Open-Meteo forecast (winds, boundary layer)",
+      "url": "https://api.open-meteo.com/v1/forecast",
+      "fetched_at": "2026-10-30T17:57:55.829487Z",
+      "fetch_id": 2286
+     }
+    },
+    {
+     "marker": 1,
+     "source": {
+      "key": "firms",
+      "label": "NASA FIRMS active fires",
+      "url": "https://firms.modaps.eosdis.nasa.gov/api/area/csv/***/VIIRS_SNPP_SP/73.8,27.6,77.7,32.6/2/2025-11-29",
+      "fetched_at": "2026-10-30T18:10:21.806785Z",
+      "fetch_id": 2925
+     }
+    }
+   ],
+   "model": "gemini-3.5-flash-lite"
+  },
+  {
+   "type": "verification",
+   "checked": 12,
+   "verified": 12,
+   "unverified": [],
+   "passed": true,
+   "uncited": [],
+   "bad_markers": [],
+   "revised": false,
+   "first_pass_unverified": []
+  },
+  {
+   "type": "done",
+   "run_id": "02a3f1754ee140e1991793ef8e4b83a6",
+   "duration_ms": 8856,
+   "ok": true,
+   "models": [
+    "gemini-3.5-flash-lite"
+   ]
+  }
+ ],
+ "tools": [
+  {
+   "id": "call_1446684",
+   "name": "get_air_quality",
+   "args": {
+    "hours": 48,
+    "city": "Delhi"
+   },
+   "ok": true,
+   "output": {
+    "city": "Delhi",
+    "unit": "µg/m³",
+    "now": {
+     "pm25": 72.0,
+     "pm10": 108.0,
+     "observed": "2026-10-30 22:00 IST",
+     "stations_reporting": 37,
+     "stations_stale": 2,
+     "provider": "openaq",
+     "method": "median of the city's stations that reported in the last 2 hours"
+    },
+    "pm25_24h_mean": 30.3,
+    "pm25_24h_mean_hours": 23,
+    "pm25_24h_naqi_category": "Satisfactory",
+    "cpcb_aqi_now": {
+     "aqi": 77,
+     "category": "Satisfactory",
+     "stations": 54,
+     "observed": "2026-10-30 23:00 IST"
+    },
+    "cams_model_now": {
+     "pm25": 68.9,
+     "valid": "2026-10-30 23:30 IST",
+     "note": "model estimate, not a measurement"
+    },
+    "stations_in_city": {
+     "count": 39,
+     "highest_pm25": [
+      {
+       "name": "Mundka, Delhi - DPCC",
+       "pm25": 201.0,
+       "pm10": 268.0,
+       "observed": "2026-10-30 22:00 IST",
+       "stale": false
+      },
+      {
+       "name": "Bawana, Delhi - DPCC",
+       "pm25": 129.0,
+       "pm10": 217.0,
+       "observed": "2026-10-30 22:00 IST",
+       "stale": false
+      },
+      {
+       "name": "Punjabi Bagh, Delhi - DPCC",
+       "pm25": 118.0,
+       "pm10": 158.0,
+       "observed": "2026-10-30 22:00 IST",
+       "stale": false
+      },
+      {
+       "name": "Rohini, Delhi - DPCC",
+       "pm25": 118.0,
+       "pm10": 169.0,
+       "observed": "2026-10-30 22:00 IST",
+       "stale": false
+      },
+      {
+       "name": "R K Puram, Delhi - DPCC",
+       "pm25": 111.0,
+       "pm10": 121.0,
+       "observed": "2026-10-30 22:00 IST",
+       "stale": false
+      }
+     ]
+    },
+    "other_cities_now": [
+     {
+      "city": "Ghaziabad",
+      "pm25": 70.5,
+      "pm25_24h_mean": 21.9,
+      "observed": "2026-10-30 22:00 IST",
+      "cpcb_aqi": 61,
+      "cpcb_category": "Satisfactory"
+     },
+     {
+      "city": "Noida",
+      "pm25": 52.0,
+      "pm25_24h_mean": 23.6,
+      "observed": "2026-10-30 22:00 IST",
+      "cpcb_aqi": 86,
+      "cpcb_category": "Satisfactory"
+     },
+     {
+      "city": "Gurugram",
+      "pm25": 43.9,
+      "pm25_24h_mean": 28.7,
+      "observed": "2026-10-30 22:00 IST",
+      "cpcb_aqi": 64,
+      "cpcb_category": "Satisfactory"
+     },
+     {
+      "city": "Faridabad",
+      "pm25": 43.0,
+      "pm25_24h_mean": 38.6,
+      "observed": "2026-10-30 22:00 IST",
+      "cpcb_aqi": 85,
+      "cpcb_category": "Satisfactory"
+     },
+     {
+      "city": "Chandigarh",
+      "pm25": 48.0,
+      "pm25_24h_mean": 31.2,
+      "observed": "2026-10-30 22:00 IST",
+      "cpcb_aqi": 60,
+      "cpcb_category": "Satisfactory"
+     },
+     {
+      "city": "Bhiwadi",
+      "pm25": 65.5,
+      "pm25_24h_mean": 32.3,
+      "observed": "2026-10-30 22:00 IST",
+      "cpcb_aqi": 68,
+      "cpcb_category": "Satisfactory"
+     },
+     {
+      "city": "Greater Noida",
+      "pm25": 40.7,
+      "pm25_24h_mean": 63.9,
+      "observed": "2026-10-30 22:00 IST",
+      "cpcb_aqi": 88,
+      "cpcb_category": "Satisfactory"
+     },
+     {
+      "city": "Ambala",
+      "pm25": 122.0,
+      "pm25_24h_mean": 36.3,
+      "observed": "2026-10-30 22:00 IST",
+      "cpcb_aqi": 106,
+      "cpcb_category": "Moderate"
+     },
+     {
+      "city": "Amritsar",
+      "pm25": 63.0,
+      "pm25_24h_mean": 78.6,
+      "observed": "2026-10-30 22:00 IST",
+      "cpcb_aqi": 162,
+      "cpcb_category": "Moderate"
+     },
+     {
+      "city": "Baddi",
+      "pm25": 78.0,
+      "pm25_24h_mean": 78.2,
+      "observed": "2026-10-30 22:00 IST",
+      "cpcb_aqi": 163,
+      "cpcb_category": "Moderate"
+     },
+     {
+      "city": "Bahadurgarh",
+      "pm25": 45.8,
+      "pm25_24h_mean": 28.4,
+      "observed": "2026-10-30 22:00 IST",
+      "cpcb_aqi": 57,
+      "cpcb_category": "Satisfactory"
+     },
+     {
+      "city": "Ballabgarh",
+      "pm25": 46.1,
+      "pm25_24h_mean": 27.0,
+      "observed": "2026-10-30 22:00 IST",
+      "cpcb_aqi": 78,
+      "cpcb_category": "Satisfactory"
+     }
+    ],
+    "last_48_hours": {
+     "hours_with_data": 47,
+     "as_of": "2026-10-30 23:00 IST",
+     "max": {
+      "pm25": 160.0,
+      "hour_ending": "2026-10-29 10:00 IST"
+     },
+     "min": {
+      "pm25": 6.6,
+      "hour_ending": "2026-10-30 07:00 IST"
+     },
+     "hourly_last_24": [
+      [
+       "2026-10-29 23:00 IST",
+       32.3
+      ],
+      [
+       "2026-10-30 00:00 IST",
+       33.6
+      ],
+      [
+       "2026-10-30 01:00 IST",
+       30.0
+      ],
+      [
+       "2026-10-30 02:00 IST",
+       25.6
+      ],
+      [
+       "2026-10-30 03:00 IST",
+       22.0
+      ],
+      [
+       "2026-10-30 04:00 IST",
+       11.8
+      ],
+      [
+       "2026-10-30 05:00 IST",
+       9.0
+      ],
+      [
+       "2026-10-30 06:00 IST",
+       9.1
+      ],
+      [
+       "2026-10-30 07:00 IST",
+       6.6
+      ],
+      [
+       "2026-10-30 08:00 IST",
+       10.8
+      ],
+      [
+       "2026-10-30 09:00 IST",
+       16.8
+      ],
+      [
+       "2026-10-30 10:00 IST",
+       21.0
+      ],
+      [
+       "2026-10-30 11:00 IST",
+       24.8
+      ],
+      [
+       "2026-10-30 12:00 IST",
+       28.9
+      ],
+      [
+       "2026-10-30 13:00 IST",
+       30.1
+      ],
+      [
+       "2026-10-30 14:00 IST",
+       31.8
+      ],
+      [
+       "2026-10-30 15:00 IST",
+       34.5
+      ],
+      [
+       "2026-10-30 16:00 IST",
+       40.1
+      ],
+      [
+       "2026-10-30 17:00 IST",
+       44.3
+      ],
+      [
+       "2026-10-30 18:00 IST",
+       44.0
+      ],
+      [
+       "2026-10-30 19:00 IST",
+       42.8
+      ],
+      [
+       "2026-10-30 20:00 IST",
+       52.1
+      ],
+      [
+       "2026-10-30 21:00 IST",
+       60.5
+      ],
+      [
+       "2026-10-30 22:00 IST",
+       67.8
+      ]
+     ]
+    },
+    "cams_model_series": {
+     "note": "Copernicus CAMS model estimate, not a measurement",
+     "latest": {
+      "pm25": 68.9,
+      "time": "2026-10-30 23:30 IST"
+     },
+     "max": {
+      "pm25": 112.9,
+      "time": "2026-10-29 00:30 IST"
+     }
+    },
+    "reference_24h_limits": {
+     "india_naaqs_pm25": 60,
+     "india_naaqs_pm10": 100,
+     "who_2021_pm25": 15,
+     "who_2021_pm10": 45
+    },
+    "sources": [
+     {
+      "marker": "[13]",
+      "source": "Copernicus CAMS via Open-Meteo air quality",
+      "fetched": "2026-10-30 23:30 IST"
+     },
+     {
+      "marker": "[14]",
+      "source": "data.gov.in CPCB real-time AQI",
+      "fetched": "2026-10-30 23:34 IST"
+     },
+     {
+      "marker": "[15]",
+      "source": "OpenAQ v3 (CPCB stations)",
+      "fetched": "2026-10-30 23:34 IST"
+     },
+     {
+      "marker": "[16]",
+      "source": "CPCB National Ambient Air Quality Standards (2009)"
+     },
+     {
+      "marker": "[17]",
+      "source": "WHO Global Air Quality Guidelines (2021)"
+     }
+    ]
+   }
+  },
+  {
+   "id": "call_1446687",
+   "name": "get_weather",
+   "args": {
+    "city": "Delhi"
+   },
+   "ok": true,
+   "output": {
+    "city": "Delhi",
+    "time": "2026-10-30 23:30 IST",
+    "model": "best_match",
+    "wind_10m": {
+     "speed_kmh": 2.0,
+     "from_deg": 360,
+     "from": "N"
+    },
+    "wind_925hpa": {
+     "speed_kmh": 10.4,
+     "from_deg": 342,
+     "from": "NNW"
+    },
+    "transport_wind": {
+     "speed_kmh": 3.1,
+     "from_deg": 345,
+     "from": "NNW"
+    },
+    "mixing_height_m": 42,
+    "ventilation_m2_s": 36,
+    "temp_2m_c": 19.1,
+    "rain_mm_last_24h": 52.3,
+    "inversion": {
+     "present": false,
+     "t925_minus_t2m_c": -3.6,
+     "basis": "925 hPa (about 580 m above the plains) minus 2 m temperature, same model"
+    },
+    "second_model": {
+     "gfs_seamless": {
+      "blh_m": 461,
+      "transport_wind": {
+       "speed_kmh": 6.4,
+       "from_deg": 169,
+       "from": "S"
+      },
+      "wind_10m": {
+       "speed_kmh": 4.0,
+       "from_deg": 195,
+       "from": "SSW"
+      }
+     }
+    },
+    "meaning": "wind 'from' is the direction the wind blows from; transport wind is the mean through the mixing layer, which carries smoke; a low mixing height traps it",
+    "sources": [
+     {
+      "marker": "[19]",
+      "source": "Open-Meteo forecast (winds, boundary layer)",
+      "fetched": "2026-10-30 23:27 IST"
+     }
+    ]
+   }
+  },
+  {
+   "id": "call_1446690",
+   "name": "trace_air_back",
+   "args": {
+    "city": "Delhi",
+    "hours": 72
+   },
+   "ok": true,
+   "output": {
+    "city": "Delhi",
+    "back_trajectories": {
+     "model_run": "2026-10-30 23:35 IST",
+     "start": "2026-10-27 23:35 IST",
+     "hours_back": 72,
+     "trajectories": 200,
+     "summary": {
+      "blh_m_now": 42.0,
+      "wind_basis": "boundary-layer mean wind (10 m to 850 hPa), best_match",
+      "top_districts": [
+       {
+        "state": "Uttarakhand",
+        "district": "Tehri Garhwal",
+        "share_pct": 17.4
+       },
+       {
+        "state": "Uttarakhand",
+        "district": "Uttarkashi",
+        "share_pct": 10.3
+       },
+       {
+        "state": "Uttarakhand",
+        "district": "Dehradun",
+        "share_pct": 8.7
+       },
+       {
+        "state": "Uttarakhand",
+        "district": "Pauri Garhwal",
+        "share_pct": 6.5
+       },
+       {
+        "state": "Uttarakhand",
+        "district": "Haridwar",
+        "share_pct": 6.1
+       }
+      ],
+      "verdict_reason": "the model runs disagree, or the air passed only a little burning",
+      "left_grid_share": 0.0,
+      "wind_from_deg_now": 345.0,
+      "wind_speed_kmh_now": 3.2,
+      "exposure_from_scars": 0.0,
+      "fire_exposure_index": 1.03,
+      "fire_exposure_range": [
+       0.07,
+       1.03
+      ],
+      "top_source_districts": [
+       {
+        "state": "Himachal Pradesh",
+        "district": "Sirmaur",
+        "share_pct": 72.5
+       },
+       {
+        "state": "Haryana",
+        "district": "Yamunanagar",
+        "share_pct": 17.5
+       },
+       {
+        "state": "Uttar Pradesh",
+        "district": "Saharanpur",
+        "share_pct": 5.4
+       },
+       {
+        "state": "Haryana",
+        "district": "Ambala",
+        "share_pct": 2.7
+       },
+       {
+        "state": "Haryana",
+        "district": "Kurukshetra",
+        "share_pct": 1.0
+       }
+      ],
+      "share_over_burn_belt_pct": {
+       "h24": 20.2,
+       "h48": 10.2,
+       "h72": 7.3
+      },
+      "models": [
+       "best_match",
+       "gfs_seamless"
+      ]
+     },
+     "verdict_hint": "mixed",
+     "method": "particles carried backwards by Open-Meteo winds; a share is the fraction of particles that passed over the Punjab/Haryana burn belt",
+     "notes": [
+      "18 cities geocoded live (no place rows of kind 'city' yet)",
+      "17 state and 177 district polygons",
+      "2228 FIRMS detections (218 low-confidence skipped)",
+      "0 candidate unseen burn scars"
+     ]
+    },
+    "iitm_dss_official_estimate": {
+     "what": "% of Delhi's daily mean PM2.5",
+     "run_date": "2026-10-30",
+     "stale": false,
+     "today": {
+      "date": "2026-10-30",
+      "stubble_pct": 1.75
+     },
+     "recent_days": [
+      {
+       "date": "2026-10-26",
+       "stubble_pct": 4.68
+      },
+      {
+       "date": "2026-10-27",
+       "stubble_pct": 1.56
+      },
+      {
+       "date": "2026-10-28",
+       "stubble_pct": 0.98
+      },
+      {
+       "date": "2026-10-29",
+       "stubble_pct": 0.98
+      },
+      {
+       "date": "2026-10-30",
+       "stubble_pct": 1.75
+      }
+     ],
+     "outlook": [
+      {
+       "date": "2026-10-30",
+       "stubble_pct": 1.7,
+       "fire_input": "viirs_previous_evening"
+      },
+      {
+       "date": "2026-10-31",
+       "stubble_pct": 19.2,
+       "fire_input": "climatology"
+      },
+      {
+       "date": "2026-11-01",
+       "stubble_pct": 33.5,
+       "fire_input": "climatology"
+      },
+      {
+       "date": "2026-11-02",
+       "stubble_pct": 13.4,
+       "fire_input": "climatology"
+      }
+     ],
+     "method_note": "Please note that the contribution of stubble burning to Delhi's PM2.5 concentration for a particular day is determined using active fire count data from the VIIRS satellite-based instrument received on the evening of the previous day. The uncertainty especially related to the detection of fire event"
+    },
+    "sources": [
+     {
+      "marker": "[19]",
+      "source": "Open-Meteo forecast API (winds at 10 m/950/925/850 hPa, boundary layer; CC BY 4.0)",
+      "fetched": "2026-10-30 23:27 IST"
+     },
+     {
+      "marker": "[6]",
+      "source": "NASA FIRMS active fires (VIIRS 375 m, MODIS 1 km; NRT)",
+      "fetched": "2026-10-30 23:31 IST"
+     },
+     {
+      "marker": "[21]",
+      "source": "Survey of India states + LGD/Bharatmaps districts (DataMeet / ramSeraph mirror)",
+      "fetched": "2026-10-30 23:32 IST"
+     },
+     {
+      "marker": "[22]",
+      "source": "Open-Meteo geocoding API (GeoNames places)",
+      "fetched": "2026-10-30 23:35 IST"
+     },
+     {
+      "marker": "[23]",
+      "source": "IITM Decision Support System for Delhi (stubble-burning share of PM2.5)",
+      "fetched": "2026-10-30 23:26 IST"
+     }
+    ]
+   }
+  },
+  {
+   "id": "call_1446693",
+   "name": "get_fire_activity",
+   "args": {
+    "region": "punjab",
+    "hours": 24
+   },
+   "ok": true,
+   "output": {
+    "window": "2026-10-29 23:44 IST to 2026-10-30 23:44 IST",
+    "region": "punjab",
+    "detections": 227,
+    "by_satellite": {
+     "Suomi NPP": 57,
+     "NOAA-20": 127,
+     "NOAA-21": 43
+    },
+    "satellites_with_none": [
+     "Aqua",
+     "Terra"
+    ],
+    "by_state": {
+     "Punjab": 227
+    },
+    "top_districts": [
+     {
+      "district": "Tarn Taran",
+      "state": "Punjab",
+      "detections": 54,
+      "frp_mw_sum": 268.6
+     },
+     {
+      "district": "Gurdaspur",
+      "state": "Punjab",
+      "detections": 51,
+      "frp_mw_sum": 203.6
+     },
+     {
+      "district": "Amritsar",
+      "state": "Punjab",
+      "detections": 25,
+      "frp_mw_sum": 88.2
+     },
+     {
+      "district": "Kapurthala",
+      "state": "Punjab",
+      "detections": 21,
+      "frp_mw_sum": 112.9
+     },
+     {
+      "district": "Ferozepur",
+      "state": "Punjab",
+      "detections": 17,
+      "frp_mw_sum": 121.1
+     },
+     {
+      "district": "Jalandhar",
+      "state": "Punjab",
+      "detections": 13,
+      "frp_mw_sum": 61.6
+     },
+     {
+      "district": "Ludhiana",
+      "state": "Punjab",
+      "detections": 10,
+      "frp_mw_sum": 50.0
+     },
+     {
+      "district": "Hoshiarpur",
+      "state": "Punjab",
+      "detections": 7,
+      "frp_mw_sum": 23.3
+     },
+     {
+      "district": "Fazilka",
+      "state": "Punjab",
+      "detections": 6,
+      "frp_mw_sum": 43.3
+     },
+     {
+      "district": "Bathinda",
+      "state": "Punjab",
+      "detections": 5,
+      "frp_mw_sum": 18.5
+     }
+    ],
+    "first_detection": "2026-10-30 01:25 IST",
+    "latest_detection": "2026-10-30 14:24 IST",
+    "strongest": [
+     {
+      "id": 2846,
+      "district": "Ferozepur",
+      "satellite": "NOAA-21",
+      "time": "2026-10-30 14:24 IST",
+      "frp_mw": 23.4,
+      "confidence": "nominal"
+     },
+     {
+      "id": 4318,
+      "district": "Kapurthala",
+      "satellite": "Suomi NPP",
+      "time": "2026-10-30 13:20 IST",
+      "frp_mw": 21.5,
+      "confidence": "high"
+     },
+     {
+      "id": 2847,
+      "district": "Ferozepur",
+      "satellite": "NOAA-21",
+      "time": "2026-10-30 14:24 IST",
+      "frp_mw": 21.5,
+      "confidence": "high"
+     },
+     {
+      "id": 2794,
+      "district": "Gurdaspur",
+      "satellite": "NOAA-21",
+      "time": "2026-10-30 12:44 IST",
+      "frp_mw": 16.1,
+      "confidence": "high"
+     },
+     {
+      "id": 1386,
+      "district": "Tarn Taran",
+      "satellite": "NOAA-20",
+      "time": "2026-10-30 13:39 IST",
+      "frp_mw": 11.8,
+      "confidence": "nominal"
+     }
+    ],
+    "clipped_to": "india",
+    "note": "Detections are 375 m (VIIRS) or 1 km (MODIS) pixels seen at overpass times, not fields; overlapping satellites can see one fire more than once.",
+    "time_of_day_last_7_days": {
+     "total": 2003,
+     "detections_by_ist_hour": {
+      "1": 5,
+      "2": 19,
+      "9": 1,
+      "12": 136,
+      "13": 1265,
+      "14": 282,
+      "15": 120,
+      "16": 174,
+      "20": 1
+     },
+     "observed_windows_ist": [
+      {
+       "start": "01:25",
+       "end": "02:59",
+       "count": 24,
+       "satellites": [
+        "NOAA-20",
+        "NOAA-21",
+        "Suomi NPP"
+       ],
+       "daynight": "N",
+       "minor": false,
+       "share_pct": 1.2
+      },
+      {
+       "start": "09:40",
+       "end": "09:40",
+       "count": 1,
+       "satellites": [
+        "Terra"
+       ],
+       "daynight": "D",
+       "minor": true,
+       "share_pct": 0.1
+      },
+      {
+       "start": "12:35",
+       "end": "14:37",
+       "count": 1683,
+       "satellites": [
+        "NOAA-20",
+        "NOAA-21",
+        "Suomi NPP"
+       ],
+       "daynight": "D",
+       "minor": false,
+       "share_pct": 84.0
+      },
+      {
+       "start": "15:19",
+       "end": "16:34",
+       "count": 294,
+       "satellites": [
+        "Aqua"
+       ],
+       "daynight": "D",
+       "minor": false,
+       "share_pct": 14.7
+      },
+      {
+       "start": "20:56",
+       "end": "20:56",
+       "count": 1,
+       "satellites": [
+        "Terra"
+       ],
+       "daynight": "N",
+       "minor": true,
+       "share_pct": 0.1
+      }
+     ],
+     "unobserved_span_ist": {
+      "start": "16:34",
+      "end": "01:25",
+      "hours": 8.85,
+      "detections": 1,
+      "share": 0.0005,
+      "after_daytime": true,
+      "rule": "from the end of the last daytime window to the next window",
+      "share_pct": 0.1
+     }
+    },
+    "season_daily": {
+     "since": "2026-09-15",
+     "detections_total": 4322,
+     "frp_mw_total": 24907.7,
+     "complete_days": 43,
+     "peak_day": {
+      "date": "2026-10-29",
+      "detections": 527
+     },
+     "last_7_days": [
+      {
+       "date": "2026-10-24",
+       "detections": 135,
+       "complete": true
+      },
+      {
+       "date": "2026-10-25",
+       "detections": 135,
+       "complete": true
+      },
+      {
+       "date": "2026-10-26",
+       "detections": 301,
+       "complete": true
+      },
+      {
+       "date": "2026-10-27",
+       "detections": 253,
+       "complete": true
+      },
+      {
+       "date": "2026-10-28",
+       "detections": 425,
+       "complete": true
+      },
+      {
+       "date": "2026-10-29",
+       "detections": 527,
+       "complete": false
+      },
+      {
+       "date": "2026-10-30",
+       "detections": 227,
+       "complete": false
+      }
+     ]
+    },
+    "official_counts_creams": {
+     "what": "fire events in the official CREAMS (IARI) rice-residue layers",
+     "since": "2026-09-15",
+     "total": 1027,
+     "by_state": {
+      "Punjab": 1027
+     },
+     "by_satellite": {
+      "Suomi NPP": 677,
+      "Aqua": 350
+     },
+     "top_districts": [
+      {
+       "district": "Tarn Taran",
+       "state": "Punjab",
+       "count": 393
+      },
+      {
+       "district": "Amritsar",
+       "state": "Punjab",
+       "count": 177
+      },
+      {
+       "district": "Ferozepur",
+       "state": "Punjab",
+       "count": 105
+      },
+      {
+       "district": "Gurdaspur",
+       "state": "Punjab",
+       "count": 79
+      },
+      {
+       "district": "Kapurthala",
+       "state": "Punjab",
+       "count": 67
+      },
+      {
+       "district": "Bathinda",
+       "state": "Punjab",
+       "count": 31
+      },
+      {
+       "district": "Fazilka",
+       "state": "Punjab",
+       "count": 27
+      },
+      {
+       "district": "Jalandhar",
+       "state": "Punjab",
+       "count": 23
+      },
+      "... 15 more"
+     ],
+     "last_7_days": [
+      {
+       "date": "2026-10-24",
+       "events": 32,
+       "published": true
+      },
+      {
+       "date": "2026-10-25",
+       "events": 7,
+       "published": true
+      },
+      {
+       "date": "2026-10-26",
+       "events": 103,
+       "published": true
+      },
+      {
+       "date": "2026-10-27",
+       "events": 33,
+       "published": true
+      },
+      {
+       "date": "2026-10-28",
+       "events": 96,
+       "published": true
+      },
+      {
+       "date": "2026-10-29",
+       "events": 194,
+       "published": true
+      },
+      {
+       "date": "2026-10-30",
+       "events": 40,
+       "published": true
+      }
+     ],
+     "note": "All events in the CREAMS layers, every state CREAMS monitors."
+    },
+    "sources": [
+     {
+      "marker": "[1]",
+      "source": "NASA FIRMS active fires",
+      "fetched": "2026-10-30 23:40 IST"
+     },
+     {
+      "marker": "[2]",
+      "source": "creams",
+      "fetched": "2026-10-30 23:36 IST"
+     }
+    ]
+   }
+  },
+  {
+   "id": "call_1446696",
+   "name": "show_on_map",
+   "args": {
+    "city": "Delhi",
+    "action": "show_layer",
+    "layer": "smoke_back"
+   },
+   "ok": true,
+   "output": {
+    "shown": "layer smoke_back",
+    "sources": []
+   }
+  }
+ ],
+ "calls": [
+  {
+   "model": "gemini-3.5-flash-lite",
+   "chunks": [
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:14:14 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1702\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"**Investigating Delhi's Air**\\n\\nI'm delving into the air quality issue in Delhi, specifically examining if the pollution today originates from Punjab. My initial focus is on verifying this potential connection. I'll craft a concise verdict, followed by supporting points.\\n\\n\\n\",\"thought\":true}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"dd7kataFGNuN694Pw96D6Q8\",\"usage_metadata\":{\"prompt_token_count\":2292,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":2292}],\"thoughts_token_count\":190,\"total_token_count\":2482}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:14:14 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1702\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"function_call\":{\"id\":\"call_1446684\",\"args\":{\"hours\":48,\"city\":\"Delhi\"},\"name\":\"get_air_quality\"},\"thought_signature\":\"Et0GCtoGAWkUfRPc38tvE41bZ3Jj_OxNJEsRuEOZ5wDYnz2oDaiVZmflEpkimU6L8yLTbSZm6sTd48R6gNdcPT-ot8IOt-Mr_VTn_jVBlwl7uvGJbCHvJoDVNVMvaSAy7TX1mf6-86YyrsW-XwtfS8mD6mXvU8B4h-AEuZxWP6f8N3su4bQetDRBGtyyCjvVnu7jUxjygtiMVFZlqqw9k9K3-c0S67ekA0Y8RVfaWOXWzohQalM2_whrX9-QrJvNYy1rsjYStRcWHvP12hbCJ1MXEZfnxE7d0VpxuYooSsYlWobtqPk-0lH5H7Lsmmk-7e_WrvZQuH_qEp6RS_2D7YgKfBLCghNfBgG6PQ-GKOFikRJGW96cGAMqYD9nYPRWJWmf0aCGRl2eX5iICDS5-KTxigGaB1usTCehn-Ao3LL2oV7x4N3UYizKM-r2U-k1pPx1EXby-cCEja12vzGbXCNjhyKYvkhn2ODYjpC8zBBiWxZzBP7Cw3bHAPoQZMBdq4Db7o2zWXf6OgzEXuIniklF4mv-D34faePCk5WylEstMrRcIiIOM7eu-s8RJ1ALsdObHfxqTELZtqxCb0_fg1uzbuZqwzIlC_YWp4IkN4rxhtYoFkrAJYJGhX7LovC0AeGXtkMp_dFUuOCd0869AOu4axCrLYOyS9AD9B_OjEOk-yoxBY51AUgnwukNonjOnk2wWSCFqqv44T8DrEXoTnDFnLL1ffp3b4QT23gX0U5mRTSqgrFKMkeUgTacwDhfUAitZ4eEBH0Bz4NQRgWnDZZoRNnMGki_TfgyLC2uo0BNkx2RjwRTS_jXhWT7APv098puNX69EwUjuIPB_DA69K83zMEPLLw-PLGxznAKwlYm0fneDMKeGL_BXcPEopy-6YVeUxJ1Lt_bYMXzmxFbSh-6mH9gZreAojr4J62ef6FPMzJl2aNo_GDez1EYGzxeGrP6B8qCa8v-NOTNbbsDC3DbCuJ0VQVKxd33xfMsoVoXWQ81mu335kPQivWi6TbLgC2JXtwBJlB8o00Qe_yaidBTc-GS1Y00prdEU3T0-ug6UXU9LNIxoOM6PlU03pqhERSBfR6xBsta6MIHLfXFgs4G0K0QYTopiKr1s4WQ4vrf34IafYn-ML7sybiEZvtP\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"dd7kataFGNuN694Pw96D6Q8\",\"usage_metadata\":{\"candidates_token_count\":23,\"prompt_token_count\":2292,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":2292}],\"thoughts_token_count\":190,\"total_token_count\":2505}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:14:14 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1702\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"function_call\":{\"id\":\"call_1446687\",\"args\":{\"city\":\"Delhi\"},\"name\":\"get_weather\"}}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"dd7kataFGNuN694Pw96D6Q8\",\"usage_metadata\":{\"candidates_token_count\":39,\"prompt_token_count\":2292,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":2292}],\"thoughts_token_count\":190,\"total_token_count\":2521}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:14:14 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1702\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"function_call\":{\"id\":\"call_1446690\",\"args\":{\"city\":\"Delhi\",\"hours\":72},\"name\":\"trace_air_back\"}}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"dd7kataFGNuN694Pw96D6Q8\",\"usage_metadata\":{\"candidates_token_count\":62,\"prompt_token_count\":2292,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":2292}],\"thoughts_token_count\":190,\"total_token_count\":2544}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:14:14 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1702\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"function_call\":{\"id\":\"call_1446693\",\"args\":{\"region\":\"punjab\",\"hours\":24},\"name\":\"get_fire_activity\"}}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"dd7kataFGNuN694Pw96D6Q8\",\"usage_metadata\":{\"candidates_token_count\":86,\"prompt_token_count\":2292,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":2292}],\"thoughts_token_count\":190,\"total_token_count\":2568}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:14:14 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1702\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"function_call\":{\"id\":\"call_1446696\",\"args\":{\"city\":\"Delhi\",\"action\":\"show_layer\",\"layer\":\"smoke_back\"},\"name\":\"show_on_map\"}}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"dd7kataFGNuN694Pw96D6Q8\",\"usage_metadata\":{\"candidates_token_count\":120,\"prompt_token_count\":2292,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":2292}],\"thoughts_token_count\":190,\"total_token_count\":2602}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:14:14 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1702\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\"}],\"role\":\"model\"},\"finish_reason\":\"STOP\",\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"dd7kataFGNuN694Pw96D6Q8\",\"usage_metadata\":{\"candidates_token_count\":120,\"prompt_token_count\":2292,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":2292}],\"thoughts_token_count\":190,\"total_token_count\":2602}}"
+   ]
+  },
+  {
+   "model": "gemini-3.5-flash-lite",
+   "chunks": [
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:14:17 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=2121\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"**Refining the Approach**\\n\\nI'm now focusing intensely on the strict formatting requirements. I've broken down each constraint, ensuring my output strictly adheres to the one-sentence verdict, the bullet points, and the \\\"Caveat\\\" line. I'm testing various sentence structures to ensure brevity and clarity within the word limit.\\n\\n\\n\",\"thought\":true}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"d97kau6bIozu694PxJrfmQM\",\"usage_metadata\":{\"prompt_token_count\":8834,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":8834}],\"thoughts_token_count\":193,\"total_token_count\":9027}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:14:17 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=2121\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"**Verifying the Details**\\n\\nI'm now meticulously cross-referencing all data points against their indicated sources, ensuring complete accuracy. I'm focusing on preserving every detail – time, location, and specific measurement – exactly as provided by the tools. I've rechecked the PM2.5 and AQI values for Delhi, alongside the wind speed and direction, noting Punjab's 227 fire detections [1].\\n\\n\\n\",\"thought\":true}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"d97kau6bIozu694PxJrfmQM\",\"usage_metadata\":{\"prompt_token_count\":8834,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":8834}],\"thoughts_token_count\":628,\"total_token_count\":9462}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:14:17 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=2121\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"**Analyzing the Contributions**\\n\\nI've completed the information integration and formatting. I'm satisfied that I've maintained strict adherence to the output constraints. I’ve ensured the one-sentence verdict concisely states Delhi's air quality, and the bullet points provide all details from the provided sources. I've double-checked my word count to ensure it remains under the limit. Now, I'm verifying the \\\"Caveat\\\" line and making sure that all details are included.\\n\\n\\n\",\"thought\":true}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"d97kau6bIozu694PxJrfmQM\",\"usage_metadata\":{\"prompt_token_count\":8834,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":8834}],\"thoughts_token_count\":1067,\"total_token_count\":9901}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:14:17 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=2121\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Delhi's air\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"d97kau6bIozu694PxJrfmQM\",\"usage_metadata\":{\"candidates_token_count\":4,\"prompt_token_count\":8834,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":8834}],\"thoughts_token_count\":1216,\"total_token_count\":10054}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:14:17 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=2121\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" is currently at satisfactory levels rather than severely polluted, and transport from Punjab contributed minimally to it today.\\n- Delhi'\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"d97kau6bIozu694PxJrfmQM\",\"usage_metadata\":{\"candidates_token_count\":28,\"prompt_token_count\":8834,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":8834}],\"thoughts_token_count\":1216,\"total_token_count\":10078}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:14:17 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=2121\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"s PM2.5 was 72 µg/m³ at 22:00 IST [1\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"d97kau6bIozu694PxJrfmQM\",\"usage_metadata\":{\"candidates_token_count\":52,\"prompt_token_count\":8834,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":8834}],\"thoughts_token_count\":1216,\"total_token_count\":10102}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:14:17 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=2121\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"5].\\n- Delhi's CPCB AQI was 77, falling in the satisfactory category at 2\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"d97kau6bIozu694PxJrfmQM\",\"usage_metadata\":{\"candidates_token_count\":76,\"prompt_token_count\":8834,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":8834}],\"thoughts_token_count\":1216,\"total_token_count\":10126}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:14:17 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=2121\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"3:00 IST [14].\\n- IITM DSS estimated that stubble burning contributed 1.7\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"d97kau6bIozu694PxJrfmQM\",\"usage_metadata\":{\"candidates_token_count\":100,\"prompt_token_count\":8834,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":8834}],\"thoughts_token_count\":1216,\"total_token_count\":10150}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:14:17 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=2121\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"5% to Delhi's daily mean PM2.5 on 30 Oct [23].\\n- Transport\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"d97kau6bIozu694PxJrfmQM\",\"usage_metadata\":{\"candidates_token_count\":124,\"prompt_token_count\":8834,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":8834}],\"thoughts_token_count\":1216,\"total_token_count\":10174}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:14:17 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=2121\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" wind at Delhi was from NNW at 3.1 km/h at 23:30 IST [\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"d97kau6bIozu694PxJrfmQM\",\"usage_metadata\":{\"candidates_token_count\":148,\"prompt_token_count\":8834,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":8834}],\"thoughts_token_count\":1216,\"total_token_count\":10198}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:14:17 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=2121\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"19].\\n- Back-trajectories showed that 20.2% of Delhi's air passed over\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"d97kau6bIozu694PxJrfmQM\",\"usage_metadata\":{\"candidates_token_count\":172,\"prompt_token_count\":8834,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":8834}],\"thoughts_token_count\":1216,\"total_token_count\":10222}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:14:17 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=2121\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" the burn belt in the last 24 hours [19].\\n- Punjab recorded 227 fire detections\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"d97kau6bIozu694PxJrfmQM\",\"usage_metadata\":{\"candidates_token_count\":196,\"prompt_token_count\":8834,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":8834}],\"thoughts_token_count\":1216,\"total_token_count\":10246}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:14:17 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=2121\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" in the last 24 hours [1].\\nCaveat: Satellite fire counts are a lower bound because polar-\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"d97kau6bIozu694PxJrfmQM\",\"usage_metadata\":{\"candidates_token_count\":220,\"prompt_token_count\":8834,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":8834}],\"thoughts_token_count\":1216,\"total_token_count\":10270}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:14:17 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=2121\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"orbiting satellites see a fire only if it burns during an overpass, and thick smoke or cloud hides fires.\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"d97kau6bIozu694PxJrfmQM\",\"usage_metadata\":{\"candidates_token_count\":243,\"prompt_token_count\":8834,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":8834}],\"thoughts_token_count\":1216,\"total_token_count\":10293}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:14:17 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=2121\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\",\"thought_signature\":\"EuEjCt4jAWkUfRPcAg2OWLJEOSqa0uV7qxH7hBddmR0fzgupeLtU5OTPipsqlyW-VVo8-1ORwOH_POHPb-Jk-2hF-HPKEdxUrnd59dt5WRbCLZkuOU6hqUNH0UpNymRzl1ULF2jlicjtq552UK3QeoBcofZEmEvKOjq4V05dw4CJTfZNb0B6IEeZGnjdAQj2gJUtyCsT1nkRLbw2Jx5bFcg15pKnM0cJFUmtFFE-QtyyZUiSdpx5D8-gBokNKjTlVKVM23dCdgo9d6WLPkGAhtQIDoS3jneVOlKROYoI-Zs0oEi7kgs_1Nm5e4AsFFV7F6v4Z7Wn_CoeuMxk2w2rNGTMoK1ZvCIqCfs6L1j-zd56ptNPwhM4N1w_RueBK14B-h4zAwlXI32NXlAONUZyzr2eejStiymm1wRIkiY2OCZw4TOWM8ydd7ljmu8NoSjOBse9Z0IhyyySF3Mp1VlGJ48SSMRui6IHJbDY8FwQOkHY-L6uylIKBbpzGkn8rhCmy8h5Mey-P4DagdYx9HmCZ0LPjOtRebIqqVv4YtJIxPce476pBOwWWQECKZKeUElCiMI-Css0CaRGn7J2WYoCds9wzISIxMUdO-FGhhhIpCvn5cRdr23rWc_G2MsXNbifSLT-vgRKF4ZuyrE9J2l2aS5ATCe8oXXK5TX0LW-uGE4DgwAc0KRALkgu1_fQ9ii7CfzQCxLonif9qvn0sbEWm6XZ4wkf37JkwwcTgdIEpI-n4E9gXkwD_PXxRashgwgMVGthoFq7NgJ3JsQYIpzTqCF_Mlafjl91mDAcpncJJF_7NWjFPq4T3MA3ahih-CV9CSDoZumvJD0jWbKKbi4jF9iyBHdJNBQiT6aZLy-mS0rFovcoKpVBMY26XVld2xkBuueVsAC4-lmz4X7-yA1ueOZUQLU6Dh6o6mKRV1d3NjwPOp0M50emOZoxgEBqOZ66PuPqXJ1N_3HV8XCRIuuncIuHBLyDXJC3a4t_bEJTPnSu0w0UEZACWU0eInJ1nd6zRA6jJGKUwH5tSTLgFGPJfcowgXYd79MqZFn_YKRmikKQQl9diEhyyNhB0WWWBWuJM_l0kfXSvmP449xrjMocfyEQdMmQGP4FXMY19SYb5E28-Xy68DQ42vjJUF1IS6edaS46LZwiQ-iKkOQfUn6qZB7CdijQOb7M8yqQtvagQBcNp5Ok1_utbO41f3YPJn4AhftE4KeAwBWA69XESqMZ4-0UE2nUhj6bME5m92w3g_pPcmRf4RnbXB2aYZWardWeIG-IJwm2Qa9ipioldWGBLg6VvjUTtTkJzrynnYZu-Gwjq-3jMZF5g3-R1gJhHyHv44qurS3zWc0gA5NugqMqztb9JibI-73_psfX-k4ESsHs8GpepyNHsvzcqNz6Qbs2MZ6WwdBmf0HsQvINIM2Llx_jkJoKSaSQdEiKJ83Jg1HGciOlZZGO73viiA7bFfBUjbgDPSNxzctT-fai0TbPozAbUgPT3c2ABEaTzY8Szi_GaUApSHeWmCYyGFCHCvEA5SZNz3wDysYfT0V3PF96bcs7S8bQ1P8wQwBPTM38cYA6ApJrB0OlXWb39MAcNIT7bmMAL4DmNgrZPtWUvER3of2sllbqBwr3E0JvylgoquDraOh6ZhSFH4OnrzQZi1YndI6Si64zDcDPJVNSuerKbU3mNis6f1Z3EagdAGT30Nljc4orOmX-3znlAh-uz6A8j0Kl6o5mvuWXssTKoBVV7ApdiKkZu6QrQEnu1dkqrpej_d56DPjnKEkQmeiM5uaHMqcTE-ubS6wlUx849SqPOckTUl3DVKqtUyk3FkBk9fJte_Y5kToDGu4Gt4W24IZAeiIXmRVoYFz12JQOI5NLOS7boRXWxhnkf_MOQDghoe6F_Sb-PlZvy_MUZYd05cRAMcPWzZcBPG006r2bi4IoSq6JilIvmPgQ-ExC818W2PFk9F8X8-8C78Ke8wJZnNpMZX2Sv4fpUN5S7m8tredynS95lYZyF1PfOrf7yql2N_bmZZf4RS5KPj9XOGW-8XNud5AhqX2yuiVZAFDcLpyMHk8i2Wuh42kylaOEQU4BjvnbLNtDK4uuKrZzh-aKlgNK9I_LQnwWg0BYFw8LKb6qVLnIAX1XmB8dx6Gs6KtkrNILiSYNoG6FY3qUSezh8N_mYb43AwaGOPGiDMC_Ag9__cS4qrL1a-7zPKEwQIG1ZKJ176PG7TPEYOA7MIR_f9ClUpn9IHK4AWACOm7SVxWukBLbhw2dwOPX_Id8W4StsOR1ZHXkwrCuVa4fBChXnAYXoTIc-JeGiqb1s40_YGwi_V_irxSzeIFeKFv9q2bOhQFjTJCBm7oBo3867qTylHez8EiL7RHvEsCr9637qdTqAMFELXeEFTlrGSh1zL6LXIaL491ceuPt1DsY2-V3_ab63iLwMg5CWTYHghSkP6-FyPdDpweXd6kp4FhDLpbvrY8DKXkSJFtiwECkqvqJyCFgJ3dQh7ow9PeNhPWRFB7PrgpepPSaTgL3yNtegQ3pVzmOQRGsNSl0V5vlT41sR2JIG2Vc4lFyoDikekMElGETOCwPMbmtbmYqyoHzgvTVb4LAMFQHHcJwdpo0SZbjn22UJ1nhDcj83fAnK2m5bcs8bB_ep6tc3GwERcGRCUGrlPIEQELifaPSIuNWYkntNamxIiF-hzpluAwOOKtpQpSmLj1vWklX5yp9HVPjj2amEsPBo1X2dzfF3C342noc-32wGDh3myECrHdrtW1UKS45zUVITI1_cpCj4mWdYMSgg-dUo_hIU66IcvRhNnJNuUzTRAJ5IIenA4EXQDnBo6hbmx9u8G0HuEcRdutzmWByYksgjBEKg5gLhi5cJzDzjkb1VLhBiwBZsizPuNoHyxDVxr3osoB6sgBcKLMAzEPKSU5djJxkjTA8hXWyeAre_-GCAflPc4bU-OG1TrO_Q6BkRCuWItwfDY17k5daGvz0qnnO8QNiABSsixS-vxNJQ89OMSKYcPB26hFAEMw92a8en8JeudwZsf1i2d6jhjhILVhB8W_7nG0gfEozRlSizizzHmp5SjP812IjKqyOhG6ZZKRLV5-BmDmg6xcVxw6pHnMd-RA4To8-fEujPYqud7l5gOde6lEnXIjaoMuuZueHC-8W28WxVjwbXLtbD-mrqN54e55Gzgm_8Dk3vzjWjy_KTDH2Gv6WtsjntU0eYBwQLC444Od8p3shIXnVgu36tKn6WSk9jUQDOYitVEJSPM4IWx1XUc1yKtFi8HMTb2DN3uKDJnvn3DcFtaEdGVe1Daw4TdswGaC7tFqf2SjXBG6LzqTQ07Yltx9ZlnHIquj-nLKSjPBvsGrl4cinc8Rmyrr7pwTwQvB9ECbw_ruxW7Ps4oWuoz4UAIE0flszmeVZmYZKiEinqeMaK7u6NsVc-4S1BQHio8W7nH-IU5usF8PNBnbe-GomLlWQOpLnhlyvncdhbnAxVzieXGZybWPnZsnPUlxbxQzYIIkfv-DuzgcYe9PAe0FGJCGLH6wjJy0_xmgxTl7f1iGZNZOr_B5R0ePfBH6n-up3MyhkG4JbugFMNAtkBSGA_qyEoja1bDGUOxjOEOxC5rFvrfsdc-bZbKcdtkpIGmoAD8XL6Y1GeFU_CYTbZNIKOTBHuyEii6PV0VOFxteWn3ZFTmoIvLMUBDYI2mc4uTHcinl0S38N1KmMwvvwTAGwo5A8QFJZNLkgWgplE-2qwPw3OsiLxuTt3REoboopianno3I5-Tp8Et7U86b7pMG37jBIpgoEn9DHt2bd8tVPx8JCefs9Up_YuoMXrnSv1M2v8yfXmSC0bFKprgBP712Wc_YnPkdVjcWln-qMZJ3-lkM3aoVinah1FmSqYkf-mjbDJ9jbW_W8JHjTlF8dKLD-EdzHXUUcwVleGXIjJxRdNptiYrtEpB1FIbpGfgBMHxi7u6JdNgEBHmhdIeyz2m7SPB47r9KGtU9XPru-1ACknTP-r8QGPZoHlTVS-qo4pBcTvHoOhzI7O0RgzNQzgURxS8MkYn9kcGEtJH79-mcQbRr8Mw0cbUEDyQ6Vh_Jwa36_tRhR50fMciI_yjQYsVdI0dDZfARimNAciO2ARmBMVgVIopMk-zeGeYovvrbXSJ5asKACkY8vMg0EZA_bRXtADYB9EZRC3erf8P0ynv4ksTWGsKZrwYfnYju7hlccrsYpB_3fpJCPVlqV68LI6ux2QMZCM-Pz8a2LN_mkT06wZWJhBP2AiaEA1H4vAwpQgjLQ6hPVwWtK1ecsr0S3ZTOug5B0TGqQm5-QZlY9eEa5FnHCjzNJzbNoEVlmvEpy7jCKzRnDypOso6gxJ1mGYYerfpWLh263J6DWY9p46wna0yriVO9Wv_qSe7ll04L-BNBnp0P6p1GYPSDQXGgeii3agtIKQs0t-HTnxiVH8RseXYIv1CZeVO69h1beXAp28r5af68mwxVC6_eepMvK6ySlfYCiFWG8zwjjmWMa8ircFuw0kBHFi22kYVHvCkWZw9fXdbh7E16wFKv4kp-2fBMNB2ZjMSuRURxlbpI2yqnCw277asyjAW0Sj5E1ecQlk7jMJiHSNuR8rfxLrC66lpO9yxCM-NSSEpUdfXtOOiQS3VVy620FvPSiteGxWs_gtif1-ox1393nslbO9FrCSmtJtn1pK_MVcZFyddGhnF-xU21VFeslZ1voRcN6RYzZ6-jXW13yPJQvPRTvWDw1JdvDjJuCX7u_F6SVfa6l9pQ_f20GQrWn1i884no5Ep8Xmvaiim-7uRkrKyZZFhvJBjs_lPKz8NIuGv34U24NFRzd-iT3XY12Yqeanr8zElU0c6gr5uH-vkxwfATc1BNUjwPy5NviLCVM68tUaUtx0_SGlQPbZcS1OSbZSDNu-MI3GLw3ufdBkF8Wwk-lZkB4VDh1tZfF8AzQJZWfYxqqb7Bp8ZhmuNwAT8pTHMTgkTYJwpFTDP6fWhgrQi4rGHU2O4EeNOGqj_CKLRGcFwOIAG78XqJbzj32I2GbqW-Cs1uv9zV1xPK0kjFjDkitcA5fKxQP7QNYakuSHa-iyS4Le-qPuoEFGDNST1vGd61F08tBj1cNO1ry0Mp9Qs4yfgd3vu-lSoRrCru3ZJdkOY1s39C_OHMsguk96N2JXsYasPXEFQ5-Qy48cdn3pPvZQJXfqiP1voxScHfS9rMtGqVDB2xE9NoghvpvJe0VsmYJdS1CRH8CqZd9CETIbmut-HG_Z8JVf30CRvXbs8_hvFUy6ARKz_fhIZhITb2MCNCJvOo3byhKAEDecj7klvkM8EuSe9HKRMnWGBvGFvROUNie05aLahQ-l0msEyKsKQxRVoi3PLqXyHt2YOU1T1i9rTu8P6mnXVHGIAQWrrfM9IvGt7VLRZBYGMn9B-kVk2pYJHoH7DgYfUuGQ-Zvf2O-A8w8Z41tThGFviBdZ1I7klD0V81iZzn79M-9OZEDA9cHr4fR_UDXmGQPtzNZhjWjMzEd6uD8lrJYAvk9rnkleF39eByV4VEpXVfqgImZxRdbmGIpucIhaic_WTzsMBfcCRLk6gSrYxSBv_mqLlSOTK8_vpbxVA7SKG0Lu-WGIKMwhZW5zywA4LcAmqqH5xuc2knpfXTioKGvxPkqoIV0cjaHq2oGzg_x_KWXKeFsVx-p-xGkGX0qJqm6So5LwZgNH5Uw30EnX8W5GioV6I_bJbgQaoUMN9mR2XqKW6jevaOxigYgT703q-iSueHhvtdzstwTe64EJKJ2w0Ob2ravpl7GYWnlE1obGVzL1XUkBERQxKMYkAnd0MvlZZhodrg-BI8krQGXXL2lj_wE1be5VxfORyaw4JbHHXx3u2On-Uj0eEDZCOvXihQYJwGkfy_qWTln1bFb-1tNcL5dHC7FPgo-i_Q07hawBlgEZO-WbfPlbkxR3jtYMLxBT67Hlwh1WLGxBHAgal2gEHJmd9m48C3U3aWM2NUnItaeOvyTBK24k3u-0SOUXsM4ZxSxr0PRHaOYKeKgyiRQkmL4TuhoGI_ZqLeOgpoTDhl-xj6zzAuFeIBOwgD75IiFIzJeSF8BJT1Gw1-qZXBQydKxbXmgbSkyRZI=\"}],\"role\":\"model\"},\"finish_reason\":\"STOP\",\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"d97kau6bIozu694PxJrfmQM\",\"usage_metadata\":{\"candidates_token_count\":243,\"prompt_token_count\":9024,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":9024}],\"thoughts_token_count\":1216,\"total_token_count\":10483}}"
+   ]
+  }
+ ]
+}

@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 from contextlib import suppress
 
+import pytest
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import DBAPIError
@@ -40,3 +41,12 @@ def _point_at_test_database() -> None:
 
 
 _point_at_test_database()
+
+
+@pytest.fixture(autouse=True)
+def _fresh_response_cache() -> None:
+    """Every test reads the database as it is now, never a response another test left in the
+    in-process API cache (blindspot/api/cache.py)."""
+    from blindspot.api import cache
+
+    cache.clear()

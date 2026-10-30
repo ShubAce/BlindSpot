@@ -1,0 +1,975 @@
+{
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "type": "Feature",
+   "id": "29_october_2026_rice.1",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     74.83558,
+     31.93599
+    ]
+   },
+   "geometry_name": "geom",
+   "properties": {
+    "s_no_": 1,
+    "district": "AMRITSAR",
+    "block": "AJNALA",
+    "satellite": "S-NPP",
+    "latitude": 31.93599,
+    "longitude": 74.83558,
+    "acq_date": 29102026.0,
+    "acq_time": "13:34:58",
+    "day_flag": "D",
+    "fire_power": 4.7
+   }
+  },
+  {
+   "type": "Feature",
+   "id": "29_october_2026_rice.2",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     74.888,
+     31.937
+    ]
+   },
+   "geometry_name": "geom",
+   "properties": {
+    "s_no_": 2,
+    "district": "AMRITSAR",
+    "block": "AJNALA",
+    "satellite": "AQUA",
+    "latitude": 31.937,
+    "longitude": 74.888,
+    "acq_date": 29102026.0,
+    "acq_time": "16:09:42",
+    "day_flag": "D",
+    "fire_power": 13.6
+   }
+  },
+  {
+   "type": "Feature",
+   "id": "29_october_2026_rice.3",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     74.8523,
+     31.54901
+    ]
+   },
+   "geometry_name": "geom",
+   "properties": {
+    "s_no_": 3,
+    "district": "AMRITSAR",
+    "block": "ATTARI",
+    "satellite": "S-NPP",
+    "latitude": 31.54901,
+    "longitude": 74.8523,
+    "acq_date": 29102026.0,
+    "acq_time": "13:34:58",
+    "day_flag": "D",
+    "fire_power": 7
+   }
+  },
+  {
+   "type": "Feature",
+   "id": "29_october_2026_rice.4",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     74.693,
+     31.579
+    ]
+   },
+   "geometry_name": "geom",
+   "properties": {
+    "s_no_": 4,
+    "district": "AMRITSAR",
+    "block": "ATTARI",
+    "satellite": "AQUA",
+    "latitude": 31.579,
+    "longitude": 74.693,
+    "acq_date": 29102026.0,
+    "acq_time": "16:09:42",
+    "day_flag": "D",
+    "fire_power": 8.6
+   }
+  },
+  {
+   "type": "Feature",
+   "id": "29_october_2026_rice.5",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     74.56043,
+     31.74845
+    ]
+   },
+   "geometry_name": "geom",
+   "properties": {
+    "s_no_": 5,
+    "district": "AMRITSAR",
+    "block": "CHOGAWAN",
+    "satellite": "S-NPP",
+    "latitude": 31.74845,
+    "longitude": 74.56043,
+    "acq_date": 29102026.0,
+    "acq_time": "13:34:58",
+    "day_flag": "D",
+    "fire_power": 3.8
+   }
+  },
+  {
+   "type": "Feature",
+   "id": "29_october_2026_rice.6",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     74.58553,
+     31.79534
+    ]
+   },
+   "geometry_name": "geom",
+   "properties": {
+    "s_no_": 6,
+    "district": "AMRITSAR",
+    "block": "CHOGAWAN",
+    "satellite": "S-NPP",
+    "latitude": 31.79534,
+    "longitude": 74.58553,
+    "acq_date": 29102026.0,
+    "acq_time": "13:34:58",
+    "day_flag": "D",
+    "fire_power": 2.9
+   }
+  },
+  {
+   "type": "Feature",
+   "id": "29_october_2026_rice.7",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     74.63718,
+     31.86683
+    ]
+   },
+   "geometry_name": "geom",
+   "properties": {
+    "s_no_": 7,
+    "district": "AMRITSAR",
+    "block": "CHOGAWAN",
+    "satellite": "S-NPP",
+    "latitude": 31.86683,
+    "longitude": 74.63718,
+    "acq_date": 29102026.0,
+    "acq_time": "13:34:58",
+    "day_flag": "D",
+    "fire_power": 8.8
+   }
+  },
+  {
+   "type": "Feature",
+   "id": "29_october_2026_rice.8",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     74.77697,
+     31.76457
+    ]
+   },
+   "geometry_name": "geom",
+   "properties": {
+    "s_no_": 8,
+    "district": "AMRITSAR",
+    "block": "HARSHA CHHINA",
+    "satellite": "S-NPP",
+    "latitude": 31.76457,
+    "longitude": 74.77697,
+    "acq_date": 29102026.0,
+    "acq_time": "13:34:58",
+    "day_flag": "D",
+    "fire_power": 3.1
+   }
+  },
+  {
+   "type": "Feature",
+   "id": "29_october_2026_rice.9",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     75.44139,
+     30.56058
+    ]
+   },
+   "geometry_name": "geom",
+   "properties": {
+    "s_no_": 9,
+    "district": "BARNALA",
+    "block": "MAHAL KALAN",
+    "satellite": "S-NPP",
+    "latitude": 30.56058,
+    "longitude": 75.44139,
+    "acq_date": 29102026.0,
+    "acq_time": "13:34:58",
+    "day_flag": "D",
+    "fire_power": 2.3
+   }
+  },
+  {
+   "type": "Feature",
+   "id": "29_october_2026_rice.10",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     75.35,
+     30.494
+    ]
+   },
+   "geometry_name": "geom",
+   "properties": {
+    "s_no_": 10,
+    "district": "BARNALA",
+    "block": "SEHNA",
+    "satellite": "AQUA",
+    "latitude": 30.494,
+    "longitude": 75.35,
+    "acq_date": 29102026.0,
+    "acq_time": "16:09:42",
+    "day_flag": "D",
+    "fire_power": 8.9
+   }
+  },
+  {
+   "type": "Feature",
+   "id": "29_october_2026_rice.11",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     75.112,
+     30.425
+    ]
+   },
+   "geometry_name": "geom",
+   "properties": {
+    "s_no_": 11,
+    "district": "BATHINDA",
+    "block": "BHAGTA BHAI KA",
+    "satellite": "AQUA",
+    "latitude": 30.425,
+    "longitude": 75.112,
+    "acq_date": 29102026.0,
+    "acq_time": "16:09:42",
+    "day_flag": "D",
+    "fire_power": 8.4
+   }
+  },
+  {
+   "type": "Feature",
+   "id": "29_october_2026_rice.12",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     74.8712,
+     30.28769
+    ]
+   },
+   "geometry_name": "geom",
+   "properties": {
+    "s_no_": 12,
+    "district": "BATHINDA",
+    "block": "GONIANA MANDI",
+    "satellite": "S-NPP",
+    "latitude": 30.28769,
+    "longitude": 74.8712,
+    "acq_date": 29102026.0,
+    "acq_time": "13:34:58",
+    "day_flag": "D",
+    "fire_power": 4.9
+   }
+  },
+  {
+   "type": "Feature",
+   "id": "29_october_2026_rice.13",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     74.978,
+     30.318
+    ]
+   },
+   "geometry_name": "geom",
+   "properties": {
+    "s_no_": 13,
+    "district": "BATHINDA",
+    "block": "GONIANA MANDI",
+    "satellite": "AQUA",
+    "latitude": 30.318,
+    "longitude": 74.978,
+    "acq_date": 29102026.0,
+    "acq_time": "16:09:42",
+    "day_flag": "D",
+    "fire_power": 6.8
+   }
+  },
+  {
+   "type": "Feature",
+   "id": "29_october_2026_rice.14",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     74.992,
+     30.32
+    ]
+   },
+   "geometry_name": "geom",
+   "properties": {
+    "s_no_": 14,
+    "district": "BATHINDA",
+    "block": "GONIANA MANDI",
+    "satellite": "AQUA",
+    "latitude": 30.32,
+    "longitude": 74.992,
+    "acq_date": 29102026.0,
+    "acq_time": "16:09:42",
+    "day_flag": "D",
+    "fire_power": 15
+   }
+  },
+  {
+   "type": "Feature",
+   "id": "29_october_2026_rice.15",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     75.015,
+     30.354
+    ]
+   },
+   "geometry_name": "geom",
+   "properties": {
+    "s_no_": 15,
+    "district": "BATHINDA",
+    "block": "GONIANA MANDI",
+    "satellite": "AQUA",
+    "latitude": 30.354,
+    "longitude": 75.015,
+    "acq_date": 29102026.0,
+    "acq_time": "16:09:42",
+    "day_flag": "D",
+    "fire_power": 13.6
+   }
+  },
+  {
+   "type": "Feature",
+   "id": "29_october_2026_rice.16",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     75.029,
+     30.355
+    ]
+   },
+   "geometry_name": "geom",
+   "properties": {
+    "s_no_": 16,
+    "district": "BATHINDA",
+    "block": "GONIANA MANDI",
+    "satellite": "AQUA",
+    "latitude": 30.355,
+    "longitude": 75.029,
+    "acq_date": 29102026.0,
+    "acq_time": "16:09:42",
+    "day_flag": "D",
+    "fire_power": 6.8
+   }
+  },
+  {
+   "type": "Feature",
+   "id": "29_october_2026_rice.17",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     75.2476,
+     30.33108
+    ]
+   },
+   "geometry_name": "geom",
+   "properties": {
+    "s_no_": 17,
+    "district": "BATHINDA",
+    "block": "PHUL",
+    "satellite": "S-NPP",
+    "latitude": 30.33108,
+    "longitude": 75.2476,
+    "acq_date": 29102026.0,
+    "acq_time": "13:34:58",
+    "day_flag": "D",
+    "fire_power": 3.7
+   }
+  },
+  {
+   "type": "Feature",
+   "id": "29_october_2026_rice.18",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     75.29439,
+     30.39526
+    ]
+   },
+   "geometry_name": "geom",
+   "properties": {
+    "s_no_": 18,
+    "district": "BATHINDA",
+    "block": "PHUL",
+    "satellite": "S-NPP",
+    "latitude": 30.39526,
+    "longitude": 75.29439,
+    "acq_date": 29102026.0,
+    "acq_time": "13:34:58",
+    "day_flag": "D",
+    "fire_power": 14.3
+   }
+  },
+  {
+   "type": "Feature",
+   "id": "29_october_2026_rice.19",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     75.28982,
+     30.41878
+    ]
+   },
+   "geometry_name": "geom",
+   "properties": {
+    "s_no_": 19,
+    "district": "BATHINDA",
+    "block": "PHUL",
+    "satellite": "S-NPP",
+    "latitude": 30.41878,
+    "longitude": 75.28982,
+    "acq_date": 29102026.0,
+    "acq_time": "13:34:58",
+    "day_flag": "D",
+    "fire_power": 3.6
+   }
+  },
+  {
+   "type": "Feature",
+   "id": "29_october_2026_rice.20",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     75.27642,
+     30.42001
+    ]
+   },
+   "geometry_name": "geom",
+   "properties": {
+    "s_no_": 20,
+    "district": "BATHINDA",
+    "block": "PHUL",
+    "satellite": "S-NPP",
+    "latitude": 30.42001,
+    "longitude": 75.27642,
+    "acq_date": 29102026.0,
+    "acq_time": "13:34:58",
+    "day_flag": "D",
+    "fire_power": 4
+   }
+  },
+  {
+   "type": "Feature",
+   "id": "29_october_2026_rice.21",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     75.272,
+     30.312
+    ]
+   },
+   "geometry_name": "geom",
+   "properties": {
+    "s_no_": 21,
+    "district": "BATHINDA",
+    "block": "PHUL",
+    "satellite": "AQUA",
+    "latitude": 30.312,
+    "longitude": 75.272,
+    "acq_date": 29102026.0,
+    "acq_time": "16:09:42",
+    "day_flag": "D",
+    "fire_power": 7.4
+   }
+  },
+  {
+   "type": "Feature",
+   "id": "29_october_2026_rice.22",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     75.242,
+     30.37
+    ]
+   },
+   "geometry_name": "geom",
+   "properties": {
+    "s_no_": 22,
+    "district": "BATHINDA",
+    "block": "PHUL",
+    "satellite": "AQUA",
+    "latitude": 30.37,
+    "longitude": 75.242,
+    "acq_date": 29102026.0,
+    "acq_time": "16:09:42",
+    "day_flag": "D",
+    "fire_power": 16.3
+   }
+  },
+  {
+   "type": "Feature",
+   "id": "29_october_2026_rice.23",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     75.256,
+     30.371
+    ]
+   },
+   "geometry_name": "geom",
+   "properties": {
+    "s_no_": 23,
+    "district": "BATHINDA",
+    "block": "PHUL",
+    "satellite": "AQUA",
+    "latitude": 30.371,
+    "longitude": 75.256,
+    "acq_date": 29102026.0,
+    "acq_time": "16:09:42",
+    "day_flag": "D",
+    "fire_power": 9
+   }
+  },
+  {
+   "type": "Feature",
+   "id": "29_october_2026_rice.24",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     74.965,
+     30.082
+    ]
+   },
+   "geometry_name": "geom",
+   "properties": {
+    "s_no_": 24,
+    "district": "BATHINDA",
+    "block": "SANGAT",
+    "satellite": "AQUA",
+    "latitude": 30.082,
+    "longitude": 74.965,
+    "acq_date": 29102026.0,
+    "acq_time": "16:09:42",
+    "day_flag": "D",
+    "fire_power": 10.7
+   }
+  },
+  {
+   "type": "Feature",
+   "id": "29_october_2026_rice.25",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     75.10736,
+     29.81562
+    ]
+   },
+   "geometry_name": "geom",
+   "properties": {
+    "s_no_": 25,
+    "district": "BATHINDA",
+    "block": "TALWANDI SABO",
+    "satellite": "S-NPP",
+    "latitude": 29.81562,
+    "longitude": 75.10736,
+    "acq_date": 29102026.0,
+    "acq_time": "13:34:58",
+    "day_flag": "D",
+    "fire_power": 1.7
+   }
+  },
+  {
+   "type": "Feature",
+   "id": "29_october_2026_rice.26",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     75.06239,
+     29.92053
+    ]
+   },
+   "geometry_name": "geom",
+   "properties": {
+    "s_no_": 26,
+    "district": "BATHINDA",
+    "block": "TALWANDI SABO",
+    "satellite": "S-NPP",
+    "latitude": 29.92053,
+    "longitude": 75.06239,
+    "acq_date": 29102026.0,
+    "acq_time": "13:34:58",
+    "day_flag": "D",
+    "fire_power": 3.4
+   }
+  },
+  {
+   "type": "Feature",
+   "id": "29_october_2026_rice.27",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     75.127,
+     29.928
+    ]
+   },
+   "geometry_name": "geom",
+   "properties": {
+    "s_no_": 27,
+    "district": "BATHINDA",
+    "block": "TALWANDI SABO",
+    "satellite": "AQUA",
+    "latitude": 29.928,
+    "longitude": 75.127,
+    "acq_date": 29102026.0,
+    "acq_time": "16:09:42",
+    "day_flag": "D",
+    "fire_power": 14
+   }
+  },
+  {
+   "type": "Feature",
+   "id": "29_october_2026_rice.28",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     74.55989,
+     30.6729
+    ]
+   },
+   "geometry_name": "geom",
+   "properties": {
+    "s_no_": 28,
+    "district": "FARIDKOT",
+    "block": "FARIDKOT",
+    "satellite": "S-NPP",
+    "latitude": 30.6729,
+    "longitude": 74.55989,
+    "acq_date": 29102026.0,
+    "acq_time": "13:34:58",
+    "day_flag": "D",
+    "fire_power": 1.7
+   }
+  },
+  {
+   "type": "Feature",
+   "id": "29_october_2026_rice.29",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     74.5222,
+     30.6771
+    ]
+   },
+   "geometry_name": "geom",
+   "properties": {
+    "s_no_": 29,
+    "district": "FARIDKOT",
+    "block": "FARIDKOT",
+    "satellite": "S-NPP",
+    "latitude": 30.6771,
+    "longitude": 74.5222,
+    "acq_date": 29102026.0,
+    "acq_time": "13:34:58",
+    "day_flag": "D",
+    "fire_power": 1.5
+   }
+  },
+  {
+   "type": "Feature",
+   "id": "29_october_2026_rice.30",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     74.67042,
+     30.75082
+    ]
+   },
+   "geometry_name": "geom",
+   "properties": {
+    "s_no_": 30,
+    "district": "FARIDKOT",
+    "block": "FARIDKOT",
+    "satellite": "S-NPP",
+    "latitude": 30.75082,
+    "longitude": 74.67042,
+    "acq_date": 29102026.0,
+    "acq_time": "13:34:58",
+    "day_flag": "D",
+    "fire_power": 5.1
+   }
+  },
+  {
+   "type": "Feature",
+   "id": "29_october_2026_rice.31",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     74.6771,
+     30.78055
+    ]
+   },
+   "geometry_name": "geom",
+   "properties": {
+    "s_no_": 31,
+    "district": "FARIDKOT",
+    "block": "FARIDKOT",
+    "satellite": "S-NPP",
+    "latitude": 30.78055,
+    "longitude": 74.6771,
+    "acq_date": 29102026.0,
+    "acq_time": "13:34:58",
+    "day_flag": "D",
+    "fire_power": 7.7
+   }
+  },
+  {
+   "type": "Feature",
+   "id": "29_october_2026_rice.32",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     74.832,
+     30.648
+    ]
+   },
+   "geometry_name": "geom",
+   "properties": {
+    "s_no_": 32,
+    "district": "FARIDKOT",
+    "block": "FARIDKOT",
+    "satellite": "AQUA",
+    "latitude": 30.648,
+    "longitude": 74.832,
+    "acq_date": 29102026.0,
+    "acq_time": "16:09:42",
+    "day_flag": "D",
+    "fire_power": 8.2
+   }
+  },
+  {
+   "type": "Feature",
+   "id": "29_october_2026_rice.33",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     74.553,
+     30.676
+    ]
+   },
+   "geometry_name": "geom",
+   "properties": {
+    "s_no_": 33,
+    "district": "FARIDKOT",
+    "block": "FARIDKOT",
+    "satellite": "AQUA",
+    "latitude": 30.676,
+    "longitude": 74.553,
+    "acq_date": 29102026.0,
+    "acq_time": "16:09:42",
+    "day_flag": "D",
+    "fire_power": 7.6
+   }
+  },
+  {
+   "type": "Feature",
+   "id": "29_october_2026_rice.34",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     74.672,
+     30.751
+    ]
+   },
+   "geometry_name": "geom",
+   "properties": {
+    "s_no_": 34,
+    "district": "FARIDKOT",
+    "block": "FARIDKOT",
+    "satellite": "AQUA",
+    "latitude": 30.751,
+    "longitude": 74.672,
+    "acq_date": 29102026.0,
+    "acq_time": "16:09:42",
+    "day_flag": "D",
+    "fire_power": 7.2
+   }
+  },
+  {
+   "type": "Feature",
+   "id": "29_october_2026_rice.35",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     74.726,
+     30.757
+    ]
+   },
+   "geometry_name": "geom",
+   "properties": {
+    "s_no_": 35,
+    "district": "FARIDKOT",
+    "block": "FARIDKOT",
+    "satellite": "AQUA",
+    "latitude": 30.757,
+    "longitude": 74.726,
+    "acq_date": 29102026.0,
+    "acq_time": "16:09:42",
+    "day_flag": "D",
+    "fire_power": 8.4
+   }
+  },
+  {
+   "type": "Feature",
+   "id": "29_october_2026_rice.36",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     74.684,
+     30.762
+    ]
+   },
+   "geometry_name": "geom",
+   "properties": {
+    "s_no_": 36,
+    "district": "FARIDKOT",
+    "block": "FARIDKOT",
+    "satellite": "AQUA",
+    "latitude": 30.762,
+    "longitude": 74.684,
+    "acq_date": 29102026.0,
+    "acq_time": "16:09:42",
+    "day_flag": "D",
+    "fire_power": 29.4
+   }
+  },
+  {
+   "type": "Feature",
+   "id": "29_october_2026_rice.37",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     74.76,
+     30.802
+    ]
+   },
+   "geometry_name": "geom",
+   "properties": {
+    "s_no_": 37,
+    "district": "FARIDKOT",
+    "block": "FARIDKOT",
+    "satellite": "AQUA",
+    "latitude": 30.802,
+    "longitude": 74.76,
+    "acq_date": 29102026.0,
+    "acq_time": "16:09:42",
+    "day_flag": "D",
+    "fire_power": 36.7
+   }
+  },
+  {
+   "type": "Feature",
+   "id": "29_october_2026_rice.38",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     74.807,
+     30.399
+    ]
+   },
+   "geometry_name": "geom",
+   "properties": {
+    "s_no_": 38,
+    "district": "FARIDKOT",
+    "block": "JAITON",
+    "satellite": "AQUA",
+    "latitude": 30.399,
+    "longitude": 74.807,
+    "acq_date": 29102026.0,
+    "acq_time": "16:09:42",
+    "day_flag": "D",
+    "fire_power": 8.6
+   }
+  },
+  {
+   "type": "Feature",
+   "id": "29_october_2026_rice.39",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     74.926,
+     30.434
+    ]
+   },
+   "geometry_name": "geom",
+   "properties": {
+    "s_no_": 39,
+    "district": "FARIDKOT",
+    "block": "JAITON",
+    "satellite": "AQUA",
+    "latitude": 30.434,
+    "longitude": 74.926,
+    "acq_date": 29102026.0,
+    "acq_time": "16:09:42",
+    "day_flag": "D",
+    "fire_power": 23
+   }
+  },
+  {
+   "type": "Feature",
+   "id": "29_october_2026_rice.40",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     74.94,
+     30.436
+    ]
+   },
+   "geometry_name": "geom",
+   "properties": {
+    "s_no_": 40,
+    "district": "FARIDKOT",
+    "block": "JAITON",
+    "satellite": "AQUA",
+    "latitude": 30.436,
+    "longitude": 74.94,
+    "acq_date": 29102026.0,
+    "acq_time": "16:09:42",
+    "day_flag": "D",
+    "fire_power": 16.3
+   }
+  }
+ ],
+ "totalFeatures": 223,
+ "numberMatched": 223,
+ "numberReturned": 223,
+ "timeStamp": "2026-10-30T18:13:18.549Z",
+ "crs": {
+  "type": "name",
+  "properties": {
+   "name": "urn:ogc:def:crs:EPSG::4326"
+  }
+ }
+}

@@ -1,0 +1,748 @@
+{
+ "question": "Why is Delhi's air bad today, and did it come from Punjab?",
+ "lang": "en",
+ "events": [
+  {
+   "type": "run",
+   "run_id": "8b97efd703b14e2099f690b8ee4fb25a",
+   "model": "gemini-3.5-flash-lite",
+   "lang": "en"
+  },
+  {
+   "type": "tool_call",
+   "id": "call_922554",
+   "name": "get_air_quality",
+   "args": {
+    "city": "Delhi"
+   }
+  },
+  {
+   "type": "tool_call",
+   "id": "call_922559",
+   "name": "trace_air_back",
+   "args": {
+    "city": "Delhi"
+   }
+  },
+  {
+   "type": "tool_call",
+   "id": "call_922564",
+   "name": "get_fire_activity",
+   "args": {
+    "region": "all"
+   }
+  },
+  {
+   "type": "tool_call",
+   "id": "call_922565",
+   "name": "forecast_smoke",
+   "args": {}
+  },
+  {
+   "type": "tool_result",
+   "id": "call_922565",
+   "name": "forecast_smoke",
+   "ok": false,
+   "summary": "Smoke forecast: unavailable (/api/smoke/forward returned HTTP 404: this data is not available yet (the endpoint is not deployed))",
+   "sources": []
+  },
+  {
+   "type": "tool_result",
+   "id": "call_922564",
+   "name": "get_fire_activity",
+   "ok": false,
+   "summary": "Fire detections: unavailable (/api/fires returned HTTP 404: this data is not available yet (the endpoint is not deployed))",
+   "sources": []
+  },
+  {
+   "type": "tool_result",
+   "id": "call_922559",
+   "name": "trace_air_back",
+   "ok": true,
+   "summary": "Delhi: IITM DSS stubble share 1.7% (2026-10-30)",
+   "sources": [
+    {
+     "key": "iitm_dss",
+     "label": "IITM Decision Support System for Delhi (stubble-burning share of PM2.5)",
+     "url": "https://ews.tropmet.res.in/dss/",
+     "fetched_at": "2026-10-30T17:56:44.860947Z",
+     "fetch_id": 2212,
+     "marker": 1
+    }
+   ]
+  },
+  {
+   "type": "tool_result",
+   "id": "call_922554",
+   "name": "get_air_quality",
+   "ok": true,
+   "summary": "Delhi PM2.5 72.0 µg/m³ at 2026-10-30 22:00 IST; 24 h mean 30.3; CPCB AQI 77 (Satisfactory)",
+   "sources": [
+    {
+     "key": "cams",
+     "label": "Copernicus CAMS via Open-Meteo air quality",
+     "url": "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=30.3796%2C31.6200%2C30.9439%2C28.9649%2C28.6701%2C28.3419%2C29.0996%2C30.2330%2C28.2011%2C28.8062%2C30.7356%2C28.5939%2C28.2961%2C28.6363%2C28.2068%2C28.3907%2C29.5037%2C28.6854%2C28.5249%2C28.4251%2C29.6107%2C29.1406%2C31.3219%2C28.1090%2C29.3078%2C29.8006%2C29.6953%2C27.8016%2C30.7361%2C28.6112%2C29.9669%2C30.9028%2C30.6500%2C27.9002%2C28.3607%2C28.9727%2C28.7982%2C29.4689%2C28.0602%2C28.5692%2C28.1486%2C30.7058%2C29.4339%2C30.3494%2C28.6996%2C31.0325%2C29.4604%2C27.6089%2C29.5364%2C29.0272%2C29.9316%2C30.1481&longitude=76.7783%2C74.8765%2C76.8020%2C77.2788%2C76.9254%2C77.3197%2C77.2623%2C74.9078%2C76.8458%2C76.1411%2C76.7629%2C76.2707%2C74.9617%2C77.1843%2C76.7997%2C77.3157%2C75.4679%2C77.3577%2C77.4820%2C77.1066%2C74.2836%2C75.7449%2C75.5789%2C75.3866%2C76.3376%2C76.4155%2C77.0027%2C76.6365%2C76.2097%2C77.3421%2C76.8759%2C75.8086%2C76.3314%2C76.9938%2C76.9361%2C77.6410%2C77.5402%2C77.6684%2C76.1131%2C77.3577%2C77.3321%2C76.8532%2C76.9741%2C76.3666%2C76.4961%2C76.5623%2C77.3410%2C75.1533%2C75.0158%2C77.0621%2C73.8645%2C77.2893&hourly=pm2_5%2Cpm10&past_days=7&forecast_days=5&timeformat=unixtime&timezone=GMT&domains=cams_global&cell_selection=nearest",
+     "fetched_at": "2026-10-30T18:00:26.541835Z",
+     "fetch_id": 2453,
+     "marker": 2
+    },
+    {
+     "key": "datagov_aqi",
+     "label": "data.gov.in CPCB real-time AQI",
+     "url": "https://api.data.gov.in/resource/3b01bcb8-0b14-4abf-b6f2-c1bfd384ba69?api-key=***&format=json&limit=1000&sort%5Bstation%5D=asc&offset=3000",
+     "fetched_at": "2026-10-30T18:04:26.888860Z",
+     "fetch_id": 2536,
+     "marker": 3
+    },
+    {
+     "key": "openaq",
+     "label": "OpenAQ v3 (CPCB stations)",
+     "url": "https://api.openaq.org/v3/sensors/12238640/measurements/hourly?datetime_from=2026-10-23T17%3A57%3A00Z&datetime_to=2026-10-30T17%3A57%3A00Z&limit=1000",
+     "fetched_at": "2026-10-30T18:00:24.476753Z",
+     "fetch_id": 2451,
+     "marker": 4
+    },
+    {
+     "key": "openaq",
+     "label": "OpenAQ v3 (CPCB stations)",
+     "url": "https://api.openaq.org/v3/sensors/12236376/measurements/hourly?datetime_from=2026-10-23T17%3A57%3A00Z&datetime_to=2026-10-30T17%3A57%3A00Z&limit=1000",
+     "fetched_at": "2026-10-30T18:00:15.118343Z",
+     "fetch_id": 2441,
+     "marker": 5
+    },
+    {
+     "key": "naaqs_2009",
+     "label": "CPCB National Ambient Air Quality Standards (2009)",
+     "url": "https://cpcb.nic.in/uploads/National_Ambient_Air_Quality_Standards.pdf",
+     "fetched_at": null,
+     "fetch_id": null,
+     "marker": 6
+    },
+    {
+     "key": "who_aqg_2021",
+     "label": "WHO Global Air Quality Guidelines (2021)",
+     "url": "https://www.who.int/publications/i/item/9789240034228",
+     "fetched_at": null,
+     "fetch_id": null,
+     "marker": 7
+    }
+   ]
+  },
+  {
+   "type": "tool_call",
+   "id": "call_1161127",
+   "name": "get_weather",
+   "args": {
+    "city": "Delhi"
+   }
+  },
+  {
+   "type": "tool_result",
+   "id": "call_1161127",
+   "name": "get_weather",
+   "ok": false,
+   "summary": "Weather in Delhi: unavailable (/api/met/now returned HTTP 404: this data is not available yet (the endpoint is not deployed))",
+   "sources": []
+  },
+  {
+   "type": "thought",
+   "text": "**Analyzing Available Data Sources**\n\nI've hit a snag with `get_weather` – it's returning a 404. However, `get_air_quality` is providing a data stream, as is `trace_air_back` (IITM DSS official estimate). Specifically, `get_air_quality` gives Delhi's air quality on October 30, 2026, as an AQI of 77 (Satisfactory). I'm now evaluating whether this can replace the weather data, or if I need to find another data source.\n\n\n"
+  },
+  {
+   "type": "thought",
+   "text": "**Evaluating Air Quality Sources**\n\nI've got more data to consider now. The air quality on October 30, 2026, seems quite variable. PM2.5 levels are moderate, with a median of 72 µg/m³ across stations, but some stations report much higher concentrations. Stubble burning contributed only a minor 1.75% of Delhi's PM2.5 that day, so it seems unlikely that Punjab was a major source. I'm building a more robust verdict based on this refined information.\n\n\n"
+  },
+  {
+   "type": "thought",
+   "text": "**Refining Current Analysis**\n\nI've got a clearer picture now. Delhi's air quality on October 30, 2026, was generally satisfactory, with a CPCB AQI of 77. However, I observed some localized poor conditions; PM2.5 levels were significantly higher at certain stations. It seems that stubble burning from Punjab was not a major factor, only contributing approximately 1.75% of PM2.5 on that day. My focus is now on the factors that created the variability at that time.\n\n\n"
+  },
+  {
+   "type": "thought",
+   "text": "**Assessing Pollutant Contributions**\n\nI've got more information to integrate. I've re-evaluated Delhi's air quality on October 30, 2026. The CPCB AQI was 77, indicating satisfactory conditions [3]. I observe the PM2.5 was 72 µg/m³ [4], and 24-hour mean was 30.3 µg/m³ [4]. Mundka reached 201 µg/m³ [4]. I am now evaluating the impact of stubble burning.\n\n\n\n"
+  },
+  {
+   "type": "answer_delta",
+   "text": "Delhi's air quality today was satisfactory overall with localized high pollution, and stubble burning from Punjab was a minor contributor.\n- Delhi's CPCB AQI was 77 in the satisfactory category as of 2026-"
+  },
+  {
+   "type": "answer_delta",
+   "text": "10-30 23:00 IST [3].\n- Measured PM2.5 was "
+  },
+  {
+   "type": "answer_delta",
+   "text": "72 µg/m³ at 2026-10-30 22:0"
+  },
+  {
+   "type": "answer_delta",
+   "text": "0 IST [4], with a 24-hour mean of 30.3 µg/m³"
+  },
+  {
+   "type": "answer_delta",
+   "text": " [4].\n- Specific stations reached higher levels, such as Mundka at 201 µg/m"
+  },
+  {
+   "type": "answer_delta",
+   "text": "³ and Bawana at 129 µg/m³ as of 2026-10"
+  },
+  {
+   "type": "answer_delta",
+   "text": "-30 22:00 IST [4].\n- The IITM Decision Support System estimated that crop"
+  },
+  {
+   "type": "answer_delta",
+   "text": "-residue burning contributed 1.75% to Delhi's daily mean PM2.5 on 2"
+  },
+  {
+   "type": "answer_delta",
+   "text": "026-10-30 [1].\n- Stubble contribution shares on preceding days were 4"
+  },
+  {
+   "type": "answer_delta",
+   "text": ".68% on 2026-10-26, 1.56% on"
+  },
+  {
+   "type": "answer_delta",
+   "text": " 2026-10-27, 0.98% on 2026"
+  },
+  {
+   "type": "answer_delta",
+   "text": "-10-28, and 0.98% on 2026-10-"
+  },
+  {
+   "type": "answer_delta",
+   "text": "29 [1].\nCaveat: Model estimates and satellite fire detections have inherent uncertainties."
+  },
+  {
+   "type": "answer",
+   "text": "Delhi's air quality today was satisfactory overall with localized high pollution, and stubble burning from Punjab was a minor contributor.\n- Delhi's CPCB AQI was 77 in the satisfactory category as of 2026-10-30 23:00 IST [3].\n- Measured PM2.5 was 72 µg/m³ at 2026-10-30 22:00 IST [4], with a 24-hour mean of 30.3 µg/m³ [4].\n- Specific stations reached higher levels, such as Mundka at 201 µg/m³ and Bawana at 129 µg/m³ as of 2026-10-30 22:00 IST [4].\n- The IITM Decision Support System estimated that crop-residue burning contributed 1.75% to Delhi's daily mean PM2.5 on 2026-10-30 [1].\n- Stubble contribution shares on preceding days were 4.68% on 2026-10-26, 1.56% on 2026-10-27, 0.98% on 2026-10-28, and 0.98% on 2026-10-29 [1].\nCaveat: Model estimates and satellite fire detections have inherent uncertainties.",
+   "citations": [
+    {
+     "marker": 3,
+     "source": {
+      "key": "datagov_aqi",
+      "label": "data.gov.in CPCB real-time AQI",
+      "url": "https://api.data.gov.in/resource/3b01bcb8-0b14-4abf-b6f2-c1bfd384ba69?api-key=***&format=json&limit=1000&sort%5Bstation%5D=asc&offset=3000",
+      "fetched_at": "2026-10-30T18:04:26.888860Z",
+      "fetch_id": 2536
+     }
+    },
+    {
+     "marker": 4,
+     "source": {
+      "key": "openaq",
+      "label": "OpenAQ v3 (CPCB stations)",
+      "url": "https://api.openaq.org/v3/sensors/12238640/measurements/hourly?datetime_from=2026-10-23T17%3A57%3A00Z&datetime_to=2026-10-30T17%3A57%3A00Z&limit=1000",
+      "fetched_at": "2026-10-30T18:00:24.476753Z",
+      "fetch_id": 2451
+     }
+    },
+    {
+     "marker": 1,
+     "source": {
+      "key": "iitm_dss",
+      "label": "IITM Decision Support System for Delhi (stubble-burning share of PM2.5)",
+      "url": "https://ews.tropmet.res.in/dss/",
+      "fetched_at": "2026-10-30T17:56:44.860947Z",
+      "fetch_id": 2212
+     }
+    }
+   ],
+   "model": "gemini-3.5-flash-lite"
+  },
+  {
+   "type": "verification",
+   "checked": 22,
+   "verified": 22,
+   "unverified": [],
+   "passed": true,
+   "uncited": [],
+   "bad_markers": [],
+   "revised": false,
+   "first_pass_unverified": []
+  },
+  {
+   "type": "done",
+   "run_id": "8b97efd703b14e2099f690b8ee4fb25a",
+   "duration_ms": 10888,
+   "ok": true,
+   "models": [
+    "gemini-3.5-flash-lite"
+   ]
+  }
+ ],
+ "tools": [
+  {
+   "id": "call_922554",
+   "name": "get_air_quality",
+   "args": {
+    "city": "Delhi"
+   },
+   "ok": true,
+   "output": {
+    "city": "Delhi",
+    "unit": "µg/m³",
+    "now": {
+     "pm25": 72.0,
+     "pm10": 108.0,
+     "observed": "2026-10-30 22:00 IST",
+     "stations_reporting": 37,
+     "stations_stale": 2,
+     "provider": "openaq",
+     "method": "median of the city's stations that reported in the last 2 hours"
+    },
+    "pm25_24h_mean": 30.3,
+    "pm25_24h_mean_hours": 23,
+    "pm25_24h_naqi_category": "Satisfactory",
+    "cpcb_aqi_now": {
+     "aqi": 77,
+     "category": "Satisfactory",
+     "stations": 54,
+     "observed": "2026-10-30 23:00 IST"
+    },
+    "cams_model_now": {
+     "pm25": 68.9,
+     "valid": "2026-10-30 23:30 IST",
+     "note": "model estimate, not a measurement"
+    },
+    "stations_in_city": {
+     "count": 39,
+     "highest_pm25": [
+      {
+       "name": "Mundka, Delhi - DPCC",
+       "pm25": 201.0,
+       "pm10": 268.0,
+       "observed": "2026-10-30 22:00 IST",
+       "stale": false
+      },
+      {
+       "name": "Bawana, Delhi - DPCC",
+       "pm25": 129.0,
+       "pm10": 217.0,
+       "observed": "2026-10-30 22:00 IST",
+       "stale": false
+      },
+      {
+       "name": "Punjabi Bagh, Delhi - DPCC",
+       "pm25": 118.0,
+       "pm10": 158.0,
+       "observed": "2026-10-30 22:00 IST",
+       "stale": false
+      },
+      {
+       "name": "Rohini, Delhi - DPCC",
+       "pm25": 118.0,
+       "pm10": 169.0,
+       "observed": "2026-10-30 22:00 IST",
+       "stale": false
+      },
+      {
+       "name": "R K Puram, Delhi - DPCC",
+       "pm25": 111.0,
+       "pm10": 121.0,
+       "observed": "2026-10-30 22:00 IST",
+       "stale": false
+      }
+     ]
+    },
+    "other_cities_now": [
+     {
+      "city": "Ghaziabad",
+      "pm25": 70.5,
+      "pm25_24h_mean": 21.9,
+      "observed": "2026-10-30 22:00 IST",
+      "cpcb_aqi": 61,
+      "cpcb_category": "Satisfactory"
+     },
+     {
+      "city": "Noida",
+      "pm25": 52.0,
+      "pm25_24h_mean": 23.6,
+      "observed": "2026-10-30 22:00 IST",
+      "cpcb_aqi": 86,
+      "cpcb_category": "Satisfactory"
+     },
+     {
+      "city": "Gurugram",
+      "pm25": 43.9,
+      "pm25_24h_mean": 28.7,
+      "observed": "2026-10-30 22:00 IST",
+      "cpcb_aqi": 64,
+      "cpcb_category": "Satisfactory"
+     },
+     {
+      "city": "Faridabad",
+      "pm25": 43.0,
+      "pm25_24h_mean": 38.6,
+      "observed": "2026-10-30 22:00 IST",
+      "cpcb_aqi": 85,
+      "cpcb_category": "Satisfactory"
+     },
+     {
+      "city": "Chandigarh",
+      "pm25": 48.0,
+      "pm25_24h_mean": 31.2,
+      "observed": "2026-10-30 22:00 IST",
+      "cpcb_aqi": 60,
+      "cpcb_category": "Satisfactory"
+     },
+     {
+      "city": "Bhiwadi",
+      "pm25": 65.5,
+      "pm25_24h_mean": 32.3,
+      "observed": "2026-10-30 22:00 IST",
+      "cpcb_aqi": 68,
+      "cpcb_category": "Satisfactory"
+     },
+     {
+      "city": "Greater Noida",
+      "pm25": 40.7,
+      "pm25_24h_mean": 63.9,
+      "observed": "2026-10-30 22:00 IST",
+      "cpcb_aqi": 88,
+      "cpcb_category": "Satisfactory"
+     },
+     {
+      "city": "Ambala",
+      "pm25": 122.0,
+      "pm25_24h_mean": 36.3,
+      "observed": "2026-10-30 22:00 IST",
+      "cpcb_aqi": 106,
+      "cpcb_category": "Moderate"
+     },
+     {
+      "city": "Amritsar",
+      "pm25": 63.0,
+      "pm25_24h_mean": 78.6,
+      "observed": "2026-10-30 22:00 IST",
+      "cpcb_aqi": 162,
+      "cpcb_category": "Moderate"
+     },
+     {
+      "city": "Baddi",
+      "pm25": 78.0,
+      "pm25_24h_mean": 78.2,
+      "observed": "2026-10-30 22:00 IST",
+      "cpcb_aqi": 163,
+      "cpcb_category": "Moderate"
+     },
+     {
+      "city": "Bahadurgarh",
+      "pm25": 45.8,
+      "pm25_24h_mean": 28.4,
+      "observed": "2026-10-30 22:00 IST",
+      "cpcb_aqi": 57,
+      "cpcb_category": "Satisfactory"
+     },
+     {
+      "city": "Ballabgarh",
+      "pm25": 46.1,
+      "pm25_24h_mean": 27.0,
+      "observed": "2026-10-30 22:00 IST",
+      "cpcb_aqi": 78,
+      "cpcb_category": "Satisfactory"
+     }
+    ],
+    "last_48_hours": {
+     "hours_with_data": 47,
+     "as_of": "2026-10-30 23:00 IST",
+     "max": {
+      "pm25": 160.0,
+      "hour_ending": "2026-10-29 10:00 IST"
+     },
+     "min": {
+      "pm25": 6.6,
+      "hour_ending": "2026-10-30 07:00 IST"
+     },
+     "hourly_last_24": [
+      [
+       "2026-10-29 23:00 IST",
+       32.3
+      ],
+      [
+       "2026-10-30 00:00 IST",
+       33.6
+      ],
+      [
+       "2026-10-30 01:00 IST",
+       30.0
+      ],
+      [
+       "2026-10-30 02:00 IST",
+       25.6
+      ],
+      [
+       "2026-10-30 03:00 IST",
+       22.0
+      ],
+      [
+       "2026-10-30 04:00 IST",
+       11.8
+      ],
+      [
+       "2026-10-30 05:00 IST",
+       9.0
+      ],
+      [
+       "2026-10-30 06:00 IST",
+       9.1
+      ],
+      [
+       "2026-10-30 07:00 IST",
+       6.6
+      ],
+      [
+       "2026-10-30 08:00 IST",
+       10.8
+      ],
+      [
+       "2026-10-30 09:00 IST",
+       16.8
+      ],
+      [
+       "2026-10-30 10:00 IST",
+       21.0
+      ],
+      [
+       "2026-10-30 11:00 IST",
+       24.8
+      ],
+      [
+       "2026-10-30 12:00 IST",
+       28.9
+      ],
+      [
+       "2026-10-30 13:00 IST",
+       30.1
+      ],
+      [
+       "2026-10-30 14:00 IST",
+       31.8
+      ],
+      [
+       "2026-10-30 15:00 IST",
+       34.5
+      ],
+      [
+       "2026-10-30 16:00 IST",
+       40.1
+      ],
+      [
+       "2026-10-30 17:00 IST",
+       44.3
+      ],
+      [
+       "2026-10-30 18:00 IST",
+       44.0
+      ],
+      [
+       "2026-10-30 19:00 IST",
+       42.8
+      ],
+      [
+       "2026-10-30 20:00 IST",
+       52.1
+      ],
+      [
+       "2026-10-30 21:00 IST",
+       60.5
+      ],
+      [
+       "2026-10-30 22:00 IST",
+       67.8
+      ]
+     ]
+    },
+    "cams_model_series": {
+     "note": "Copernicus CAMS model estimate, not a measurement",
+     "latest": {
+      "pm25": 68.9,
+      "time": "2026-10-30 23:30 IST"
+     },
+     "max": {
+      "pm25": 112.9,
+      "time": "2026-10-29 00:30 IST"
+     }
+    },
+    "reference_24h_limits": {
+     "india_naaqs_pm25": 60,
+     "india_naaqs_pm10": 100,
+     "who_2021_pm25": 15,
+     "who_2021_pm10": 45
+    },
+    "sources": [
+     {
+      "marker": "[2]",
+      "source": "Copernicus CAMS via Open-Meteo air quality",
+      "fetched": "2026-10-30 23:30 IST"
+     },
+     {
+      "marker": "[3]",
+      "source": "data.gov.in CPCB real-time AQI",
+      "fetched": "2026-10-30 23:34 IST"
+     },
+     {
+      "marker": "[4]",
+      "source": "OpenAQ v3 (CPCB stations)",
+      "fetched": "2026-10-30 23:30 IST"
+     },
+     {
+      "marker": "[5]",
+      "source": "OpenAQ v3 (CPCB stations)",
+      "fetched": "2026-10-30 23:30 IST"
+     },
+     {
+      "marker": "[6]",
+      "source": "CPCB National Ambient Air Quality Standards (2009)"
+     },
+     {
+      "marker": "[7]",
+      "source": "WHO Global Air Quality Guidelines (2021)"
+     }
+    ]
+   }
+  },
+  {
+   "id": "call_922559",
+   "name": "trace_air_back",
+   "args": {
+    "city": "Delhi"
+   },
+   "ok": true,
+   "output": {
+    "city": "Delhi",
+    "back_trajectories": {
+     "error": "/api/smoke/back returned HTTP 404: this data is not available yet (the endpoint is not deployed)"
+    },
+    "iitm_dss_official_estimate": {
+     "what": "% of Delhi's daily mean PM2.5",
+     "run_date": "2026-10-30",
+     "stale": false,
+     "today": {
+      "date": "2026-10-30",
+      "stubble_pct": 1.75
+     },
+     "recent_days": [
+      {
+       "date": "2026-10-26",
+       "stubble_pct": 4.68
+      },
+      {
+       "date": "2026-10-27",
+       "stubble_pct": 1.56
+      },
+      {
+       "date": "2026-10-28",
+       "stubble_pct": 0.98
+      },
+      {
+       "date": "2026-10-29",
+       "stubble_pct": 0.98
+      },
+      {
+       "date": "2026-10-30",
+       "stubble_pct": 1.75
+      }
+     ],
+     "outlook": [
+      {
+       "date": "2026-10-30",
+       "stubble_pct": 1.7,
+       "fire_input": "viirs_previous_evening"
+      },
+      {
+       "date": "2026-10-31",
+       "stubble_pct": 19.2,
+       "fire_input": "climatology"
+      },
+      {
+       "date": "2026-11-01",
+       "stubble_pct": 33.5,
+       "fire_input": "climatology"
+      },
+      {
+       "date": "2026-11-02",
+       "stubble_pct": 13.4,
+       "fire_input": "climatology"
+      }
+     ],
+     "method_note": "Please note that the contribution of stubble burning to Delhi's PM2.5 concentration for a particular day is determined using active fire count data from the VIIRS satellite-based instrument received on the evening of the previous day. The uncertainty especially related to the detection of fire event"
+    },
+    "sources": [
+     {
+      "marker": "[1]",
+      "source": "IITM Decision Support System for Delhi (stubble-burning share of PM2.5)",
+      "fetched": "2026-10-30 23:26 IST"
+     }
+    ]
+   }
+  },
+  {
+   "id": "call_922564",
+   "name": "get_fire_activity",
+   "args": {
+    "region": "all"
+   },
+   "ok": false,
+   "error": "/api/fires returned HTTP 404: this data is not available yet (the endpoint is not deployed)"
+  },
+  {
+   "id": "call_922565",
+   "name": "forecast_smoke",
+   "args": {},
+   "ok": false,
+   "error": "/api/smoke/forward returned HTTP 404: this data is not available yet (the endpoint is not deployed)"
+  },
+  {
+   "id": "call_1161127",
+   "name": "get_weather",
+   "args": {
+    "city": "Delhi"
+   },
+   "ok": false,
+   "error": "/api/met/now returned HTTP 404: this data is not available yet (the endpoint is not deployed)"
+  }
+ ],
+ "calls": [
+  {
+   "model": "gemini-3.5-flash-lite",
+   "chunks": [
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:05:33 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1188\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"function_call\":{\"id\":\"call_922554\",\"args\":{\"city\":\"Delhi\"},\"name\":\"get_air_quality\"},\"thought_signature\":\"EpIGCo8GAWkUfROFEg0B_Xt74UX9MtxvlItHmE2phjR7IkfFZLZIDXF02RiBGqPuIuGfvGDHRsITRHLY43ShOBZtFXopQI9IZWNguONsZA3JmAk9ZOQOHG_KJoEuddKNQbUyaK5ySIjYlEc4zP-BAh6Dss2_zY46B4tvwt0hiXVKF6F0HR5tOlNG6-Y0siflxADurF3AT-qDeoryccWXcIxi7aU4WqeeBC9SYDhvh_5-lRCjHW2_BgBS14JN0rnw6G5yaGO1YNVbMCNUs1cpyn0ZoiqnQeE7llaNt583ZnIIwPkLvzN5KX7_VP9TH1dHvBM86sXeCubTGqJzF7Bozv3KwY-Sye8UUdSTM7fubA2KQtp5sHGQ6sCVEMg4ET1Fr52JNAxHXrxj1ckdzOhQLGvVnVJkRrO9SR69oghKykfsMst2f678_sekObmnI-qWQBnxuNG7w5avHSXrFJLMQu76vMzG9ZcbQOEsTa_IkK1Es5nAeNttHeAUC87Dk6M4NzK0vC0m3r9iqCrImzxh80o7yMldO0dabc-YWQDIs_3pK565-ynjD62QEDyZEWGtiwhj_rya2zvpNYk0hjs402wRbpy2SwVgoSfNzWuk1Uh_mGPb_VWwO-Hw3QVsB6VdMqdkUXZxCP1W6vMnL7xOFStb9_0qvS13ZH3iIKs6hvH0ABWyQ09JTSJ0Fd7eczmTLND9fa92FhOFrL9s6yLLsEGxOiX4xEfv1fjR6bCeATyp6p8SczC0AVA-boWWEvaxrdEvO4UKe7yDP6cIJiyMU_Uxaw0oTZMCeCRWe2F2Z7MNFlGDx9VPzHoqJlFJawv6Rgc3OkitXxmojeN7vippLmSsD2IlJ8FJa-ZVotAqqmiRwpKLbNADt1UbxKqNMi2QFuYH4xEt2D_1lMBuh4gMoyaU_RyP-J7-wW410yeQYcByW8c1hIeKgO7kkLlb5k-A8aa-iFKhOZm4eMj2E9Go0tFSI0rKTp5doBuN7MMJj44lNxe3_XygO--3DjUJmBsUHRIpka1arSwonquZSKxP5GgiUgxy\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"bdzkarfrC9OD694PxavwwQ8\",\"usage_metadata\":{\"candidates_token_count\":18,\"prompt_token_count\":2140,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":2140}],\"thoughts_token_count\":182,\"total_token_count\":2340}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:05:33 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1188\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"function_call\":{\"id\":\"call_922559\",\"args\":{\"city\":\"Delhi\"},\"name\":\"trace_air_back\"}}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"bdzkarfrC9OD694PxavwwQ8\",\"usage_metadata\":{\"candidates_token_count\":36,\"prompt_token_count\":2140,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":2140}],\"thoughts_token_count\":182,\"total_token_count\":2358}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:05:33 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1188\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"function_call\":{\"id\":\"call_922564\",\"args\":{\"region\":\"all\"},\"name\":\"get_fire_activity\"}}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"bdzkarfrC9OD694PxavwwQ8\",\"usage_metadata\":{\"candidates_token_count\":54,\"prompt_token_count\":2140,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":2140}],\"thoughts_token_count\":182,\"total_token_count\":2376}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:05:33 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1188\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"function_call\":{\"id\":\"call_922565\",\"args\":{},\"name\":\"forecast_smoke\"}}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"bdzkarfrC9OD694PxavwwQ8\",\"usage_metadata\":{\"candidates_token_count\":64,\"prompt_token_count\":2140,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":2140}],\"thoughts_token_count\":182,\"total_token_count\":2386}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:05:33 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1188\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\"}],\"role\":\"model\"},\"finish_reason\":\"STOP\",\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"bdzkarfrC9OD694PxavwwQ8\",\"usage_metadata\":{\"candidates_token_count\":64,\"prompt_token_count\":2140,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":2140}],\"thoughts_token_count\":182,\"total_token_count\":2386}}"
+   ]
+  },
+  {
+   "model": "gemini-3.5-flash-lite",
+   "chunks": [
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:05:35 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1415\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"function_call\":{\"id\":\"call_1161127\",\"args\":{\"city\":\"Delhi\"},\"name\":\"get_weather\"},\"thought_signature\":\"EskDCsYDAWkUfRPSOCdKfG9IbA-04O1dX1JEfCv-FOJm08TS267a7-jM3c1--KgHR6HlnAoeLKW8sVw7tMqLG7z45hRxdZnOhFTR9Uw3uy06Ih8YBXOHN55QRIAje2yV2Zk8IZcOeT5jpBYH_YUAWN3L140qtHrygbNCz8ZJjdnYFJ6ryxdLkRXkPK0f1nmTf6TvKKZVufJj9V1tX695_p-4cjW-bpqACiJeqboo02Idfm7Cud-e9y-h8NBB2ocIm8bKOj3lVmK3daLG41TazB2-zjMkLIR5YvFo89MkfCgvfMbxmie-223LvaNE8qJTX9bheTrohTj_PsLNV3x-Y3EzaRjQkwds2HDXiURo-Ez6UhLds0SLrahn6-YnnZ5t3YK3Y6PyrYkWIVotQK7RPKSsdX7_esJAXx_ILMd1rW7Z3c2DFMw4hOhrJxNK4fD8fZ1dqz6QIRcKWJCz1syHG8lBBwouezQZ2pcS61hXGQJdyiVYStgrlHnTJGDCYCe99yEAsuh0xSNEsjdYqSlJc8XQKYaNszS3gDpEHYlgTWmlAcExM4dRrNIbY-JhgMFdyofFprPlMrj-vncKjVeC_QmrPOiA7RRVySqPxg==\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"btzkarTHMeKm0r4P_qnJqA8\",\"usage_metadata\":{\"candidates_token_count\":16,\"prompt_token_count\":5334,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":5334}],\"thoughts_token_count\":94,\"total_token_count\":5444}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:05:35 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1415\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\"}],\"role\":\"model\"},\"finish_reason\":\"STOP\",\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"btzkarTHMeKm0r4P_qnJqA8\",\"usage_metadata\":{\"candidates_token_count\":16,\"prompt_token_count\":5516,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":5516}],\"thoughts_token_count\":94,\"total_token_count\":5626}}"
+   ]
+  },
+  {
+   "model": "gemini-3.5-flash-lite",
+   "chunks": [
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:05:38 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=2337\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"**Analyzing Available Data Sources**\\n\\nI've hit a snag with `get_weather` – it's returning a 404. However, `get_air_quality` is providing a data stream, as is `trace_air_back` (IITM DSS official estimate). Specifically, `get_air_quality` gives Delhi's air quality on October 30, 2026, as an AQI of 77 (Satisfactory). I'm now evaluating whether this can replace the weather data, or if I need to find another data source.\\n\\n\\n\",\"thought\":true}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"cNzkavnHJc_6694PooK24QE\",\"usage_metadata\":{\"prompt_token_count\":5389,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":5389}],\"thoughts_token_count\":380,\"total_token_count\":5769}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:05:38 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=2337\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"**Evaluating Air Quality Sources**\\n\\nI've got more data to consider now. The air quality on October 30, 2026, seems quite variable. PM2.5 levels are moderate, with a median of 72 µg/m³ across stations, but some stations report much higher concentrations. Stubble burning contributed only a minor 1.75% of Delhi's PM2.5 that day, so it seems unlikely that Punjab was a major source. I'm building a more robust verdict based on this refined information.\\n\\n\\n\",\"thought\":true}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"cNzkavnHJc_6694PooK24QE\",\"usage_metadata\":{\"prompt_token_count\":5389,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":5389}],\"thoughts_token_count\":800,\"total_token_count\":6189}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:05:38 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=2337\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"**Refining Current Analysis**\\n\\nI've got a clearer picture now. Delhi's air quality on October 30, 2026, was generally satisfactory, with a CPCB AQI of 77. However, I observed some localized poor conditions; PM2.5 levels were significantly higher at certain stations. It seems that stubble burning from Punjab was not a major factor, only contributing approximately 1.75% of PM2.5 on that day. My focus is now on the factors that created the variability at that time.\\n\\n\\n\",\"thought\":true}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"cNzkavnHJc_6694PooK24QE\",\"usage_metadata\":{\"prompt_token_count\":5389,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":5389}],\"thoughts_token_count\":1235,\"total_token_count\":6624}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:05:38 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=2337\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"**Assessing Pollutant Contributions**\\n\\nI've got more information to integrate. I've re-evaluated Delhi's air quality on October 30, 2026. The CPCB AQI was 77, indicating satisfactory conditions [3]. I observe the PM2.5 was 72 µg/m³ [4], and 24-hour mean was 30.3 µg/m³ [4]. Mundka reached 201 µg/m³ [4]. I am now evaluating the impact of stubble burning.\\n\\n\\n\\n\",\"thought\":true}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"cNzkavnHJc_6694PooK24QE\",\"usage_metadata\":{\"prompt_token_count\":5389,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":5389}],\"thoughts_token_count\":1703,\"total_token_count\":7092}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:05:38 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=2337\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Delhi's air quality today was satisfactory overall with localized high pollution, and stubble burning from Punjab was a minor contributor\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"cNzkavnHJc_6694PooK24QE\",\"usage_metadata\":{\"candidates_token_count\":24,\"prompt_token_count\":5389,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":5389}],\"thoughts_token_count\":2041,\"total_token_count\":7454}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:05:38 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=2337\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\".\\n- Delhi's CPCB AQI was 77 in the satisfactory category as of 2026-\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"cNzkavnHJc_6694PooK24QE\",\"usage_metadata\":{\"candidates_token_count\":50,\"prompt_token_count\":5389,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":5389}],\"thoughts_token_count\":2041,\"total_token_count\":7480}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:05:38 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=2337\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"10-30 23:00 IST [3].\\n- Measured PM2.5 was \"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"cNzkavnHJc_6694PooK24QE\",\"usage_metadata\":{\"candidates_token_count\":74,\"prompt_token_count\":5389,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":5389}],\"thoughts_token_count\":2041,\"total_token_count\":7504}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:05:38 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=2337\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"72 µg/m³ at 2026-10-30 22:0\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"cNzkavnHJc_6694PooK24QE\",\"usage_metadata\":{\"candidates_token_count\":98,\"prompt_token_count\":5389,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":5389}],\"thoughts_token_count\":2041,\"total_token_count\":7528}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:05:38 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=2337\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"0 IST [4], with a 24-hour mean of 30.3 µg/m³\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"cNzkavnHJc_6694PooK24QE\",\"usage_metadata\":{\"candidates_token_count\":122,\"prompt_token_count\":5389,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":5389}],\"thoughts_token_count\":2041,\"total_token_count\":7552}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:05:38 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=2337\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" [4].\\n- Specific stations reached higher levels, such as Mundka at 201 µg/m\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"cNzkavnHJc_6694PooK24QE\",\"usage_metadata\":{\"candidates_token_count\":146,\"prompt_token_count\":5389,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":5389}],\"thoughts_token_count\":2041,\"total_token_count\":7576}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:05:38 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=2337\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"³ and Bawana at 129 µg/m³ as of 2026-10\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"cNzkavnHJc_6694PooK24QE\",\"usage_metadata\":{\"candidates_token_count\":170,\"prompt_token_count\":5389,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":5389}],\"thoughts_token_count\":2041,\"total_token_count\":7600}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:05:38 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=2337\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"-30 22:00 IST [4].\\n- The IITM Decision Support System estimated that crop\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"cNzkavnHJc_6694PooK24QE\",\"usage_metadata\":{\"candidates_token_count\":194,\"prompt_token_count\":5389,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":5389}],\"thoughts_token_count\":2041,\"total_token_count\":7624}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:05:38 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=2337\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"-residue burning contributed 1.75% to Delhi's daily mean PM2.5 on 2\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"cNzkavnHJc_6694PooK24QE\",\"usage_metadata\":{\"candidates_token_count\":218,\"prompt_token_count\":5389,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":5389}],\"thoughts_token_count\":2041,\"total_token_count\":7648}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:05:38 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=2337\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"026-10-30 [1].\\n- Stubble contribution shares on preceding days were 4\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"cNzkavnHJc_6694PooK24QE\",\"usage_metadata\":{\"candidates_token_count\":242,\"prompt_token_count\":5389,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":5389}],\"thoughts_token_count\":2041,\"total_token_count\":7672}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:05:38 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=2337\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\".68% on 2026-10-26, 1.56% on\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"cNzkavnHJc_6694PooK24QE\",\"usage_metadata\":{\"candidates_token_count\":266,\"prompt_token_count\":5389,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":5389}],\"thoughts_token_count\":2041,\"total_token_count\":7696}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:05:38 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=2337\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" 2026-10-27, 0.98% on 2026\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"cNzkavnHJc_6694PooK24QE\",\"usage_metadata\":{\"candidates_token_count\":290,\"prompt_token_count\":5389,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":5389}],\"thoughts_token_count\":2041,\"total_token_count\":7720}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:05:38 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=2337\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"-10-28, and 0.98% on 2026-10-\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"cNzkavnHJc_6694PooK24QE\",\"usage_metadata\":{\"candidates_token_count\":314,\"prompt_token_count\":5389,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":5389}],\"thoughts_token_count\":2041,\"total_token_count\":7744}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:05:38 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=2337\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"29 [1].\\nCaveat: Model estimates and satellite fire detections have inherent uncertainties.\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"cNzkavnHJc_6694PooK24QE\",\"usage_metadata\":{\"candidates_token_count\":333,\"prompt_token_count\":5389,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":5389}],\"thoughts_token_count\":2041,\"total_token_count\":7763}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:05:38 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=2337\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\",\"thought_signature\":\"EqAyCp0yAWkUfROGMRVdQzwUjlYI_3xcN1ifmuZTF2ZiX6lmb61bkYysZSfBTo27bm9rQK06G9PDaoNeE5XGS1zkE6rLGIHYgriV6RC6XUSqI1njbnWGkim7BGlLmnRe3CePjfaxzDwtF1W0BlYBfnhnxGvH6ITkJ4rVDYJkWmjAQ69YNcaaqMghczW0WLl-t6JMtivogAz8BVU3ncotZVM-2QJ6sof7p_b86YpTsrb6U_0upj9vVgvUaKUATdR7X8ffLj0PVyYZ-MkDlpNYt8-7ErvXV3w5VqFU7UUgR3Qq_RPXNpm8ZgMWzRotA2uk5asCy2Z5BksO3GKwl6SvrU6_dilt_qM7xQXgCa91EwzxVzR0XDJemOsBbFeoOJPsp3rFMj84vt2lkX345Y9QNp0f2C9sNfNwIMyXmOStDWtDRDH0UqHqaM30l9jn8YjH_zUA4ivYM7c-BbEARwMVmkuXs8oUhs5jodFgahvj1_rbsiboxxTQV2_DVWhDTXobRL3Fgr1GUm90mnL_clrrthPWxFJo59EK5YO7HAjWX5LIu2kKSb2H2X3lSN95eZpQkrspIQt-nmodOVp9vkyVGnE-5dU3hERZQHdsq-8zMNWzJuTRlQAYJdqrU2s2BMj1xJUknHy0UNWf0Y8MvX-BvLUl3hCRnKAKx21DPRT-IzmSl7381_AXpSmEDSogXNMgR4esa8E0NONA2WtdLU0FShd0DefqlEXfN6KxFOP-eU3ussC7WO6BTXy18uhi7IXrgDAwcLD3auN1iAOLaBlgZbMBajLQiRem4foaPIeEs6btQmYcWz2tnfBOj9SbOpXhWiGrZi0O-YoNRpE0YRgyX4W3F-OwUOVszNprzWGlp8taJWoBbXybpfXkaTv3TLlyh4vY7bX0DRxsVuyBghBLAT4NMvCkheVEP74s9afhcRR5bmg_J7uPZkecwDqydCt4dR7Mcp1Uj5hHyPqYiWLQcONbDfEqAwl4Gz1CHaSit9yp_6sWyuxHhEjKCI_ItQf5G_spXOOA8-7148ZZLEAB2Jy-hrQyrec_1XwmBudN7h1ee-9b0dtHlCEWuAVB_UAJMOTDxyZ2TByS_kE6Z3BEax32GIFFUGR4zvWpqtxf0ovFUlp-EaYn1byEr0dStmEVCEGuU8o8X7NlAE5UIeKUeFtrMcO43qc_5uldUQR2_5MNdPaEgRVYAtEf-g9GX0W3i4Dq4z76N4oC3rf6obao9ZYEjYzhNpa60OxbgO6vhFAJDi0P5lKNEzlDBDvuJNeRkGnbBl4g51WGNlzi4rQaVI-YlwwNSOGqrstvoJGwJAkCjto8kk2F00_ZkFZ6uAt0NLSDSaa3QonRiNdqU-aqlqQGCiRyTQiQ074KezX0ni1gIPURurYBdPUdLc9V6q4fS-Ld6EYAxfbDAwhzbwIF_JCm0otFzyWZMf7JgLWhWDI2vtJJMwhaUCMnWqQejqQ-1EZJ-Qw88ZupPRKQ_K0wGM2yE91wfI1zGa00VFtWf57ZoCzOUl3fG7V-tUH5HHeLwUAlEmj14GltsnNlGTeElw_LvoLTw1elzbcVG4qq7Lbh6JQwpUDcADEExu33KwX01jKabxocE7qCUdzb7Z6X03p8wvzoFUpNkvOfccSPZVPplUGakukxBftIMJWBaXObNB3oE2Z4osvljb5l_B0k_NAGqlpLoZm0mb_rFFIBuT-uYqOGClkXBAibGwREPDqPO8L0KaCdJDh8TOxKz_qPh9MDk2e69T2y1h3LNfKgKbMI3r7-SPFqYqgg3jutxyDZyPh7JK_clqJ9Qjri4hKadD-bHZTkKV4InhveLirMPbmnalfHD5j9rx5dI-5n3in94Y7zJi8hJiHnokygN5o8FlcMSlb_U2hhqQ1kGMav1VsbTibNB3MdolPsAai0WF77vwWFv5SrFID_iVkEvw9gyDFWfRO_NQntNR8Y8fHTEWZM-WPKwWZTOsiKQY1cZ8ZWPQdtfFDTDvTMZv-y_vrs-b4oDz4GAdrTeXRvdkcPriQ_5ixK1DTFVPuCukv30Dm3Bmdx6_SvhGjsubQDXJJ07bD5qLWws4EdH9QUGWGjgzH_9lPx8u8uf49JN17RwBD28QrNhu6JgvliWOygyJ5tIM6Ckd8E154_zjHXWF_LBLeOxWuLNcLYFs4pnTYd_TBcVqe-f3rr8ZRHhN5wmGLOParMNGrmExDYX4OMlZ7jecDTBL78g_NSQghxPVIAb6vuqDeECVY_xP6_CXi0QJwUx6eAH7u539fnXkMobltPlbydrmjNnoj_gHAzUd-14fGk6wHnHcXSxdPBtzDDrZht0VfB7S9H75Q_WFP-4i8TmM-tcnr98Gd0jgAOLxqrKqosR1SwKJLslxJnPyk7r1aoBmGOZPUFvqVv8vIrwR8iqyuuMb8oAnIdCH0GCJCr6axLP27A5zhBYZ7jnrctZw227CI0ye7SmTOmMZDT9gsXmenUKIvHgrRO_Q4aNNhmeNwsMnHrOhs3UMlbIp5hZo8oF5eGrPZtUupX8p2qcyfnwecr0iVW79tigupnqE2vpPwaHr1NO4gBpujtoRmbYuOchia-CDptRPLjUl5odKJejf8ZSWcqQvvqco4bM6XClN6pROk2yrNf4mHkjTgTDKFpLXlpZ1BQ4-uAYgyYFyW0g5Fxxcaw_CQfgBAarDDmu87SHkYh8-pXQKb-VvcuFaOtMZ10KMS7XUXgkFN8ODH-8Ci3rwmjz9nrNNFp8qYgF2Ih-TgFEVyZNkXgW3ol8vt8XLf_rX3SF-M86DtuZAiJjhhqkBMyvMyDn-7G1rMoVuHeRAf82nrv9fScKtefuZO2GIlPE8ok8QVF498sqSFEf_bhel0SZ2nqt7zbiX2LqalowMwxGe4JwM9DFtNTUm16Rks4tVOsaUSNKO6PP6mkcPGC0T2dkyFuVi6oaHbaJjNI49k25w2BRuRamiEf63TvihRRWkDtgRXqTVnFB3l9btRsr233y2DarLxpiRorMBBEx8YSIpcPqRHKZn5Pn6zTF-sFjsaLmzkOv8mTsT-1SATPvMybn77tx59IVZ1-xgu0cEZA89a0vhIx3m95kFt-NPeRr6P37U9RU1TS1zgBcZNlDqWimx_V6zMKsVD0Kxp4JB7bTUJhJwN4nNttE4WIewxgaTuljg3E6xRXEis2L-eEDeYVCCLag2eFF_vyeIPmT7_adq-yzmtBxgJjVqdoVo3QqUTWSpPJ484mR3clepsrG7s7rvVk6fRUM9plKztRvWcmMGmcy9VhEWrYxpCpnBhXbyKecf01HYTAXAL4IMsF9j8btssWiUa6M24b-xzhkm1hiF2ZHyxcE6Q8pNV10x3wx2y_Mmnf1UdMHM6erMNtCFCIYU0BIN-om5XT3AP8JpXUktdFtpHbiwbD1TmCxHLgOQf48_lTkMQ19gyTJyTcohrDTMSKwCgumRVFil7rvvfgKdN7NYl3kzYl3JF84Nm7Uh05e4QY4FUEdPbCU-O7sZiL2i8I7wL89_gJgJf276dmvNPnFoLR3hKCtqhXK8q87o5ai0hFJl-_-pp-VEQIg8yILtuaM5YM-asc2e24nvyYrZElezp6faVWU2oaqJPURm12aNJBmK5uUtCoFg3_SNzuv6wVYjSHK7QeFpCIKgTcd1l31K628kZtietRep76zvQvUGOT6JTH2Hg_VEit0L9mCDmnQba4p2EM38cPNynsXj-lOC1m_TOgZgkGR8o1sqQ65hlK4890ID4DIK_Ofbgfb9YeWqD1GewXEuSPYIXuERWC-55A6ai-whqWor-9T9Ds-_jK_LsPI_V0vo_LcIDIjXyVCBWj8dTmPtAoYS--4M8uUikB39UetXaq2-9GsmvDSKA690istMkIVEYoFmU8NNrFK_dSm9uDwE3A-B-XEspZw-l4_5PWeN0aFjOOqs2XG7IdZOLL3-11NCYpGM7qileKBQ0huHfwm4hnHTS4vco--6uL3w9BAIOeBnvjQNbHToqWuJ1tUxx-P7MxnYxwfKILV-jkvodOhGFDrKnLzKpZQl3tmSsakCPvIqZJQJYW7OwxD8R7QNLIMWyR09k9Z6ZEfm8qm6F0dAMkPtcXYnV-erz41R2YerqvLj4EfQv064JzRFdrpWm0sINeEoMc7bj-TcydjdRJyoyXDX7HUBIFnxNWHZDOemTcDB3BAOHBK6c6gSUxVR11b3UV4mmtb6O-zUxozopPbv8mIAHci6NRhVwlGcd2U-YQ8zt_RKAh0Xj5-T2mVfo8uUbi-QCLBbuSYXm7qD8zxJiKpuqQ2sWmhFgVTIrAfKnwvU8kaz0RJmpEwI1_mXjSfQY56TseIIlxnKZ9tdK8nDUAfAuwoz_Y-id-5eoO3j8bBy-KHFrUvlUDk71ar88bl-ya5zwY4KdD-pofhJd6eZjNm1utz42IekeTVD1r-9YQ-64zVt3zBuTOMcwukKbj50fQfOdVfA40Tr5gOEsZ2u9dvFxOv6yXsq87qPri9qhi2cKoTvelcim_KJCTJ9jZ7r6Y-SDSN4F3DZUTf4y8oZq0iAIFa1Tv4bjjFlpXt3Xu0si39McSQvIFqPP5JO_pKpSupnmvyGZ2X0KDpLB1EFb5oz85_ZT42Q__WBQb2kJwbKk8X-qciBPTGtEwuJzSc_6oBS_l3boQRy3sBvNhoULHU70id-oQN1EfVI2vbv37jxPA79JSxvyOFYAlwuk_KwwSP3PDtyV2-YG8G5DIN9paB5LNQzFzAuf08p4npVH8d7P5FQoWps1hS7LL9f815p4g9VaLT-cBaobyxu9nMng-5FABq_zZTiAhV3J3LBpKYU2-l_CbYkmgY7iwJkJV4j_OsTHpbYfrML9gv7T_xKgky8uvSVNluO7DWz8dw5zab3qZG5ZTXT8CZkSlASfmQxhd7WBtnJYQHwia3jzcILWxKzH4QZRwoe1Ke1JxIvQHp4SEaDWYN4MV6KPbODKmHHLIT3hqGZ_TtQady-072c6fvci17Hnxvp6xPyVraOmtke2zQY6l5_L7gL-9eBlo_X9sURAKmyIbevDW_hkX19zLTDpWMnR7--jBovSv_1dHnvUgG1X4j422GlS4tu5-AWQeYQ73xmwvMvu8RKLjytmnTps-FBuUBDDlDAJ30n2Su37iqpDQhknt0ijo3x88RHFH9mCvanT3JNlx7zn-SzqMfeGvrXNbvaULLHy8z5tZgtBX4DK_4maetKrf8WLwH3_Jo_6LwJoknnd8Te1fBPVDGSqjejN8mD-PR9aStK7aoZRu39fInIaL9DFpP6-YzRdnFepZbk-L4uAVO04SOn2x0PCU2hg0_PeYl4uuD2XpSKwmsuX1Hhu3hhInHLmi2Dm2cjwzx7881OM8Faw3oypvNMtHJEtCvP8xWPrxOmOMGU8pesDo17_cBXzp9I0UOk0FYlsL7mcdCDk1SGWMlu3y0SPs1p-4TuTPCm1iJk1u9rg5IX-xoXA3ztwwuQbpTaE1Oga_diZTl810dMFbXZc3OPRpEk5xHKpGa0jhyo15Pw96WChN98Y-NCtr-fWZFO4IsZFcP7sDk4myJB0W-i-H9N3kmnwUppRVx3LLoLgiodXsDF04ylZilm0mFfUEdYmxCkN-ioXz3E_Wi86ahATumIFlcKAqc6ipnswHQAy5sBh6BBAvPZPJSIV8Pz9Tj6A05Lpapz1iSHuiz1UpXZY3d3iXcmVy20neLp67HIAay1PDEtKdxKNv14PwA314URGdTcyioAGe1Hz_tVvWyLQfg6wC0xCuCUCgGYoKc_qtvJTOkI9Vcfocjs9U5fMD3uvyZHpUDFTF-fLJEhsLUjHphOgkvcj5zZECaEQMqz5pH0tILlVHymsTnOiJ9tU8qEqR-G7Szvn_HC6STKjy_j9mkxGBaahl7tDX9nMZaj7DSFUTX183oKiswzNITrC8s3CGAhkW7l6pOowf8M8r2lfstQ3ibNv9jvcaOwWOiO_k83q-VjpYBKvXk21DnWXJ_nZtuEQ0UUPO9g1XT8tEIXsFGpC2jvdGMGTPlnX-0EMwN2azmOzDue1wuDd4HmLu2YZ6A1AEq4le-itPALRJEpwarZ5V7QFgsEMLy3CIILr0Jl0nSTExl_XR8DZke3tUAJSmrWu-huINqBjxexCJjG2bwryYQoNz_Fsu7B80gYRbmq6Q9Tlvf5ZhC12rPUsBuGQyoF3z5sjbtq0EbZLxvfl9W5pBjv8bhRVGCARB5N7Iz-yvHCfncKYP9CGwg7DbefIODU0dtxBCxcdHFG55zxZbRLv-vQVN_zD4oofCwGaaZEmTGZSAoPYUzg_TebhGI32yXTHk8C69xj77vmn9LP9sobSqKMda6gMOirj10wWPWDFj8okG0SDBR2GmunzUbNPRenzwuijhCccbmHpb0hhMaBkhcvHMNr6MTAGMsNv0N4S2q1BZTxgLk2UgHg_pu3fLmlYlcBXK7vEXPIiq7M8EGX7F_GaZivdSC6Dw9DgC3CYtNp0hIGLFlSN7WGaAjzftm1grJ7SGrIxqlrlYgz1SadsV4LQ0hik6WPi-4KKk4O9cI00DU4fuS2qqu4WClPQcpaS7nnOigfoUBl_4a8MJ-HXEzHFyxS5WXTa2aAfOiyxS2FUmXEpJIAdEb_d-rcWV2ZXWMg_U3cNgP8I75eJnEdCXFPeIc1zszUDDW3QuCX5kLyrS6OzQEQZLeVtfuDrHN_ZQ-F88TP4tMu9-xGHB3nWUYpKNSg9AhlxmUxNwmWYiuNdkPFURmeviHjz5lrCFPNBzuApt55gTUHgxWPznLRd16xZdqodVhVN8JUPnvuni1U-bvrd4Ii0QRVQhdytkTnK1SiatU_evCgI9cPmjE_ofByKZ_UiWwp0gT6lO2ZuAg9zbakBwYW0Q3qZTqYVNDEo7ShWl-piQ2m7SyHGnKM9RcYXE6D9q5rlnjHkTykzZik0MzVBe6UUt1T59Wa0u47Y_PkyJYbBvg4V_T_CZyZUWQGl-zDqDnBY42C04Iju4pMjTs6KhYRDFoCA0WQbG6A3D7-Y3NlD04qENP5VKs5jMjCUPQDla63IXeej4ncRy5U0rnaYV9073gftTz2ysLQ6aBT0Hd_rl7lnbhGK1LeCSqcfQ4IhvpQ8ubqKXPZb3-U1G9EYmhodjH7hMdt3G3hx4fjKYfx5hTfhugKRg_SlN8HNhLmIPZYMiwm__ezj9SByMc2cPnOMibNLrQnJOJytSB8Ox9LNV5mXGzyIQJ1at4UzatbpJSOowWBExgzY7XpC2PZdDHOznhY_EguFBRNm0JF97Lzd9ZgKh_bNcOj6uLR9IjEsGjx_sDxLxqvhd3MR_0OIvsktq322UqVAFsUlxg_VSssh5P3chFC9s8AlC0GXnV0LzXtzChCfoECe_dTFuMIKk_S1Gmr7CfFMbTSEa2Ble_-7SSN18FFqxEjD2jkZ5P50FljX-zdyDBgxBRnVGEPpo635xejGuv9QPAHA57ZCaVivzJ7rg35rAU9t3IgGYHJudh0AGs2CmaRTj6E399Z6G3Rg3dS1D-5Zjr5cLKuUdz_jZIY7TbZar_tdvrN_-cEGsk73szAEmCKi1BI0nEZHNrXDJ9yPspcUTPob05SlhgoCqd9Tv-RkVxd4SvmDjY_YX60vJkT2-OdQ0aA0KlhHG7G-rl-0KMelGCrVbnYrG2usbu9bbq2NqyhtRgr-l2-wlrGKNffg67YkrW-s6Z6LYfGyU-8yoX_MChACOuw-K_cQRs5Md-NAn-AVMFi6ME2Gy4vUYTmTgDn476cmXM8JMwtYA4zJZZomGA4Zts3EHgF6w87BAprAxx1k4YFC_CqIvlie_3IsEF4gN1B7ELNvmiQCLUV5ep45m5qKLGiw1NLaSP_0CjxREjGGGid-kF_P4MSkd6OT0O-0OXUBLhmQo5GladwbNOoNH7w2dR5gDgaSrS5MSQc-luINoo6I2RE2nslWcqu-s7scC4UeoyZDuzdRhno_jCIMemYkMtwJLj3g9HJKmOVkiPlZ20vEMluweDwVJC8azv3qz5fHVatNPzfBGQpT9rus4FeZ5jDY8wHwricP1dQ3vyQl-a_Iw833YE1rOekf2bZZ8BzBZqIawVlm-lvQ-eNv94QlsndiBNo52k53WyvJXZnjHYc1SBAD6KusfQDPDVspHBa0ChhFxJKZ3f27pXxZs-ICKwOIw1G2PCDVTqizJfxCwJW-rOFUUZAexJPExKHrlyP3Kc21az-wQ6su1-SNH01tyWZmnbrllC2ntrhgNFr5xx2Y0wgrOKtB701hZLMNALP3X-W8ONNM3FPwguE9iQTUseXM99B3pcSyP-_osOvWZlmjBwXIK4Jw9qS0AcjaANqtbgvs1gT2y0ozlMKtbKKi8__4TEFpJeaLIAK4bNLWeBLSfF1OxEnv46n7mHK2RIooYZbGSfr3mRObYcO8gHkvsdrn_VA-nZZzQ2Cw6ZjUbpCAirsMX6yyo2kVtVlMgk5pmLnGczGaJeYa6IssWKQBTp3CVlmzTeajfAwGh56eGIlbqipOGMljfcVmK6PaCsNcb6YpDLYwCcYwvPopz-NyvMYY-U8cnq6X6LRIULXoK\"}],\"role\":\"model\"},\"finish_reason\":\"STOP\",\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"cNzkavnHJc_6694PooK24QE\",\"usage_metadata\":{\"cache_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":2005}],\"cached_content_token_count\":2005,\"candidates_token_count\":333,\"prompt_token_count\":5665,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":5665}],\"thoughts_token_count\":2041,\"total_token_count\":8039}}"
+   ]
+  }
+ ]
+}

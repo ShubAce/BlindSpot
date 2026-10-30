@@ -1,0 +1,654 @@
+<!-- Trimmed from https://ews.tropmet.res.in/dss/ fetched 2026-10-30 (IITM Pune, all rights reserved); test fixture only. -->
+<p style="FONT-WEIGHT: bold; font-size: 18px; text-align: justify">Disclaimer: Please note that the contribution of stubble burning to Delhi's PM2.5 concentration for a particular day is determined using active fire count data from the VIIRS satellite-based instrument received on the evening of the previous day.  The uncertainty especially related to the detection of fire events from satellites, will be carried forward in the estimated contribution of stubble burning to Delhi's PM2.5 pollution. </p>
+<p style="FONT-WEIGHT: bold; font-size: 18px;">The forecast for the contribution of stubble burning to Delhi's PM2.5 concentration over the next three days relies on climatological data for fire count and emissions.</p>
+<script type="text/javascript">
+            const jhajjar = ['jhajjar Energy : 12', 'jhajjar Transport :12']; 
+            //setup
+            const data = {
+                labels:["2026-10-30","2026-10-31","2026-11-01","2026-11-02"],
+
+                datasets: [ 
+                    {
+                        label: 'Delhi Energy',
+                        backgroundColor: "#5833FF",
+                        borderColor: "#5833FF",
+                        borderWidth:2,
+                        //barThickness: 120,
+                        stack: "Base",
+                        data:[1.798875,1.4557083333333,1.1837916666667,1.7432916666667],
+                    },
+                    {
+                        label: 'Delhi Transport',
+                        backgroundColor: "#e9b221",
+                        borderColor: "#e9b221",
+                        borderWidth:2,
+                        //barThickness: 120,
+                        stack: "Base",
+                        data:[17.8135,16.353625,13.386375,18.1085],
+                    },
+                    {
+                        label: 'Delhi & peripheral Industries',
+                        backgroundColor: "#e05a74",
+                        borderColor: "#e05a74",
+                        borderWidth:2,
+                        //barThickness: 120,
+                        stack: "Base",
+                        data:[3.549625,2.9824583333333,2.6776666666667,3.9197083333333],
+                    },
+                    {
+                        label: 'Delhi Waste burning',
+                        backgroundColor: "#c7c50c",
+                        borderColor: "#c7c50c",
+                        borderWidth:2,
+                        //barThickness: 120,
+                        stack: "Base",
+                        data:[1.58075,1.398375,1.206375,1.678875],
+                    },
+                    {
+                        label: 'Delhi Construction',
+                        backgroundColor: "#9ae3ae",
+                        borderColor: "#9ae3ae",
+                        borderWidth:2,
+                        //barThickness: 120,
+                        stack: "Base",
+                        data:[2.3070416666667,2.1135833333333,1.8760833333333,2.5632916666667],
+                    },
+                    {
+                        label: 'Delhi Road Dust',
+                        backgroundColor: "#FF5833",
+                        borderColor: "#FF5833",
+                        borderWidth:2,
+                        //barThickness: 120,
+                        stack: "Base",
+                        data:[1.2498333333333,1.1439166666667,0.98654166666667,1.3438333333333],
+                    },
+                    {
+                        label: 'Delhi Residential',
+                        backgroundColor: "#088996",
+                        borderColor: "#088996",
+                        borderWidth:2,
+                        //barThickness: 120,
+                        stack: "Base",
+                        data:[4.67825,4.1230416666667,3.345,4.6084583333333],
+                    },
+                    {
+                        label: 'Delhi Other Sectors',
+                        backgroundColor: "#8F63B6",
+                        borderColor: "#8F63B6",
+                        borderWidth:2,
+                        //barThickness: 120,
+                        stack: "Base",
+                        data:[1.1959583333333,1.0845833333333,0.900375,1.2475416666667],
+                    },
+                    {
+                        label: 'Karnal',
+                        backgroundColor: "#ffff00",
+                        borderColor: "#ffff00",
+                        borderWidth:2,
+                        //barThickness: 120,
+                        stack: "Base",
+                        data:[0.020541666666667,0.11425,0.56975,0.60241666666667],
+                    },
+                    {
+                        label: 'Muzaffarnagar',
+                        backgroundColor: "#f5d98f",
+                        borderColor: "#f5d98f",
+                        borderWidth:2,
+                        //barThickness: 120,
+                        stack: "Base",
+                        data:[2.1696666666667,0.43116666666667,0.47441666666667,0.71854166666667],
+                    },
+                    {
+                        label: 'Meerut',
+                        backgroundColor: "#c109e5",
+                        borderColor: "#c109e5",
+                        borderWidth:2,
+                        //barThickness: 120,
+                        stack: "Base",
+                        data:[2.009875,0.50875,0.33966666666667,0.60895833333333],
+                    },
+                    {
+                        label: 'Ghaziabad',
+                        backgroundColor: "#ad2e63",
+                        borderColor: "#ad2e63",
+                        borderWidth:2,
+                        //barThickness: 120,
+                        stack: "Base",
+                        data:[4.4856666666667,2.126625,1.33475,3.304],
+                    },
+                    {
+                        label: 'Bulandshahr',
+                        backgroundColor: "#4ebeee",
+                        borderColor: "#4ebeee",
+                        borderWidth:2,
+                        //barThickness: 120,
+                        stack: "Base",
+                        data:[2.5785833333333,2.2852916666667,0.449375,0.61104166666667],
+                    },
+                    {
+                        label: 'Gautam Buddha Nagar',
+                        backgroundColor: "#07950f",
+                        borderColor: "#07950f",
+                        borderWidth:2,
+                        //barThickness: 120,
+                        stack: "Base",
+                        data:[7.0542083333333,3.77925,1.6409583333333,3.5989583333333],
+                    },
+                    {
+                        label: 'Faridabad',
+                        backgroundColor: "#c7b6fc",
+                        borderColor: "#c7b6fc",
+                        borderWidth:2,
+                        //barThickness: 120,
+                        stack: "Base",
+                        data:[8.3894583333333,4.304875,0.98045833333333,1.9312083333333],
+                    },
+                    {
+                        label: 'Bharatpur',
+                        backgroundColor: "#8c8b87",
+                        borderColor: "#8c8b87",
+                        borderWidth:2,
+                        //barThickness: 120,
+                        stack: "Base",
+                        data:[0.961,0.14579166666667,0.033083333333333,0.010958333333333],
+                    },
+                    {
+                        label: 'Alwar',
+                        backgroundColor: "#cca768",
+                        borderColor: "#cca768",
+                        borderWidth:2,
+                        //barThickness: 120,
+                        stack: "Base",
+                        data:[0.1085,0.92420833333333,0.074833333333333,0.088],
+                    },
+                    {
+                        label: 'Mahendergarh',
+                        backgroundColor: "#812f8b",
+                        borderColor: "#812f8b",
+                        borderWidth:2,
+                        //barThickness: 120,
+                        stack: "Base",
+                        data:[0.018208333333333,0.39483333333333,0.048,0.40554166666667],
+                    },
+                    {
+                        label: 'Jhajjar',
+                        backgroundColor: "#0071bd",
+                        borderColor: "#0071bd",
+                        borderWidth:2,
+                        //barThickness: 120,
+                        stack: "Base",
+                        data:[2.5591666666667,5.0200416666667,4.711375,5.31425],
+                    },
+                    {
+                        label: 'Rohtak',
+                        backgroundColor: "#4d2e28",
+                        borderColor: "#4d2e28",
+                        borderWidth:2,
+                        //barThickness: 120,
+                        stack: "Base",
+                        data:[0.26016666666667,0.99433333333333,2.32275,1.154875],
+                    },
+                    {
+                        label: 'Sonipat',
+                        backgroundColor: "#e78598",
+                        borderColor: "#e78598",
+                        borderWidth:2,
+                        //barThickness: 120,
+                        stack: "Base",
+                        data:[1.1800833333333,1.0575833333333,3.0685833333333,3.533125],
+                    },
+                    {
+                        label: 'Panipat',
+                        backgroundColor: "#7798ab",
+                        borderColor: "#7798ab",
+                        borderWidth:2,
+                        //barThickness: 120,
+                        stack: "Base",
+                        data:[0.626875,0.45929166666667,1.1082916666667,2.637125],
+                    },
+                    {
+                        label: 'Bagpat',
+                        backgroundColor: "#ffa282",
+                        borderColor: "#ffa282",
+                        borderWidth:2,
+                        //barThickness: 120,
+                        stack: "Base",
+                        data:[1.7502083333333,0.73604166666667,0.732,2.2773333333333],
+                    },
+                    {
+                        label: 'Gurgaon',
+                        backgroundColor: "#9be979",
+                        borderColor: "#9be979",
+                        borderWidth:2,
+                        //barThickness: 120,
+                        stack: "Base",
+                        data:[6.3965833333333,6.5629583333333,1.810375,3.7453333333333],
+                    },
+                    {
+                        label: 'Rewari',
+                        backgroundColor: "#fe2600",
+                        borderColor: "#fe2600",
+                        borderWidth:2,
+                        //barThickness: 120,
+                        stack: "Base",
+                        data:[0.15766666666667,0.673875,0.049,0.554],
+                    },
+                    {
+                        label: 'Bhiwani',
+                        backgroundColor: "#d8ab94",
+                        borderColor: "#d8ab94",
+                        borderWidth:2,
+                        //barThickness: 120,
+                        stack: "Base",
+                        data:[0.030208333333333,0.882875,0.83733333333333,0.83083333333333],
+                    },
+                    {
+                        label: 'Jind',
+                        backgroundColor: "#6f7922",
+                        borderColor: "#6f7922",
+                        borderWidth:2,
+                        //barThickness: 120,
+                        stack: "Base",
+                        data:[0.0039583333333333,0.386125,1.549625,0.39833333333333],
+                    },
+                    {
+                        label: 'Stubble Burning',
+                        backgroundColor: "#a31430",
+                        borderColor: "#a31430",
+                        borderWidth:2,
+                        //barThickness: 120,
+                        stack: "Base",
+                        data:[1.749125,19.161875,33.486166666667,13.404375],
+                    },
+                    {
+                        label: 'Others',
+                        backgroundColor: "rgb(189,223,228)",
+                        borderColor: "rgb(189,223,228)",
+                        borderWidth:2,
+                        //barThickness: 120,
+                        stack: "Base",
+                        data:[23.316416666667,18.394666666667,18.817,19.057291666667],
+                    },
+                    
+                                        
+                ]
+            };
+            //plugin
+            const chartAreaBorder = {
+                id: 'chartAreaBorder',
+                beforeDraw(chart, args, options) {
+                    const {ctx, chartArea: {left, top, width, height}} = chart;
+                    ctx.save();
+                    ctx.strokeStyle = options.borderColor;
+                    ctx.lineWidth = options.borderWidth;
+                    ctx.setLineDash(options.borderDash || []);
+                    ctx.lineDashOffset = options.borderDashOffset;
+                    ctx.strokeRect(left, top, width, height);
+                    ctx.restore();
+                }
+            };
+
+            const logo = new Image();
+            logo.src = 'img-logo/clogo.png';
+
+            const logoImage = {
+                id: 'logoImage',
+                beforeDraw(chart, args, options) {
+                    const {ctx, chartArea: {left, top, width, height}} = chart;
+                    const logowidth = 47;
+                    const logoheight = 44;
+                    ctx.save();
+                    //ctx.globalAlpha = 0.5;
+                    if (logo.complete) {
+                        ctx.drawImage(logo, ctx.canvas.offsetWidth - logowidth-5, top+5, logowidth, logoheight);
+                    } else {
+                        logo.onload = () => chart.draw();
+                    }
+                    ctx.restore();
+                }
+            };
+        //    const tooltip ={
+//            callbacks: 
+//                title:function(context){
+//                    console.log(context);
+//            }
+//            };
+            //config
+            const config = {
+                type: 'bar',
+                data,
+                options: {
+                    maintainAspectRatio:true,
+                    animation:true,
+                    plugins: { 
+//                        tooltip:{
+//                            callbacks: {
+//                                afterBody: function(context){
+//                                    if(context[0].datasetIndex === 18){
+//                                        return jhajjar;
+//                                    }
+//                                    //console.log(context[0].datasetIndex);
+//                                }
+//                            }
+//                        },
+						tooltip:{
+                            callbacks: {
+                                title:function(context){
+                                console.log(context[0].label);
+                                return context[0].label.substr(0,11);
+                                
+								}
+							}
+                        },
+                        legend: {
+                            display: false,
+                            position: 'bottom',
+
+                            labels: {
+                                color: 'black',
+                                boxWidth: 10,
+                                font: {
+                                    size: 10
+                                }
+                            }
+                        },
+                        title: {
+                            display: false,
+                            align: 'center',
+                            color: 'black',
+                            font: {
+                                size: 12,
+                                family: 'cabin',
+                                weight: 'bold',
+                                style: 'italic'
+                            },
+                            text: ''
+                        },
+                        chartAreaBorder: {
+                            borderColor: 'black',
+                            borderWidth: 1,
+                            //borderDash: [5, 5],
+                            //borderDashOffset: 2,
+                        }
+                    },
+                    responsive: true,
+                    scales: {
+                        y: {
+                            stacked: true,
+                            min : 0,
+                            max: 100,
+                            grid: {
+                                display: false,
+                                tickColor: 'black'
+                            },
+                            title: {
+                                display: true,
+                                text: '% contribution',
+                                color: 'black',
+                                font: {
+                                    family: 'cabin',
+                                    size: 16,
+                                    style: 'normal',
+                                    lineHeight: 1.2
+                                },
+
+                            },
+                            ticks: {
+                                //maxTicksLimit: 0,
+                                color: 'black',
+                            }
+                        },
+                        x: {
+                            offset: true,
+                            stacked: true,
+                            grid: {
+                                display: false,
+                                tickColor: 'black'
+                            },
+                            type: 'timeseries',
+                               time: {
+                                    unit: 'day'
+                                },
+                            title: {
+                                display: true,
+                                text: 'Date',
+                                color: 'black',
+                                font: {
+                                    family: 'cabin',
+                                    size: 16,
+                                    style: 'normal',
+                                    lineHeight: 1.2
+                                },
+                            },
+                            ticks: {
+
+                                autoSkip: true,
+                                autoSkipPadding: 80,
+                                //padding: 5,
+                                maxRotation: 0,
+                                minRotation: 0,
+                                //stepSize: 25,
+                                maxTicksLimit: 0,
+                                source: 'data',
+                                color: 'black',
+                                align: 'start'
+                            }
+                        }
+
+                    }
+
+                },
+                plugins: [chartAreaBorder, logoImage]
+            };
+
+            //init or render
+            const myChart = new Chart(
+                    document.getElementById("chartjs_bar_mean"),
+                    config
+                    );
+                    
+                    function updateAll(selectall) {
+                    let selectallcheckbox1 = document.getElementById('selectallcheckbox1');
+                    let checkboxes = document.querySelectorAll('.mean1');
+                    if (selectall.checked === false) {
+                        for (let i = 0; i < checkboxes.length; i++) {
+                            checkboxes[i].checked = false;
+                            myChart.hide(i);
+                        }
+                    }
+                    ;
+                    if (selectall.checked === true) {
+                        for (let i = 0; i < checkboxes.length; i++) {
+                            checkboxes[i].checked = true;
+                            myChart.show(i);
+                        }
+                    }
+                    ;
+                }
+                ;
+
+                function checkboxSelectAllChecker() {
+                    let selectallcheckbox1 = document.getElementById('selectallcheckbox1');
+                    let checkboxes = document.querySelectorAll('.mean1');
+                    let x = 0;
+                    for (let i = 0; i <= checkboxes.length - 1; i++) {
+                        if (checkboxes[i].checked === true) {
+                            x++;
+                        }
+                    }
+                    ;
+                    if (x === checkboxes.length) {
+                        selectallcheckbox1.checked = true;
+                    } else {
+                        selectallcheckbox1.checked = false;
+                    }
+
+                }
+                ;
+
+                function updateChart(dataset) {
+                    const isDataShown = myChart.isDatasetVisible(dataset.value);
+                    if (isDataShown === false) {
+                        myChart.show(dataset.value);
+                    }
+                    ;
+                    if (isDataShown === true) {
+                        myChart.hide(dataset.value);
+                    }
+                    ;
+                    checkboxSelectAllChecker();
+                }
+                ;
+			</script>
+<script type="text/javascript">
+            //setup
+            const data2 = {
+                labels:["2026-10-03 12:00:00","2026-10-04 12:00:00","2026-10-06 12:00:00","2026-10-07 12:00:00","2026-10-08 12:00:00","2026-10-09 12:00:00","2026-10-10 12:00:00","2026-10-11 12:00:00","2026-10-12 12:00:00","2026-10-13 12:00:00","2026-10-14 12:00:00","2026-10-15 12:00:00","2026-10-16 12:00:00","2026-10-17 12:00:00","2026-10-18 12:00:00","2026-10-19 12:00:00","2026-10-20 12:00:00","2026-10-21 12:00:00","2026-10-22 12:00:00","2026-10-23 12:00:00","2026-10-24 12:00:00","2026-10-25 12:00:00","2026-10-26 12:00:00","2026-10-27 12:00:00","2026-10-28 12:00:00","2026-10-29 12:00:00","2026-10-30 12:00:00"],
+
+                datasets: [            
+                    {
+                        label: 'Stubble Burning',
+                        backgroundColor: "#a31430",
+                        borderWidth:1,
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 0,
+                        pointHoverRadius: 5,
+                        pointHitRadius:20,
+                        stack: "Base",
+                        data:[0.00158,0.02979,0.32413,0.11096,0.15729,0.07579,0.18638,0.37258,0.28625,0.61371,0.94325,0.645,0.52358,0.42213,0.20879,0.65525,4.04575,3.90354,4.14775,5.16429,4.09513,5.21192,4.68429,1.56258,0.97542,0.98258,1.74913],
+                    },
+                    
+                ]
+            };
+            
+
+            //config
+            const config2 = {
+                type: 'bar',
+                data: data2,
+                options: {
+                        maintainAspectRatio:true,
+                        animation:false,
+                    plugins: {
+                        tooltip:{
+                            callbacks: {
+                                title:function(context){
+                                console.log(context[0].label);
+                                return context[0].label.substr(0,12);
+                                
+								}
+							}
+                        },
+                        legend: {
+                            display: false,
+                            position: 'right',
+
+                            labels: {
+                                color: 'black',
+                                boxWidth: 10,
+                                font: {
+                                    size: 10
+                                }
+                            }
+                        },
+                        title: {
+                            display: false,
+                            align: 'center',
+                            color: 'black',
+                            font: {
+                                size: 12,
+                                family: 'cabin',
+                                weight: 'bold',
+                                style: 'italic'
+                            },
+                            text: 'Fractional contribution to PM2.5 in Delhi'
+                        },
+                        chartAreaBorder: {
+                            borderColor: 'black',
+                            borderWidth: 1,
+                            //borderDash: [5, 5],
+                            //borderDashOffset: 2,
+                        }
+                    },
+                    responsive: true,
+                    scales: {
+                        y: {
+                            values: '0:100:10',
+                            stacked: true,
+                            min : 0,
+                            //max: 35,
+							max: 50,
+                            grid: {
+                                display: false,
+                                tickColor: 'black'
+                            },
+                            title: {
+                                display: true,
+                                text: ' % contribution',
+                                color: 'black',
+                                font: {
+                                    family: 'cabin',
+                                    size: 16,
+                                    style: 'normal',
+                                    lineHeight: 1.2
+                                },
+
+                            },
+                            ticks: {
+                                //maxTicksLimit: 0,
+                                color: 'black',
+                            }
+                        },
+                        x: {
+                            offset: true,
+                           //stacked: true,
+                            grid: {
+                                drawOnChartArea: false,                                
+                                tickColor: 'black'
+                            },
+                            type: 'timeseries',
+                               time: {
+                                    unit: 'day'
+                                },
+                            title: {
+                                display: true,
+                                text: 'Date',
+                                color: 'black',
+                                font: {
+                                    family: 'cabin',
+                                    size: 16,
+                                    style: 'normal',
+                                    lineHeight: 1.2
+                                },
+                            },
+                            ticks: {
+
+                                autoSkip: true,
+                                autoSkipPadding: 80,
+                                //padding: 5,
+                                maxRotation: 0,
+                                minRotation: 0,
+                                //stepSize: 25,
+                                //maxTicksLimit: 0,
+                                source: 'data',
+                                color: 'black',
+                                align: 'end'
+                            }
+                        }
+
+                    }
+
+                },
+                plugins: [chartAreaBorder, logoImage]
+            };
+
+            //init or render
+            const myChart2 = new Chart(
+                    document.getElementById("stack_chartjs_bar1"),
+                    config2
+                    );
+
+
+           
+        </script>

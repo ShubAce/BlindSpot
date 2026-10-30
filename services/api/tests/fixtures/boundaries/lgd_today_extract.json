@@ -1,0 +1,243 @@
+{
+ "observed_on": "2026-10-30",
+ "states": [
+  {
+   "state_code": "3",
+   "state_version": 1,
+   "state_name": "Punjab",
+   "state_name_local": "PUNJAB",
+   "state_census_2001_code": "3",
+   "state_census_2011_code": "3",
+   "state_or_ut": "S"
+  },
+  {
+   "state_code": "6",
+   "state_version": 1,
+   "state_name": "Haryana",
+   "state_name_local": "HARYANA",
+   "state_census_2001_code": "6",
+   "state_census_2011_code": "6",
+   "state_or_ut": "S"
+  }
+ ],
+ "districts": [
+  {
+   "district_code": "43",
+   "district_name": "Sangrur",
+   "state_code": "3",
+   "state_name": "Punjab",
+   "district_census_2001_code": "16",
+   "district_census_2011_code": "53"
+  },
+  {
+   "district_code": "59",
+   "district_name": "Bhiwani",
+   "state_code": "6",
+   "state_name": "Haryana",
+   "district_census_2001_code": "13",
+   "district_census_2011_code": "81"
+  },
+  {
+   "district_code": "63",
+   "district_name": "Hisar",
+   "state_code": "6",
+   "state_name": "Haryana",
+   "district_census_2001_code": "12",
+   "district_census_2011_code": "80"
+  },
+  {
+   "district_code": "65",
+   "district_name": "Jind",
+   "state_code": "6",
+   "state_name": "Haryana",
+   "district_census_2001_code": "9",
+   "district_census_2011_code": "77"
+  },
+  {
+   "district_code": "792",
+   "district_name": "Hansi",
+   "state_code": "6",
+   "state_name": "Haryana",
+   "district_census_2001_code": "0",
+   "district_census_2011_code": "0"
+  }
+ ],
+ "subdistricts": [
+  {
+   "subdistrict_code": "270",
+   "subdistrict_version": 7,
+   "subdistrict_name": "Dhuri",
+   "district_code": "43",
+   "district_name": "Sangrur",
+   "state_code": "3",
+   "state_name": "Punjab",
+   "subdistrict_census_2001_code": "3",
+   "subdistrict_census_2011_code": "270"
+  },
+  {
+   "subdistrict_code": "271",
+   "subdistrict_version": 3,
+   "subdistrict_name": "Sangrur",
+   "district_code": "43",
+   "district_name": "Sangrur",
+   "state_code": "3",
+   "state_name": "Punjab",
+   "subdistrict_census_2001_code": "4",
+   "subdistrict_census_2011_code": "271"
+  },
+  {
+   "subdistrict_code": "272",
+   "subdistrict_version": 2,
+   "subdistrict_name": "Sunam",
+   "district_code": "43",
+   "district_name": "Sangrur",
+   "state_code": "3",
+   "state_name": "Punjab",
+   "subdistrict_census_2001_code": "5",
+   "subdistrict_census_2011_code": "272"
+  },
+  {
+   "subdistrict_code": "273",
+   "subdistrict_version": 1,
+   "subdistrict_name": "Lehra",
+   "district_code": "43",
+   "district_name": "Sangrur",
+   "state_code": "3",
+   "state_name": "Punjab",
+   "subdistrict_census_2001_code": "0",
+   "subdistrict_census_2011_code": "273"
+  },
+  {
+   "subdistrict_code": "274",
+   "subdistrict_version": 1,
+   "subdistrict_name": "Moonak",
+   "district_code": "43",
+   "district_name": "Sangrur",
+   "state_code": "3",
+   "state_name": "Punjab",
+   "subdistrict_census_2001_code": "6",
+   "subdistrict_census_2011_code": "274"
+  },
+  {
+   "subdistrict_code": "393",
+   "subdistrict_version": 2,
+   "subdistrict_name": "Adampur",
+   "district_code": "63",
+   "district_name": "Hisar",
+   "state_code": "6",
+   "state_name": "Haryana",
+   "subdistrict_census_2001_code": "1",
+   "subdistrict_census_2011_code": "393"
+  },
+  {
+   "subdistrict_code": "394",
+   "subdistrict_version": 4,
+   "subdistrict_name": "Hisar",
+   "district_code": "63",
+   "district_name": "Hisar",
+   "state_code": "6",
+   "state_name": "Haryana",
+   "subdistrict_census_2001_code": "2",
+   "subdistrict_census_2011_code": "394"
+  },
+  {
+   "subdistrict_code": "395",
+   "subdistrict_version": 4,
+   "subdistrict_name": "Narnaund",
+   "district_code": "792",
+   "district_name": "Hansi",
+   "state_code": "6",
+   "state_name": "Haryana",
+   "subdistrict_census_2001_code": "3",
+   "subdistrict_census_2011_code": "395"
+  },
+  {
+   "subdistrict_code": "396",
+   "subdistrict_version": 3,
+   "subdistrict_name": "Hansi",
+   "district_code": "792",
+   "district_name": "Hansi",
+   "state_code": "6",
+   "state_name": "Haryana",
+   "subdistrict_census_2001_code": "4",
+   "subdistrict_census_2011_code": "396"
+  },
+  {
+   "subdistrict_code": "6408",
+   "subdistrict_version": 3,
+   "subdistrict_name": "Bass",
+   "district_code": "792",
+   "district_name": "Hansi",
+   "state_code": "6",
+   "state_name": "Haryana",
+   "subdistrict_census_2001_code": "0",
+   "subdistrict_census_2011_code": "0"
+  },
+  {
+   "subdistrict_code": "6419",
+   "subdistrict_version": 2,
+   "subdistrict_name": "Kheri Jalab St",
+   "district_code": "792",
+   "district_name": "Hansi",
+   "state_code": "6",
+   "state_name": "Haryana",
+   "subdistrict_census_2001_code": "0",
+   "subdistrict_census_2011_code": "0"
+  },
+  {
+   "subdistrict_code": "6440",
+   "subdistrict_version": 2,
+   "subdistrict_name": "Barwala",
+   "district_code": "63",
+   "district_name": "Hisar",
+   "state_code": "6",
+   "state_name": "Haryana",
+   "subdistrict_census_2001_code": "0",
+   "subdistrict_census_2011_code": "0"
+  },
+  {
+   "subdistrict_code": "6441",
+   "subdistrict_version": 1,
+   "subdistrict_name": "Uklana St",
+   "district_code": "63",
+   "district_name": "Hisar",
+   "state_code": "6",
+   "state_name": "Haryana",
+   "subdistrict_census_2001_code": "0",
+   "subdistrict_census_2011_code": "0"
+  },
+  {
+   "subdistrict_code": "6442",
+   "subdistrict_version": 1,
+   "subdistrict_name": "Balsamand St",
+   "district_code": "63",
+   "district_name": "Hisar",
+   "state_code": "6",
+   "state_name": "Haryana",
+   "subdistrict_census_2001_code": "0",
+   "subdistrict_census_2011_code": "0"
+  },
+  {
+   "subdistrict_code": "6852",
+   "subdistrict_version": 1,
+   "subdistrict_name": "Dirba",
+   "district_code": "43",
+   "district_name": "Sangrur",
+   "state_code": "3",
+   "state_name": "Punjab",
+   "subdistrict_census_2001_code": "0",
+   "subdistrict_census_2011_code": "0"
+  },
+  {
+   "subdistrict_code": "6855",
+   "subdistrict_version": 2,
+   "subdistrict_name": "Bhawanigarh",
+   "district_code": "43",
+   "district_name": "Sangrur",
+   "state_code": "3",
+   "state_name": "Punjab",
+   "subdistrict_census_2001_code": "0",
+   "subdistrict_census_2011_code": "0"
+  }
+ ]
+}

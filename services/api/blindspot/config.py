@@ -47,6 +47,9 @@ class Settings(BaseSettings):
 
     database_url: str = LOCAL_DATABASE_URL  # the Docker PostGIS from infra/docker-compose.yml
     enable_scheduler: bool = False  # run the job scheduler inside the API process
+    # Create missing tables when the API starts. Serverless deployments (Vercel) set this to false:
+    # every cold start would otherwise run create_all, and the tables already exist there.
+    init_db_on_startup: bool = True
     cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:3000"]
     cache_dir: Path = REPO_ROOT / "data" / "cache"  # downloads and rendered imagery (gitignored)
     aoi_bbox: Annotated[BBox, NoDecode] = (73.8, 27.6, 77.7, 32.6)  # Punjab + Haryana + Delhi

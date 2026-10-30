@@ -1,26 +1,408 @@
 @import "tailwindcss";
 
+/* ==============================================================================================
+   BlindSpot tokens. One palette and one type system, two surfaces:
+   - the page (landing, method, bulletin): direction "place carries it" (.taste-skill/direction.json),
+     warm black #0c0a08 = the char of a burnt field, gold #c9a45a = parali straw, white = smoke.
+   - the app (mission control, case files): style "data-terminal" (.taste-skill/app/direction.json),
+     scoped to [data-surface="app"], with the page palette and type kept.
+
+   Contrast, WCAG 2 ratios computed for these exact values (scratch script, 2026-10-30):
+   page  ink #fff on bg 19.76:1, on surface 18.18:1 · muted #8f8a84 on bg 5.78:1, on surface 5.31:1
+         accent #c9a45a on bg 8.41:1 (a link) · accent-ink #0c0a08 on accent 8.41:1 (the button label)
+   app   on ground / surface / raised / active:
+         text #fff 18.37 / 19.76 / 17.65 / 16.15 · muted #b6b0a7 8.53 / 9.18 / 8.20 / 7.50
+         faint #958f87 5.73 / 6.17 / 5.51 / 5.04 (every text tier clears 4.5:1 on every surface)
+         accent 7.82 / 8.41 / 7.51 / 6.88 · positive #5fb38d 7.28-6.40 · negative #ec6a7c 6.05-5.32
+         warning #e2a948 8.75-7.69 · fire #ea5a2e as text 5.25 / 5.65 / 5.04 / 4.62
+         pills (ink on tint): positive 7.89 · negative 6.69 · warning 8.32 · neutral 10.76
+         lines: border vs ground 1.23, vs surface 1.32 · rule vs surface 1.15 · control vs surface 2.05
+   Data marks (map, charts) are validated with the dataviz skill's validator; see
+   src/components/map/palette.ts for the numbers. Keep the --mark-* values below equal to it.
+
+   Figures: Work Sans has a real `tnum` feature (checked in the latin subset Google serves: default
+   digits have 9 different advances, with tnum all 604 units), so tabular figures stay in the text
+   face; no monospace outside code.
+   ============================================================================================== */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: dark;
+
+  /* page palette */
+  --bg: #0c0a08;
+  --surface: #181512;
+  --ink: #ffffff;
+  --muted: #8f8a84;
+  --accent: #c9a45a;
+  --accent-ink: #0c0a08;
+
+  /* data marks, shared by the map legend, charts and text beside them */
+  --mark-fire: #ea5a2e; /* VIIRS / MODIS detections and GK-2A fire pixels */
+  --mark-unseen: #c9a45a; /* candidate unseen burns: the accent family */
+  --mark-alerted: #7d776f; /* burns a fire alert explains: muted ink */
+  --mark-smoke: #fbf8f3; /* smoke trails, at low alpha */
+  --mark-straw: #f3dfa6; /* harvested, not yet burnt: the top of the risk ramp */
+
+  /* type: next/font sets --font-anton and --font-work-sans on <html> */
+  --face-display: var(--font-anton), Impact, "Arial Narrow", sans-serif;
+  --face-text: var(--font-work-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --step-small: clamp(0.8125rem, 0.79rem + 0.1vw, 0.875rem);
+  --step-body: clamp(1.0625rem, 1rem + 0.25vw, 1.1875rem);
+  --step-lead: clamp(1.25rem, 1.1rem + 0.7vw, 1.625rem);
+  --step-head: clamp(2.5rem, 1.2rem + 5vw, 5.5rem);
+  /* the h1 on the hero rail: the name with what it is, 32-40px (hero blueprint) */
+  --step-rail: clamp(2rem, 2.6vw, 2.5rem);
+  /* one very large moment (the footer sign-off) */
+  --step-display: clamp(3rem, 1rem + 9vw, 9rem);
+
+  /* frame */
+  --margin: clamp(1rem, 2.2vw, 2rem);
+  --gutter: clamp(1rem, 2vw, 2rem);
+  --section: clamp(5rem, 12vw, 13rem);
+  --radius: 0px;
+
+  /* motion (references/motion.md) */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.76, 0, 0.24, 1);
+  --ease-soft: cubic-bezier(0.33, 1, 0.68, 1);
+  --ease-exit: cubic-bezier(0.55, 0.055, 0.675, 0.19);
+  --t-press: 140ms;
+  --t-hover: 180ms;
+  --t-ui: 240ms;
+  --t-reveal: 800ms;
+  --t-open: 1200ms;
+  --t-crossfade: 1600ms; /* the signature move: photographs crossfade over 1.6 s, holding 5-6 s */
+  --stagger-line: 90ms;
+  --stagger-item: 70ms;
 }
 
+/* The app surface: mission control and the screens worked in. Cards darker than the ground (the
+   data-terminal idea), separated by a 1px line, never a shadow. */
+[data-surface="app"] {
+  --ground: #17140f;
+  --surface: #0c0a08;
+  --raised: #1c1814;
+  --active: #25201a;
+  --border: #2b2620;
+  --rule: #1f1b16;
+  --control: #4a443c;
+  --text: #ffffff;
+  --ink: var(--text);
+  --muted: #b6b0a7;
+  --faint: #958f87;
+  --accent: #c9a45a; /* the one selection mark: a 1px line as wide as its label */
+  --primary: #ffffff;
+  --primary-ink: #0c0a08;
+  --positive: #5fb38d;
+  --negative: #ec6a7c;
+  --warning: #e2a948;
+  --pill-positive-bg: #14231b;
+  --pill-positive-ink: #6fc59d;
+  --pill-negative-bg: #2d161b;
+  --pill-negative-ink: #f08292;
+  --pill-warning-bg: #2a2112;
+  --pill-warning-ink: #e8b35a;
+  --pill-neutral-bg: #25201a;
+  --pill-neutral-ink: #d8d2ca;
+
+  /* charts (src/lib/charts.ts reads these). One subject keeps one hue across the screen: fires are
+     always --mark-fire, unseen burns always --mark-unseen. */
+  --chart-1: #f4efe8; /* the main series in ink */
+  --chart-2: var(--mark-fire);
+  --chart-3: var(--mark-unseen);
+  --chart-4: #8f8a84;
+  --chart-muted: #4d463e;
+  --chart-mark: var(--text);
+  --chart-span: 0.12;
+  --chart-track: #3a342d;
+  --chart-window: rgb(244 239 232 / 0.16); /* a satellite's observation window, lit */
+  --grid: #2b2620;
+  --axis-ink: var(--faint);
+
+  /* type: app type is not display type (titles 18-32px, no figure at 48px) */
+  --fs-title: 26px;
+  --fs-section: 20px;
+  --fs-kpi: 20px;
+  --fs-body: 13px;
+  --fs-small: 12px;
+
+  /* shape and density (dense: 13px body, 42px table rows, 28px list rows) */
+  --radius-card: 6px;
+  --radius-control: 4px;
+  --radius-chip: 4px;
+  --control-height: 32px;
+  --row-height: 42px;
+  --list-row: 28px;
+  --rail-width: 50px;
+  --gap: 24px;
+  --pad: 32px;
+  --card-pad: 24px;
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --t-press: 120ms;
+  --t-hover: 150ms;
+  --t-ui: 200ms;
+
+  background: var(--ground);
+  color: var(--text);
+  font-family: var(--face-text);
+  font-size: var(--fs-body);
+  line-height: 20px;
+}
+
+/* Tailwind reads the tokens; only BlindSpot's palette exists (no stock zinc, no violet). */
+@theme {
+  --color-*: initial;
+}
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* transparent, current and inherit stay built in */
+  --color-white: #ffffff;
+  --color-black: #000000;
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-ground: var(--ground);
+  --color-raised: var(--raised);
+  --color-active: var(--active);
+  --color-border: var(--border);
+  --color-rule: var(--rule);
+  --color-control: var(--control);
+  --color-text: var(--text);
+  --color-faint: var(--faint);
+  --color-primary: var(--primary);
+  --color-primary-ink: var(--primary-ink);
+  --color-positive: var(--positive);
+  --color-negative: var(--negative);
+  --color-warning: var(--warning);
+  --color-fire: var(--mark-fire);
+  --color-unseen: var(--mark-unseen);
+  --color-alerted: var(--mark-alerted);
+  --color-smoke: var(--mark-smoke);
+  --color-straw: var(--mark-straw);
+  --font-display: var(--face-display);
+  --font-sans: var(--face-text);
+  --text-small: var(--step-small);
+  --text-body: var(--step-body);
+  --text-lead: var(--step-lead);
+  --text-head: var(--step-head);
+  --text-rail: var(--step-rail);
+  --text-display: var(--step-display);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  html {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--face-text);
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+  body {
+    margin: 0;
+    min-height: 100svh;
+    background: var(--bg);
+    color: var(--ink);
+    font-size: var(--step-body);
+    line-height: 1.5;
+    font-kerning: normal;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  h1,
+  h2,
+  h3 {
+    font-family: var(--face-display);
+    font-weight: 400;
+    text-wrap: balance;
+    hyphens: none;
+  }
+  p {
+    text-wrap: pretty;
+  }
+  ::selection {
+    background: var(--accent);
+    color: var(--accent-ink);
+  }
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+  }
+  /* In the app, headings are set in the text face: an app title is 18-32px, not a poster. */
+  [data-surface="app"] h1,
+  [data-surface="app"] h2,
+  [data-surface="app"] h3 {
+    font-family: var(--face-text);
+    letter-spacing: 0;
+  }
+  [data-surface="app"] h1 {
+    font-size: var(--fs-title);
+    line-height: 1.2;
+    font-weight: 600;
+  }
+  [data-surface="app"] h2 {
+    font-size: var(--fs-section);
+    line-height: 1.3;
+    font-weight: 400;
+    color: var(--muted);
+  }
+  [data-surface="app"] h3 {
+    font-size: 16px;
+    line-height: 24px;
+    font-weight: 600;
+  }
+  [data-surface="app"] :focus-visible {
+    outline-offset: 2px;
+    border-radius: var(--radius-chip);
+  }
+  [data-surface="app"] table,
+  [data-surface="app"] .num {
+    font-variant-numeric: tabular-nums;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer components {
+  /* page type steps (Anton display: tracking -0.01em, leading 0.86, uppercase) */
+  .display {
+    font-family: var(--face-display);
+    font-size: var(--step-display);
+    line-height: 0.86;
+    letter-spacing: -0.01em;
+    text-transform: uppercase;
+  }
+  .head {
+    font-family: var(--face-display);
+    font-size: var(--step-head);
+    line-height: 0.9;
+    letter-spacing: -0.01em;
+    text-transform: uppercase;
+  }
+  .lead {
+    font-size: var(--step-lead);
+    line-height: 1.35;
+    max-width: 40ch;
+  }
+  .small {
+    font-size: var(--step-small);
+    line-height: 1.45;
+  }
+  /* figures that align or update: tabular in Work Sans (verified), never monospace */
+  .nums {
+    font-variant-numeric: tabular-nums;
+  }
+  /* a missing value: an em dash in the muted ink, never at full value size */
+  .missing {
+    color: var(--muted);
+  }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  /* loading: a flat bar at the real size of what will land there, no shimmer */
+  .skeleton {
+    display: block;
+    background: var(--raised, var(--surface));
+    border-radius: 2px;
+  }
+  /* a text button (Retry, Show all): ink, underlined on hover, no box */
+  .text-button {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--text, var(--ink));
+    font: inherit;
+    font-weight: 500;
+    text-decoration: underline;
+    text-decoration-color: transparent;
+    text-underline-offset: 3px;
+    cursor: pointer;
+    transition: text-decoration-color var(--t-hover) ease;
+  }
+  .text-button:hover {
+    text-decoration-color: currentColor;
+  }
+
+  /* the one selection mark of the app: a 1px accent line exactly as wide as its label */
+  .selected-line {
+    position: relative;
+  }
+  .selected-line::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -1px;
+    height: 1px;
+    background: var(--accent);
+  }
+
+  /* deck.gl tooltip (getTooltip className): a plain box, label and value, no arrow */
+  .map-tooltip {
+    max-width: 280px;
+    padding: 6px 8px;
+    font: 12px/1.4 var(--face-text);
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+    background: var(--bg);
+    border: 1px solid var(--border, #2b2620);
+    border-radius: 4px;
+    white-space: pre-line;
+    pointer-events: none;
+  }
+
+  /* MapLibre controls in the warm-black palette: flat, opaque, no blur */
+  .maplibregl-map {
+    font-family: var(--face-text);
+  }
+  .maplibregl-ctrl.maplibregl-ctrl-attrib {
+    background: var(--bg);
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 16px;
+  }
+  .maplibregl-ctrl.maplibregl-ctrl-attrib a {
+    color: var(--muted);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .maplibregl-ctrl.maplibregl-ctrl-attrib a:hover {
+    color: var(--ink);
+  }
+  .maplibregl-ctrl-attrib.maplibregl-compact-show {
+    background: var(--bg);
+  }
+  .maplibregl-ctrl-attrib-button {
+    filter: invert(0.85);
+  }
+  .maplibregl-ctrl-group {
+    background: var(--bg);
+    border: 1px solid var(--border, #2b2620);
+    border-radius: 4px;
+    box-shadow: none;
+  }
+  .maplibregl-ctrl-group button + button {
+    border-top: 1px solid var(--border, #2b2620);
+  }
+  .maplibregl-ctrl-group button .maplibregl-ctrl-icon {
+    filter: invert(0.85);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

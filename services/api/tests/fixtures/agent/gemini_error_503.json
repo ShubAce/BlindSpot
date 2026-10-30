@@ -1,0 +1,7 @@
+{
+ "model": "gemini-3.6-flash",
+ "observed": "2026-10-30T18:17:15Z on gemini-3.6-flash, mid-stream during a bulletin call (gemini-3.8-flash had returned the same 503 at 18:17:01Z)",
+ "code": 503,
+ "status": "UNAVAILABLE",
+ "details": {"error": {"code": 503, "message": "This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.", "status": "UNAVAILABLE"}}
+}

@@ -1,0 +1,278 @@
+{
+ "question": "Why is Delhi's air bad today, and did it come from Punjab?",
+ "lang": "en",
+ "events": [
+  {
+   "type": "run",
+   "run_id": "4b5596bf82434e088419824bc5919c96",
+   "model": "gemini-3.5-flash-lite",
+   "lang": "en"
+  },
+  {
+   "type": "tool_call",
+   "id": "call_902348",
+   "name": "get_air_quality",
+   "args": {
+    "city": "Delhi"
+   }
+  },
+  {
+   "type": "tool_call",
+   "id": "call_902351",
+   "name": "trace_air_back",
+   "args": {
+    "city": "Delhi"
+   }
+  },
+  {
+   "type": "tool_call",
+   "id": "call_902354",
+   "name": "get_weather",
+   "args": {
+    "city": "Delhi"
+   }
+  },
+  {
+   "type": "tool_result",
+   "id": "call_902354",
+   "name": "get_weather",
+   "ok": false,
+   "summary": "Weather in Delhi: unavailable (/api/met/now returned HTTP 404: this data is not available yet (the endpoint is not deployed))",
+   "sources": []
+  },
+  {
+   "type": "tool_result",
+   "id": "call_902351",
+   "name": "trace_air_back",
+   "ok": false,
+   "summary": "Back-trajectories for Delhi: unavailable (/api/smoke/back returned HTTP 404: this data is not available yet (the endpoint is not deployed))",
+   "sources": []
+  },
+  {
+   "type": "tool_result",
+   "id": "call_902348",
+   "name": "get_air_quality",
+   "ok": false,
+   "summary": "Air quality in Delhi: unavailable (/api/air/latest returned HTTP 404: this data is not available yet (the endpoint is not deployed); /api/air/series returned HTTP 404: this data is not available yet (the endpoint is not deployed))",
+   "sources": []
+  },
+  {
+   "type": "tool_call",
+   "id": "call_888322",
+   "name": "get_fire_activity",
+   "args": {
+    "region": "all"
+   }
+  },
+  {
+   "type": "tool_result",
+   "id": "call_888322",
+   "name": "get_fire_activity",
+   "ok": false,
+   "summary": "Fire detections: unavailable (/api/fires returned HTTP 404: this data is not available yet (the endpoint is not deployed))",
+   "sources": []
+  },
+  {
+   "type": "tool_call",
+   "id": "call_761546",
+   "name": "get_burn_scars",
+   "args": {}
+  },
+  {
+   "type": "tool_result",
+   "id": "call_761546",
+   "name": "get_burn_scars",
+   "ok": false,
+   "summary": "Burn scars: unavailable (/api/scars/summary returned HTTP 404: this data is not available yet (the endpoint is not deployed); /api/scars returned HTTP 404: this data is not available yet (the endpoint is not deployed))",
+   "sources": []
+  },
+  {
+   "type": "tool_call",
+   "id": "call_1446378",
+   "name": "forecast_smoke",
+   "args": {}
+  },
+  {
+   "type": "tool_call",
+   "id": "call_1446381",
+   "name": "get_satellite_passes",
+   "args": {
+    "place": "Delhi"
+   }
+  },
+  {
+   "type": "tool_result",
+   "id": "call_1446378",
+   "name": "forecast_smoke",
+   "ok": false,
+   "summary": "Smoke forecast: unavailable (/api/smoke/forward returned HTTP 404: this data is not available yet (the endpoint is not deployed))",
+   "sources": []
+  },
+  {
+   "type": "tool_result",
+   "id": "call_1446381",
+   "name": "get_satellite_passes",
+   "ok": false,
+   "summary": "Satellite passes: unavailable (/api/orbits/passes returned HTTP 404: this data is not available yet (the endpoint is not deployed))",
+   "sources": []
+  },
+  {
+   "type": "thought",
+   "text": "**Assessing Available Evidence**\n\nI've determined that all the tools are returning 404 errors, indicating undeployed API endpoints in this test environment. Consequently, no useful evidence is forthcoming from the tools. My conclusion is that there is insufficient evidence to proceed with a substantive analysis at this time. I am now preparing a statement reflecting this lack of data, and specifying what data would be required to fully address the question. I am carefully reviewing the instructions to make sure I get it right.\n\n\n"
+  },
+  {
+   "type": "thought",
+   "text": "**Formulating an Evidence-Based Response**\n\nI've revised the statement, now that I have the format nailed down. I am confirming a lack of sufficient evidence, since every data-collection tool returns 404 errors. This means I'm unable to establish any findings or create even a weak conclusion at this stage. I can state what data would be required to advance: ground PM2.5 concentrations, back-trajectories from Delhi, and satellite fire activity from Punjab. I'm now documenting the 4 key data requests with their 404 responses.\n\n\n"
+  },
+  {
+   "type": "answer_delta",
+   "text": "Not enough evidence is available to determine why Delhi's air is bad today or whether it came from Punjab.\n- Ground air quality data for Delhi could not be retrieved due to API errors.\n- Air back-trajectory data for Delhi could not be retrieved due"
+  },
+  {
+   "type": "answer_delta",
+   "text": " to API errors.\n- Weather data for Delhi could not be retrieved due to API errors.\n- Fire activity data"
+  },
+  {
+   "type": "answer_delta",
+   "text": " for Punjab could not be retrieved due to API errors.\nCaveat: Live tool data is currently unavailable, so air"
+  },
+  {
+   "type": "answer_delta",
+   "text": " pollution sources cannot be verified."
+  },
+  {
+   "type": "answer",
+   "text": "Not enough evidence is available to determine why Delhi's air is bad today or whether it came from Punjab.\n- Ground air quality data for Delhi could not be retrieved due to API errors.\n- Air back-trajectory data for Delhi could not be retrieved due to API errors.\n- Weather data for Delhi could not be retrieved due to API errors.\n- Fire activity data for Punjab could not be retrieved due to API errors.\nCaveat: Live tool data is currently unavailable, so air pollution sources cannot be verified.",
+   "citations": [],
+   "model": "gemini-3.5-flash-lite"
+  },
+  {
+   "type": "verification",
+   "checked": 0,
+   "verified": 0,
+   "unverified": [],
+   "passed": true,
+   "uncited": [],
+   "bad_markers": [],
+   "revised": false,
+   "first_pass_unverified": []
+  },
+  {
+   "type": "done",
+   "run_id": "4b5596bf82434e088419824bc5919c96",
+   "duration_ms": 11645,
+   "ok": true,
+   "models": [
+    "gemini-3.5-flash-lite"
+   ]
+  }
+ ],
+ "tools": [
+  {
+   "id": "call_902348",
+   "name": "get_air_quality",
+   "args": {
+    "city": "Delhi"
+   },
+   "ok": false,
+   "error": "/api/air/latest returned HTTP 404: this data is not available yet (the endpoint is not deployed); /api/air/series returned HTTP 404: this data is not available yet (the endpoint is not deployed)"
+  },
+  {
+   "id": "call_902351",
+   "name": "trace_air_back",
+   "args": {
+    "city": "Delhi"
+   },
+   "ok": false,
+   "error": "/api/smoke/back returned HTTP 404: this data is not available yet (the endpoint is not deployed)"
+  },
+  {
+   "id": "call_902354",
+   "name": "get_weather",
+   "args": {
+    "city": "Delhi"
+   },
+   "ok": false,
+   "error": "/api/met/now returned HTTP 404: this data is not available yet (the endpoint is not deployed)"
+  },
+  {
+   "id": "call_888322",
+   "name": "get_fire_activity",
+   "args": {
+    "region": "all"
+   },
+   "ok": false,
+   "error": "/api/fires returned HTTP 404: this data is not available yet (the endpoint is not deployed)"
+  },
+  {
+   "id": "call_761546",
+   "name": "get_burn_scars",
+   "args": {},
+   "ok": false,
+   "error": "/api/scars/summary returned HTTP 404: this data is not available yet (the endpoint is not deployed); /api/scars returned HTTP 404: this data is not available yet (the endpoint is not deployed)"
+  },
+  {
+   "id": "call_1446378",
+   "name": "forecast_smoke",
+   "args": {},
+   "ok": false,
+   "error": "/api/smoke/forward returned HTTP 404: this data is not available yet (the endpoint is not deployed)"
+  },
+  {
+   "id": "call_1446381",
+   "name": "get_satellite_passes",
+   "args": {
+    "place": "Delhi"
+   },
+   "ok": false,
+   "error": "/api/orbits/passes returned HTTP 404: this data is not available yet (the endpoint is not deployed)"
+  }
+ ],
+ "calls": [
+  {
+   "model": "gemini-3.5-flash-lite",
+   "chunks": [
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 17:55:30 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1774\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"function_call\":{\"id\":\"call_902348\",\"args\":{\"city\":\"Delhi\"},\"name\":\"get_air_quality\"},\"thought_signature\":\"ErIECq8EAWkUfRND11wKLyUog5rE-YPy-Pd-Q3BhK1C9hXo1T2LVxUpQZARGa3XD9upBsbrhUbcGaKbvdVulUX36jv3xCsOYhTVvf8RdnwRYSFVPlyKcdthR590SGMX5uH12EXdpNzvfF_RjMo9w0pwgYKVvR9LaaG4FYsxXGaFTp3X83J7K5aU4GzYxUA3GHDP4czic3sv7PK6ehVyCEAe62cvacj5QK61Dqv0JsLc9J3jmtiyvdugHXtTgFHFWkGp26tgkF8qesgy0H87yt_V4TEpQliJsc4D9GWK05ddz1K8pNao8Kn1veDRyZ9MrrqsqqHaAQxhDgJRo1981IHpbAOQE-AGhhWfitYWuzte6g4BpEd7dAJbH6KhAwPJynKILaahmMah3JeyR9nIPcfr4MOV0pTY2-Hrarjak6d-mx3vLF8T9-T6F1dtM2OHmkr-0uxpKE7-fQa5qd111SUWp5JwXr-gZyTjGZWqjSglqxJPpeUI5iDMiSN71qeOTmhlxwlvcsUnJLtMcJUuthiK295RIg0nFfTDa1bLFFswLa0KUk4ZQ1UdmQqWrbJ_ortoBZ1c2co_2vFpMZUhutC96Vbtl2yAFVre564zohyZ7yaJ96tuqdZzBg07v3OZVcl8LUc7FxDfTpx09sWViJ3a9r8xE-kqoTt6hzh8QQz3RiAI-YlG6Oa5YDDUNa6U005lHN8_NdWxhVBiktu6WYWtqv4DKknaNG7rF2XgWYFoUv1OTtA==\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"EdrkarW3F4KE694P-Y_fmQ0\",\"usage_metadata\":{\"candidates_token_count\":18,\"prompt_token_count\":2138,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":2138}],\"thoughts_token_count\":125,\"total_token_count\":2281}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 17:55:30 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1774\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"function_call\":{\"id\":\"call_902351\",\"args\":{\"city\":\"Delhi\"},\"name\":\"trace_air_back\"}}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"EdrkarW3F4KE694P-Y_fmQ0\",\"usage_metadata\":{\"candidates_token_count\":36,\"prompt_token_count\":2138,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":2138}],\"thoughts_token_count\":125,\"total_token_count\":2299}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 17:55:30 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1774\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"function_call\":{\"id\":\"call_902354\",\"args\":{\"city\":\"Delhi\"},\"name\":\"get_weather\"}}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"EdrkarW3F4KE694P-Y_fmQ0\",\"usage_metadata\":{\"candidates_token_count\":52,\"prompt_token_count\":2138,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":2138}],\"thoughts_token_count\":125,\"total_token_count\":2315}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 17:55:30 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1774\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\"}],\"role\":\"model\"},\"finish_reason\":\"STOP\",\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"EdrkarW3F4KE694P-Y_fmQ0\",\"usage_metadata\":{\"candidates_token_count\":52,\"prompt_token_count\":2138,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":2138}],\"thoughts_token_count\":125,\"total_token_count\":2315}}"
+   ]
+  },
+  {
+   "model": "gemini-3.5-flash-lite",
+   "chunks": [
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 17:55:31 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1392\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"function_call\":{\"id\":\"call_888322\",\"args\":{\"region\":\"all\"},\"name\":\"get_fire_activity\"},\"thought_signature\":\"EuMCCuACAWkUfRPEh3CXVPVECpoRLeWO5nk_fkoSYC4H-HK_6UO1TIjV1PEtBYmXPGW82ft1RA1Aw7etuADFQU05PSczUFcGLUmkjHi67OIWeTXEB-KeZxJv3e2QbjRRAa4pwOKjZnI8TaoGKWCadO2CqYQg22VLu4kF5moPv06XWeUqMsE44zloNH6w2EQeXOzsp4Jt5Ci_uxj-MGBl5Mqj0CDcbe21Bs3dZ9up6IiykGQfNp4l---337XG39E_zS0yNc2CZj94mOE7Kf2D6bOdckfXg2G988BeeP__qzsm900LXPzvSutK6QDCkA9yt1JKjQAzUC2x4D4Dq3zv1cnWX8lHLJECDbmCAvcKWV3TW1Wm5epYtNfVImAccsnJGJC5puNlxVh__d69VMsZohZHs6y7rT7g19p1RxNMmJFY3ReSeOKZ8bBf6hcg-9uvVjnV2ZQeuPN5SU8n_LW5-ZLmTvnH2Q==\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"EtrkarrIKIbs694Pos3xWQ\",\"usage_metadata\":{\"candidates_token_count\":18,\"prompt_token_count\":2333,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":2333}],\"thoughts_token_count\":67,\"total_token_count\":2418}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 17:55:31 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1392\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\"}],\"role\":\"model\"},\"finish_reason\":\"STOP\",\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"EtrkarrIKIbs694Pos3xWQ\",\"usage_metadata\":{\"candidates_token_count\":18,\"prompt_token_count\":2458,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":2458}],\"thoughts_token_count\":67,\"total_token_count\":2543}}"
+   ]
+  },
+  {
+   "model": "gemini-3.5-flash-lite",
+   "chunks": [
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 17:55:32 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1257\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"function_call\":{\"id\":\"call_761546\",\"args\":{},\"name\":\"get_burn_scars\"},\"thought_signature\":\"EuwBCukBAWkUfRNDe7eR1aQbpO6xKS_ireo9MiFrD9br4WzPC1kSr7N3lz7ESub2AYDfVq1FobD5bInhAZRDF7U2r5GJ09o2F2r7R4m7rsW1INdPfo9Dl2hs8gSDbglpFry_Jm4jfpJ9SvKZnBIYM5Zsatfmmcjkq50ZqfuZEEwWk82Hb8mjXBeHbg2N0mWslYaFvQi4Cu1P1r2SVCi-ukQ_4uZl4Uayl9XpIbVAB021u_NT1-evbwcojKp1xU-rAYrT_cbGxQohCiQ8BOoRBuH1kFFHAqMyD46MSg9e26Z1uQn53K0DT3ogSv8c1qA=\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"FNrkatjSE9jg694P0vbN2QE\",\"usage_metadata\":{\"candidates_token_count\":13,\"prompt_token_count\":2390,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":2390}],\"thoughts_token_count\":34,\"total_token_count\":2437}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 17:55:32 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1257\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\"}],\"role\":\"model\"},\"finish_reason\":\"STOP\",\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"FNrkatjSE9jg694P0vbN2QE\",\"usage_metadata\":{\"candidates_token_count\":13,\"prompt_token_count\":2582,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":2582}],\"thoughts_token_count\":34,\"total_token_count\":2629}}"
+   ]
+  },
+  {
+   "model": "gemini-3.5-flash-lite",
+   "chunks": [
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 17:55:34 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1241\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"function_call\":{\"id\":\"call_1446378\",\"args\":{},\"name\":\"forecast_smoke\"},\"thought_signature\":\"EugDCuUDAWkUfROATH4oQxoEVDs4jw_zpq83JKpCHjivN33DWxOVaq3md-M-AeQwpFWR40tuV6sRK_fSd4VCvW1F5rFwdWkIRADkiX1g6QhHj1nb9bu9Elg_t9-UpPnF7Q0TaCq9tUwF-LATYne85EXP5cS3j0v58pDeJuuc2ybCdqqQjZ7RlCLLYS6y40tz1aXSSVJI6P4JlT9BBDm9n3GbAUzdHzlCEHv77vBo7s76TvY7gxNoRYtR6x1NUk5MojFm9XM1PJ4GoH3ujVQELVTt6TGYn0kEhkBRVy5w34qfWwYY91WnGuLyxxsO23zXOrE20UZmCj4E_0QshPqMRUyZDRI0eQPGLcW4Pwgk-7GfqZtuBkZFqgPiFG6Ar1GE0i3CW48QxO-_jrFnHYOR9irawIUoY8S5Ubnq_ZbQAumN9OdaWk2q8UqII48ZIABrjNDraklXCByH5GsCBg7-1ch7BwgK5m6SE_PytUmoTqu5__I3rxXvanlYtFL8swayy__Ow7-nfR2jgBZlBpPYe5L6ixEeUYm8wl67-RyrvEz4IfByUPibadKdxNtAx082JHKtuXnji-SvWETZddbO3DErnBJL3fsw51JjH94TNSanDiaf7MvPpaZEGQlsnOQavn89XeSG-cdco2w=\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"FdrkapWaGM7YjNAP0JzYyQ8\",\"usage_metadata\":{\"candidates_token_count\":10,\"prompt_token_count\":2471,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":2471}],\"thoughts_token_count\":91,\"total_token_count\":2572}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 17:55:34 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1241\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"function_call\":{\"id\":\"call_1446381\",\"args\":{\"place\":\"Delhi\"},\"name\":\"get_satellite_passes\"}}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"FdrkapWaGM7YjNAP0JzYyQ8\",\"usage_metadata\":{\"candidates_token_count\":28,\"prompt_token_count\":2471,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":2471}],\"thoughts_token_count\":91,\"total_token_count\":2590}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 17:55:34 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1241\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\"}],\"role\":\"model\"},\"finish_reason\":\"STOP\",\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"FdrkapWaGM7YjNAP0JzYyQ8\",\"usage_metadata\":{\"candidates_token_count\":28,\"prompt_token_count\":2697,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":2697}],\"thoughts_token_count\":91,\"total_token_count\":2816}}"
+   ]
+  },
+  {
+   "model": "gemini-3.5-flash-lite",
+   "chunks": [
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 17:55:37 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=2134\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"**Assessing Available Evidence**\\n\\nI've determined that all the tools are returning 404 errors, indicating undeployed API endpoints in this test environment. Consequently, no useful evidence is forthcoming from the tools. My conclusion is that there is insufficient evidence to proceed with a substantive analysis at this time. I am now preparing a statement reflecting this lack of data, and specifying what data would be required to fully address the question. I am carefully reviewing the instructions to make sure I get it right.\\n\\n\\n\",\"thought\":true}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"F9rkav26Mbvv694PpcfL-AE\",\"usage_metadata\":{\"prompt_token_count\":2577,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":2577}],\"thoughts_token_count\":225,\"total_token_count\":2802}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 17:55:37 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=2134\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"**Formulating an Evidence-Based Response**\\n\\nI've revised the statement, now that I have the format nailed down. I am confirming a lack of sufficient evidence, since every data-collection tool returns 404 errors. This means I'm unable to establish any findings or create even a weak conclusion at this stage. I can state what data would be required to advance: ground PM2.5 concentrations, back-trajectories from Delhi, and satellite fire activity from Punjab. I'm now documenting the 4 key data requests with their 404 responses.\\n\\n\\n\",\"thought\":true}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"F9rkav26Mbvv694PpcfL-AE\",\"usage_metadata\":{\"prompt_token_count\":2577,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":2577}],\"thoughts_token_count\":547,\"total_token_count\":3124}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 17:55:37 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=2134\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Not enough evidence is available\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"F9rkav26Mbvv694PpcfL-AE\",\"usage_metadata\":{\"candidates_token_count\":5,\"prompt_token_count\":2577,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":2577}],\"thoughts_token_count\":744,\"total_token_count\":3326}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 17:55:37 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=2134\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" to determine why Delhi's air is bad today or whether it came from Punjab.\\n- Ground air quality data for\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"F9rkav26Mbvv694PpcfL-AE\",\"usage_metadata\":{\"candidates_token_count\":29,\"prompt_token_count\":2577,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":2577}],\"thoughts_token_count\":744,\"total_token_count\":3350}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 17:55:37 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=2134\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" Delhi could not be retrieved due to API errors.\\n- Air back-trajectory data for Delhi could not be retrieved due\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"F9rkav26Mbvv694PpcfL-AE\",\"usage_metadata\":{\"candidates_token_count\":53,\"prompt_token_count\":2577,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":2577}],\"thoughts_token_count\":744,\"total_token_count\":3374}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 17:55:37 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=2134\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" to API errors.\\n- Weather data for Delhi could not be retrieved due to API errors.\\n- Fire activity data\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"F9rkav26Mbvv694PpcfL-AE\",\"usage_metadata\":{\"candidates_token_count\":77,\"prompt_token_count\":2577,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":2577}],\"thoughts_token_count\":744,\"total_token_count\":3398}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 17:55:37 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=2134\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" for Punjab could not be retrieved due to API errors.\\nCaveat: Live tool data is currently unavailable, so air\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"F9rkav26Mbvv694PpcfL-AE\",\"usage_metadata\":{\"candidates_token_count\":101,\"prompt_token_count\":2577,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":2577}],\"thoughts_token_count\":744,\"total_token_count\":3422}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 17:55:37 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=2134\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" pollution sources cannot be verified.\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"F9rkav26Mbvv694PpcfL-AE\",\"usage_metadata\":{\"candidates_token_count\":107,\"prompt_token_count\":2577,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":2577}],\"thoughts_token_count\":744,\"total_token_count\":3428}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 17:55:37 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=2134\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\",\"thought_signature\":\"Es4cCsscAWkUfRNPEGPitN_2dbcd3UVtCXf8itJBZgoftY3nVvclVu8XVkOQ7oh1uSw0Hkm5bMKKBRrUbxMO0RcGbYLrUfOSqGTlwlByArOcAvOzMDa2HtkPeNHZ1n8uvW3QbOMqKz-HNHn0qY3adlelQvaEtZ-P0rx1jHHrROzMhRdG0ITTxujGlV_-t0PBMGmIK7RGWJtsKTv9KRoAsvU94BCcTa0_6-eBek7vWVwj5BIml-do_ET_GTl4nWdPw94o__oWAH4lwSJPFOOBfpcok65aHltVmHGFB0bfFqAFRRnehMHU-5_Dig2eE33JupAGSEr0mhe8i6FaPZIAfe4zMJDlE8XkwQSnCiwFGRvH_WvGzoxB9dOkM2AslE47AuEJcR01t7wS4eXlLW1sKYzJ13UTHkMwaVCRzxbkiWaulWp4WNq6d5EddXHTZw3K4m5up5m1bjvGEVxdHUuHNA0dj9bObijx_b_dxMMZCYwt6d6kchO885aQ5E68vxPSYgu8UAcWSqWRQIalrT3AoXnvjvKgRvqTZh3oaoKFeUewvYek4ya-SS5pRYdCToqtti8DsoJT6sOIieQ1vnqz_xSfO7R-ezMxyPkaWFvVcoMfdsFj0OES2D5ZF4ilJEYDNYRNIdQJQJ5Sd-pqQh9FzyYGkA1zb0YHw1QDdxQb2kAH0CScFteWZPYdRaSzQnTh5EynWGItNiM79MjwDF04jr9-U8wQOr9EYmNqT5q7oF1_4nSa37esFfED8okHxte7k6TVhCe0t8ofrBtvpppP2k2-v0rIJvKB2vvtDKM-Mdayjo6RxlCARfNMPlf7jHPBVO4dgngXdIPWJ4Yz5_hpXtA63ViPNjEs7cuB8yBRZ9kFisLO-YyzbZKfieOjIOXbaN5ZHjjkk-PIddfhjjI6D9EAomfO3KIt4C20cPAnA30P0Sv-X-ddzZw5bK7AhVeLQqecHpsm727pl65M0DuWVtbs-ZLEsoHrdZESOIdfZv9DzoIDRIfs1rxuVRY4ZCMwj8YhQOGq0WCen9yHVkYKitemv1oogUkbH6pIm5gPJuYAoiQVMLN2JsJpSRlKDF0vj_hh7B8dYl09zQ-EyVU6wcqxNEIx0BCgGiXIqkOG-qoRJxMYBqDLDCMAoQQDhsAgtjJXKXZM1Qpw6Ts_jRm7kcUlflPaCvTHd9S8PY-RvsSzNwC0MEbk918iWpGiGL-TyaNqnP_ErgT6ZedThd2mEg-6jUEPXXQoHTq0gZ7fK7vjFtkV8ntbx3JGDed_g9TYMEMkxdGltwU3o_FaZxp2b7B1seVxGzCqe4FTGkT6xB-5bZddyxqDtrt_UnVzzXvtR46sDrxrTINFoToa3_Nt1tukUyftbEuMP8KgHANW2GK_jpEfaZsgkiekEXeZOshtgAsgnO1YKvzrfJYipEQKz2RUvx4X4o6QIF1Z6DYMkSUku0HULwOEkI99sR1ACt5CIfbGHDRWNqNrBWNRCsZDUzKk_zU8QHEYP6opzQUZ6LG4QriGTfgGObbsXhrHYm7nSsoUAOFS0GjKNJlF96HSbbpnxrgUO5FT-syV6Xm1sGRZoqJZkfdE-jdehBhpCjOUwu6uj8Qx1tMIHYIxpcMZK7EPuQlOkln_mjtW6Cl8Y9oGdTGL6V0vw360K9WDI0Tu-z4az4f7rR6eE916SZAZsyChFMEKc7XJygoLjerGDMgIOCKkISzIIZtJZHj9YveV5LrxEW7-aamskMSrEL1HXdHlkZKStZzuDZamUCdoQozpqmvbqWfZ1X0Dl0TDpJ3NW4o_faJVZyC7xd6YOdHqAXaWpE5X2XzDkhAmx6lV3N8qtqY3RazLeCnhkuqjBS97nkIGgpRmidf4_u0x3lonXCRoBarSXI59dgz6JUCjj4GtynxmwWGYWsDrkFr1zc_kPkYRf7tx78MmGSvSSOdB5eDxgjGhUAr5HS4qDbmK9KSDr96j_hzrVcngnjdw5_kzB7ms8Oc1iy5KsbW2xNzJWxYsrlSxdKTQClrt2Dr9Jw3OAZmHks2y66qBPp3ZtKjOH8VwhECHwmRFc5sA8rZg1uan7xVQto4VcwhNyHWh9sPI2SLkwO8CSXuV5Ey0baTBPDajFsII6RsLRQhCEp0_KBRlFJd3UNQIqKv1lUyZIFtgWCHGlcA6nFTSlw1HbQTjlOG7i51esU04PZN8BG250P6Bvea94Z8Vkv4jELY9SGfX8f265cq-bRbGopxD9jbAIkiiVd7UV2Weu-zF7sFqsR8OvRtML11SNJmsCeQnLiffWy61kICAZDhXxRgG5b25TMucUMQ7ThmiZRWmQeivS04IqMClqzqripbn5LcDustf_11CrfcZWkBvgc8fY9zarQf2WEYDqEgjXPrnyVpZKfXLO-92vH9bg4HcBewNPVuc_ft-qWL8Oa-Cw7KApLZ3Udw2JoXZoseRyhFpK5NyuCdQleisL-M3UQ0iRBfab9iSQRIHaXfnL4cTqACVyq59l_f0It4OPGIhlhvq1u5K5FCjriYZQnokRRFfAKLMGEZtDq7i9T27AbYlMHbnkcLgF98K3r3GPz5Li-OglIiLlgFEYyvFyu69KR_94RF90mkJB5vfHweJmSAkwNYEz57mYzyk6syU9Pxn_KVFnMk-ioGoDlmnnCFSf0gU_36OZ5MWR0zQ9gQzorbtvLEMvqr3_pCDBOsvZOx-7Czg-6iUCDUIWXNcgkMD5HlSkHaUsR9LucD4SB6CSLvy28LQONGlvT5YCY_9B5QXJLkAu7woLH33wERiaIdiDWjqsrsYpFF9PtbYdhS-Sr0qGB_kFcOezl0HkinG4mBiVkv0xRW4ORQmmesa6dVSfK3R_tf3RQKJG_WopLHcmkzU-gzyjxqQViQn3Gqh0sP66ohRI2mDS5Rzq1ew-EM5rTfhPjmlUGdiZeaIcafBEUDp5q6-qhfOcZ6REyHQJk2Nv2w4UpZ6vSCPcd5sph9M47K6_btbeOjROaUH7qYeqBMqbHQnpKC5QUs93Ogwev98RdIVOlDlEV71HTHmXaFUYc62AhaJ6zYcCzq0yM7T6TFDMHYgIOpzZhngeaxwP72BBg50Fn2vSkaEssozpVossjmpGQBolpmH9VVLcqO_ReyHbN7mcp2H1uEyC8PjJ0Ed8j6WpLowbVC9EF5-Bt_ceIqf6dFoJdnLp2c-ghACaRq54J78u-VhiHvU_J3e7TBk3vGca6xHN-D8oJ8MV7kC8eEHLzOtTujFsTn7FlD78MJjyOu3ZRm5y3047FXjwdSJKY4gHmDtZCI3WkYHytEJhsvNOnkOyPBYcEuxYNGPcZtevCPEAlpFi4rZBx3h22FVdkFJuINGDgzlv15-TOmqObxuVjA_ZnaIcKJDfG22oS-HX1N86wuJ8tYCxyYiU0w3kanzAFHrfMuavMrlcFDRyUxDSOpr8C1IPJtZ5OqedxpVqkZrWlOiQBFRnRv2Dpny6whiIvlGwKAIgc8bVKCDBAQGwa5McAIP6NlArsCFb59dYBesHARamrutRFrv6dFDQSeSNkXULwrOjQ1mj8s7Z7ijc-dS2VdSehSR1jJVxUv6U18USlxZdGoGu6XmkfKVRrNCaEnIUK5QHcBP16ew4w0WG8ou3vcpAwIpdeaSLC6CUcB5zTs4_YoL-_B2F19Xl1BBNmU-tkzv6Byc8QLyEeze7r7x3nWzfZ10De3E1rgfXVjqsMdNTHLUnyLfSmrsmdOFH2dfd1jvIJrMUjsXEaGRzE2JIdPmDPlEpPCzHuPPvcxzWlkv0r2tMKh0XbU9-_Np6CwaUE53BD3pAFqWvxgYTaizYoXcmd42hp_-9CfivNZ1Fdb9aTYzwwLN-Db3-GyOIkgAhi20GqvqasRE4OY2syMvb7nxxtmRwIidGbAKxuwpRnT-tt_kXCMuR5eAR7xKWGpZcBlegiilXzVjuMwy99xu8NJsJ45oOy4BG8UhAVK0QFw72WMhahE3G_nxOBBvSmGSq0j-nldrGp9wTQRJ4rNxQcW0QvbRgd38fIyA4mNa6Ir0DV16kB16EyszRIK-j9USpW31JPU797aMw78pfjr34cfWaQdcNMvcP5LVN2atWyoHYpFtTIejm6gNcFztln2eDq27mxN1FWQVUx8pFrKthxjpO0v7va-cV6DQEg3BA1-1an5_PARuBMZbwRxNa4SZtpohRaubdzhpdHGKxu8a6usLVFM3EpkUogqUUKcckgb5e4EXTokd5eccVo5x7EadQEoy9D1tK9zT0zOgkY5rmKgSQd9jCB5HRCWl3zVgTb0WDUpRMeVkNrUBQgbQ0nRlqrJNRypn0KLRM86m4AN21TdrvdIgHTkBE-j3IJ4GMORTfJEGld-8lyYFXwrtdozFc-EunzPNuJi56jbF0HnZ_la_BfoA5giyCCLU-2gh2IhXesKEKuyof8AoJvBZ7X1rxX3QEmvKDL37roev5KZp55UiYk5M4IcD5fEHrhjg4gAB-wnQmhEOza9vnwnEykct0Jl89VxQ_BZ4a3ocpKoLQdY9WlNMJxY6cmJfNDxaTf_de97mf2A1G7QcbWKowHjzoDywWslbQUS1kTuuJZA6YBxV6orqjuuaWV3-CVWIcQLSyXtbTc-zi1YcSM555120ILjB8XUsgXbvvy9SLjDABEd5OBg8A9ZjiCkW44bXYRV7UKIkkPcWDEc_fF42U8TKL5Ocd9uH6Tp6WsrFFHKNHdkS0eEawzQF9-R6gFKkv9xk8dPPLGxi6ub25GE8RDqkYiPgOyHvvIsQmAxl1jCSBMSia8wj1Vc-XUs79wItp_Xy9UtiW2nQIYb5nYl4eTjs9gkWLnKaXXpmxldqq_0Jw4OBMovdQL8UNMt9Co4yuMUK0xemZ4aF0F-ZBg3E6AtPVA0=\"}],\"role\":\"model\"},\"finish_reason\":\"STOP\",\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"F9rkav26Mbvv694PpcfL-AE\",\"usage_metadata\":{\"candidates_token_count\":107,\"prompt_token_count\":2894,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":2894}],\"thoughts_token_count\":744,\"total_token_count\":3745}}"
+   ]
+  }
+ ]
+}

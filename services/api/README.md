@@ -63,10 +63,53 @@ uv run python -m blindspot.jobs run-all         # every job once: one-off loads,
 uv run python -m blindspot.jobs scheduler       # the scheduler in the foreground (Ctrl+C stops)
 ```
 
+**First load, in dependency order** (each job is idempotent; `--no-chain` stops a job from also
+starting the jobs that run after it, so you control the order and the Gemini budget):
+
+```sh
+for j in boundaries firms_nrt firms_backfill creams_daily tle air air_dss met \
+         sentinel risk featured smoke smoke_validate geostationary geostationary_backfill bulletin; do
+  uv run python -m blindspot.jobs run "$j" --no-chain
+done
+```
+
+| Order | Job | Needs | Typical time |
+| --- | --- | --- | --- |
+| 1 | `boundaries` | nothing; labels every other table's state/district | ~3 min |
+| 2 | `firms_nrt`, `firms_backfill`, `creams_daily` | boundaries (state polygons for clipping) | seconds |
+| 3 | `tle` | nothing (skips when CelesTrak was asked < 2 h ago) | seconds |
+| 4 | `air`, `air_dss` | boundaries (city labels) | ~3 min, 2 s |
+| 5 | `met` | nothing (skips when the model runs are unchanged) | ~75 s |
+| 6 | `sentinel` | fires (for "unseen"), boundaries; `SENTINEL_BUDGET_MIN` caps one run (default 50) | 15-50 min |
+| 7 | `risk`, `featured` | sentinel | ~30 s, ~2 min |
+| 8 | `smoke`, `smoke_validate` | met, fires, sentinel scars, air | ~20 s, 6 s |
+| 9 | `geostationary`, `geostationary_backfill` | fires (validation), boundaries | 7 s, ~5 min |
+| 10 | `bulletin` (then `featured_investigations`) | everything above; uses Gemini | ~1-2 min |
+
 `ENABLE_SCHEDULER=1` makes the API process run the scheduler instead. Run the scheduler in one
 process only (one uvicorn worker, or the CLI). Each job is also locked in Postgres, so a CLI run
 and the scheduler never run the same job at the same moment. Every run is stored in `job_run`; on
 restart an interval job waits until it is next due instead of running again straight away.
+
+## 4a. Serverless (Vercel) deployment of the web API
+
+The web API (`blindspot.api.main:app`) runs with only these packages: fastapi starlette pydantic
+pydantic-settings sqlalchemy psycopg psycopg-binary geoalchemy2 httpx orjson apscheduler tzdata
+cachetools tenacity sse-starlette python-dotenv numpy shapely skyfield sgp4 jplephem google-genai
+pystac-client planetary-computer. The jobs (rasterio, geopandas, pandas, scipy, h5py, pyarrow,
+pdfplumber, pillow, pyproj...) run elsewhere (a VM or this machine) against the same database.
+
+- **Import rule:** importing the app and every router must not import a heavy module. Heavy
+  imports live inside the job-time functions that need them. `tests/test_integration.py` proves it
+  by importing the app in a subprocess with those modules made unimportable.
+- **`INIT_DB_ON_STARTUP=false`** on serverless: the tables already exist, so cold starts skip
+  `create_all`. Default `true`.
+- **`ENABLE_SCHEDULER=0`** on serverless (the jobs run elsewhere).
+- Endpoints that render pixels (`/api/imagery/render`, `/api/imagery/tiles/...`) need
+  rasterio/pillow: where these are missing they answer **503** with `missing_module`, not a 500.
+  Pre-rendered images in `CACHE_DIR` are served when present.
+- Responses of hot read endpoints are cached in-process for 30-300 s (`blindspot/api/cache.py`);
+  each warm instance has its own cache.
 
 ## 5. Run the tests
 

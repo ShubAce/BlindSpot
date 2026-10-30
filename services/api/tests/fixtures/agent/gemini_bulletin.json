@@ -1,0 +1,1284 @@
+{
+ "result": {
+  "date": "2026-10-30",
+  "languages": {
+   "en": {
+    "model": "gemini-3.6-flash",
+    "verified": true,
+    "removed_sentences": 0,
+    "script_ok": true
+   },
+   "hi": {
+    "model": "gemini-3.5-flash-lite",
+    "verified": true,
+    "removed_sentences": 1,
+    "script_ok": true
+   },
+   "pa": {
+    "model": "gemini-3.5-flash-lite",
+    "verified": true,
+    "removed_sentences": 0,
+    "script_ok": false
+   }
+  },
+  "fact_blocks_with_data": 6,
+  "gemini_calls": 6
+ },
+ "facts": {
+  "air_quality_delhi": {
+   "output": {
+    "city": "Delhi",
+    "unit": "µg/m³",
+    "now": {
+     "pm25": 69.8,
+     "pm10": 110.0,
+     "observed": "2026-10-30 23:00 IST",
+     "stations_reporting": 38,
+     "stations_stale": 1,
+     "provider": "openaq",
+     "method": "median of the city's stations that reported in the last 2 hours"
+    },
+    "pm25_24h_mean": 32.0,
+    "pm25_24h_mean_hours": 24,
+    "pm25_24h_naqi_category": "Satisfactory",
+    "cpcb_aqi_now": {
+     "aqi": 77,
+     "category": "Satisfactory",
+     "stations": 54,
+     "observed": "2026-10-30 23:00 IST"
+    },
+    "cams_model_now": {
+     "pm25": 68.9,
+     "valid": "2026-10-30 23:30 IST",
+     "note": "model estimate, not a measurement"
+    },
+    "stations_in_city": {
+     "count": 39,
+     "highest_pm25": [
+      {
+       "name": "Mundka, Delhi - DPCC",
+       "pm25": 188.0,
+       "pm10": 268.0,
+       "observed": "2026-10-30 23:00 IST",
+       "stale": false
+      },
+      {
+       "name": "Rohini, Delhi - DPCC",
+       "pm25": 143.0,
+       "pm10": 211.0,
+       "observed": "2026-10-30 23:00 IST",
+       "stale": false
+      },
+      {
+       "name": "Jahangirpuri, Delhi - DPCC",
+       "pm25": 140.0,
+       "pm10": 235.0,
+       "observed": "2026-10-30 22:45 IST",
+       "stale": false
+      },
+      {
+       "name": "Bawana, Delhi - DPCC",
+       "pm25": 138.0,
+       "pm10": 210.0,
+       "observed": "2026-10-30 22:45 IST",
+       "stale": false
+      },
+      {
+       "name": "Punjabi Bagh, Delhi - DPCC",
+       "pm25": 136.0,
+       "pm10": 201.0,
+       "observed": "2026-10-30 23:00 IST",
+       "stale": false
+      }
+     ]
+    },
+    "other_cities_now": [
+     {
+      "city": "Ghaziabad",
+      "pm25": 70.0,
+      "pm25_24h_mean": 23.9,
+      "observed": "2026-10-30 23:00 IST",
+      "cpcb_aqi": 61,
+      "cpcb_category": "Satisfactory"
+     },
+     {
+      "city": "Noida",
+      "pm25": 51.5,
+      "pm25_24h_mean": 24.8,
+      "observed": "2026-10-30 23:00 IST",
+      "cpcb_aqi": 86,
+      "cpcb_category": "Satisfactory"
+     },
+     {
+      "city": "Gurugram",
+      "pm25": 41.2,
+      "pm25_24h_mean": 29.3,
+      "observed": "2026-10-30 23:00 IST",
+      "cpcb_aqi": 64,
+      "cpcb_category": "Satisfactory"
+     },
+     {
+      "city": "Faridabad",
+      "pm25": 40.1,
+      "pm25_24h_mean": 38.4,
+      "observed": "2026-10-30 23:00 IST",
+      "cpcb_aqi": 85,
+      "cpcb_category": "Satisfactory"
+     },
+     {
+      "city": "Chandigarh",
+      "pm25": 35.0,
+      "pm25_24h_mean": 31.4,
+      "observed": "2026-10-30 23:00 IST",
+      "cpcb_aqi": 60,
+      "cpcb_category": "Satisfactory"
+     },
+     {
+      "city": "Bhiwadi",
+      "pm25": 67.5,
+      "pm25_24h_mean": 33.8,
+      "observed": "2026-10-30 22:45 IST",
+      "cpcb_aqi": 68,
+      "cpcb_category": "Satisfactory"
+     },
+     {
+      "city": "Greater Noida",
+      "pm25": 47.6,
+      "pm25_24h_mean": 63.4,
+      "observed": "2026-10-30 23:00 IST",
+      "cpcb_aqi": 88,
+      "cpcb_category": "Satisfactory"
+     },
+     {
+      "city": "Ambala",
+      "pm25": 106.6,
+      "pm25_24h_mean": 39.2,
+      "observed": "2026-10-30 22:30 IST",
+      "cpcb_aqi": 106,
+      "cpcb_category": "Moderate"
+     },
+     {
+      "city": "Amritsar",
+      "pm25": 62.6,
+      "pm25_24h_mean": 78.0,
+      "observed": "2026-10-30 22:45 IST",
+      "cpcb_aqi": 162,
+      "cpcb_category": "Moderate"
+     },
+     {
+      "city": "Baddi",
+      "pm25": 80.0,
+      "pm25_24h_mean": 78.3,
+      "observed": "2026-10-30 22:30 IST",
+      "cpcb_aqi": 163,
+      "cpcb_category": "Moderate"
+     },
+     {
+      "city": "Bahadurgarh",
+      "pm25": 59.7,
+      "pm25_24h_mean": 29.7,
+      "observed": "2026-10-30 22:45 IST",
+      "cpcb_aqi": 57,
+      "cpcb_category": "Satisfactory"
+     },
+     {
+      "city": "Ballabgarh",
+      "pm25": 38.6,
+      "pm25_24h_mean": 27.5,
+      "observed": "2026-10-30 22:45 IST",
+      "cpcb_aqi": 78,
+      "cpcb_category": "Satisfactory"
+     }
+    ],
+    "last_24_hours": {
+     "hours_with_data": 24,
+     "as_of": "2026-10-30 23:00 IST",
+     "max": {
+      "pm25": 69.8,
+      "hour_ending": "2026-10-30 23:00 IST"
+     },
+     "min": {
+      "pm25": 6.6,
+      "hour_ending": "2026-10-30 07:00 IST"
+     },
+     "hourly_last_24": [
+      [
+       "2026-10-30 00:00 IST",
+       33.6
+      ],
+      [
+       "2026-10-30 01:00 IST",
+       30.0
+      ],
+      [
+       "2026-10-30 02:00 IST",
+       25.6
+      ],
+      [
+       "2026-10-30 03:00 IST",
+       22.0
+      ],
+      [
+       "2026-10-30 04:00 IST",
+       11.8
+      ],
+      [
+       "2026-10-30 05:00 IST",
+       9.0
+      ],
+      [
+       "2026-10-30 06:00 IST",
+       9.1
+      ],
+      [
+       "2026-10-30 07:00 IST",
+       6.6
+      ],
+      [
+       "2026-10-30 08:00 IST",
+       10.8
+      ],
+      [
+       "2026-10-30 09:00 IST",
+       16.8
+      ],
+      [
+       "2026-10-30 10:00 IST",
+       21.0
+      ],
+      [
+       "2026-10-30 11:00 IST",
+       24.8
+      ],
+      [
+       "2026-10-30 12:00 IST",
+       28.9
+      ],
+      [
+       "2026-10-30 13:00 IST",
+       30.1
+      ],
+      [
+       "2026-10-30 14:00 IST",
+       31.8
+      ],
+      [
+       "2026-10-30 15:00 IST",
+       34.5
+      ],
+      [
+       "2026-10-30 16:00 IST",
+       40.1
+      ],
+      [
+       "2026-10-30 17:00 IST",
+       44.3
+      ],
+      [
+       "2026-10-30 18:00 IST",
+       44.0
+      ],
+      [
+       "2026-10-30 19:00 IST",
+       42.8
+      ],
+      [
+       "2026-10-30 20:00 IST",
+       52.1
+      ],
+      [
+       "2026-10-30 21:00 IST",
+       60.5
+      ],
+      [
+       "2026-10-30 22:00 IST",
+       67.8
+      ],
+      [
+       "2026-10-30 23:00 IST",
+       69.8
+      ]
+     ]
+    },
+    "cams_model_series": {
+     "note": "Copernicus CAMS model estimate, not a measurement",
+     "latest": {
+      "pm25": 68.9,
+      "time": "2026-10-30 23:30 IST"
+     },
+     "max": {
+      "pm25": 70.1,
+      "time": "2026-10-30 22:30 IST"
+     }
+    },
+    "reference_24h_limits": {
+     "india_naaqs_pm25": 60,
+     "india_naaqs_pm10": 100,
+     "who_2021_pm25": 15,
+     "who_2021_pm10": 45
+    },
+    "sources": [
+     {
+      "marker": "[1]",
+      "source": "Copernicus CAMS via Open-Meteo air quality",
+      "fetched": "2026-10-30 23:30 IST"
+     },
+     {
+      "marker": "[2]",
+      "source": "data.gov.in CPCB real-time AQI",
+      "fetched": "2026-10-30 23:34 IST"
+     },
+     {
+      "marker": "[3]",
+      "source": "OpenAQ v3 (CPCB stations)",
+      "fetched": "2026-10-30 23:51 IST"
+     },
+     {
+      "marker": "[4]",
+      "source": "CPCB National Ambient Air Quality Standards (2009)"
+     },
+     {
+      "marker": "[5]",
+      "source": "WHO Global Air Quality Guidelines (2021)"
+     }
+    ]
+   }
+  },
+  "smoke_origin_delhi": {
+   "output": {
+    "city": "Delhi",
+    "back_trajectories": {
+     "model_run": "2026-10-30 23:53 IST",
+     "start": "2026-10-27 23:53 IST",
+     "hours_back": 72,
+     "trajectories": 200,
+     "summary": {
+      "blh_m_now": 42.0,
+      "wind_basis": "boundary-layer mean wind (10 m to 850 hPa), best_match",
+      "top_districts": [
+       {
+        "state": "Uttarakhand",
+        "district": "Tehri Garhwal",
+        "share_pct": 16.6
+       },
+       {
+        "state": "Uttarakhand",
+        "district": "Dehradun",
+        "share_pct": 9.8
+       },
+       {
+        "state": "Uttarakhand",
+        "district": "Uttarkashi",
+        "share_pct": 9.3
+       },
+       {
+        "state": "Uttarakhand",
+        "district": "Haridwar",
+        "share_pct": 6.3
+       },
+       {
+        "state": "Uttarakhand",
+        "district": "Pauri Garhwal",
+        "share_pct": 6.2
+       }
+      ],
+      "verdict_reason": "the model runs disagree, or the air passed only a little burning",
+      "left_grid_share": 0.0,
+      "wind_from_deg_now": 345.0,
+      "wind_speed_kmh_now": 3.5,
+      "exposure_from_scars": 0.0,
+      "fire_exposure_index": 1.17,
+      "fire_exposure_range": [
+       0.06,
+       1.17
+      ],
+      "top_source_districts": [
+       {
+        "state": "Himachal Pradesh",
+        "district": "Sirmaur",
+        "share_pct": 72.3
+       },
+       {
+        "state": "Haryana",
+        "district": "Yamunanagar",
+        "share_pct": 12.0
+       },
+       {
+        "state": "Haryana",
+        "district": "Ambala",
+        "share_pct": 6.0
+       },
+       {
+        "state": "Uttar Pradesh",
+        "district": "Saharanpur",
+        "share_pct": 4.9
+       },
+       {
+        "state": "Punjab",
+        "district": "S.A.S Nagar",
+        "share_pct": 2.6
+       }
+      ],
+      "exposure_unattributed_share": 0.0,
+      "share_over_burn_belt_pct": {
+       "h24": 22.9,
+       "h48": 11.6,
+       "h72": 8.2
+      },
+      "models": [
+       "best_match",
+       "gfs_seamless"
+      ]
+     },
+     "verdict_hint": "mixed",
+     "method": "particles carried backwards by Open-Meteo winds; a share is the fraction of particles that passed over the Punjab/Haryana burn belt"
+    },
+    "iitm_dss_official_estimate": {
+     "what": "% of Delhi's daily mean PM2.5",
+     "run_date": "2026-10-30",
+     "stale": false,
+     "today": {
+      "date": "2026-10-30",
+      "stubble_pct": 1.75
+     },
+     "recent_days": [
+      {
+       "date": "2026-10-26",
+       "stubble_pct": 4.68
+      },
+      {
+       "date": "2026-10-27",
+       "stubble_pct": 1.56
+      },
+      {
+       "date": "2026-10-28",
+       "stubble_pct": 0.98
+      },
+      {
+       "date": "2026-10-29",
+       "stubble_pct": 0.98
+      },
+      {
+       "date": "2026-10-30",
+       "stubble_pct": 1.75
+      }
+     ],
+     "outlook": [
+      {
+       "date": "2026-10-30",
+       "stubble_pct": 1.7,
+       "fire_input": "viirs_previous_evening"
+      },
+      {
+       "date": "2026-10-31",
+       "stubble_pct": 19.2,
+       "fire_input": "climatology"
+      },
+      {
+       "date": "2026-11-01",
+       "stubble_pct": 33.5,
+       "fire_input": "climatology"
+      },
+      {
+       "date": "2026-11-02",
+       "stubble_pct": 13.4,
+       "fire_input": "climatology"
+      }
+     ],
+     "method_note": "Please note that the contribution of stubble burning to Delhi's PM2.5 concentration for a particular day is determined using active fire count data from the VIIRS satellite-based instrument received on the evening of the previous day. The uncertainty especially related to the detection of fire event"
+    },
+    "sources": [
+     {
+      "marker": "[7]",
+      "source": "Open-Meteo forecast API (winds at 10 m/950/925/850 hPa, boundary layer; CC BY 4.0)",
+      "fetched": "2026-10-30 23:52 IST"
+     },
+     {
+      "marker": "[8]",
+      "source": "NASA FIRMS active fires (VIIRS 375 m, MODIS 1 km; NRT)",
+      "fetched": "2026-10-30 23:31 IST"
+     },
+     {
+      "marker": "[9]",
+      "source": "Survey of India states + LGD/Bharatmaps districts (DataMeet / ramSeraph mirror)",
+      "fetched": "2026-10-30 23:53 IST"
+     },
+     {
+      "marker": "[10]",
+      "source": "GeoNames cities15000 (CC BY 4.0)",
+      "fetched": "2026-10-30 23:51 IST"
+     },
+     {
+      "marker": "[11]",
+      "source": "IITM Decision Support System for Delhi (stubble-burning share of PM2.5)",
+      "fetched": "2026-10-30 23:26 IST"
+     }
+    ]
+   }
+  },
+  "weather_delhi": {
+   "output": {
+    "city": "Delhi",
+    "time": "2026-10-30 23:30 IST",
+    "model": "best_match",
+    "wind_10m": {
+     "speed_kmh": 2.0,
+     "from_deg": 360,
+     "from": "N"
+    },
+    "wind_925hpa": {
+     "speed_kmh": 10.4,
+     "from_deg": 342,
+     "from": "NNW"
+    },
+    "transport_wind": {
+     "speed_kmh": 3.1,
+     "from_deg": 345,
+     "from": "NNW"
+    },
+    "mixing_height_m": 42,
+    "ventilation_m2_s": 36,
+    "temp_2m_c": 19.1,
+    "rain_mm_last_24h": 52.3,
+    "inversion": {
+     "present": false,
+     "t925_minus_t2m_c": -3.6,
+     "basis": "925 hPa (about 580 m above the plains) minus 2 m temperature, same model"
+    },
+    "second_model": {
+     "gfs_seamless": {
+      "blh_m": 461,
+      "transport_wind": {
+       "speed_kmh": 6.4,
+       "from_deg": 169,
+       "from": "S"
+      },
+      "wind_10m": {
+       "speed_kmh": 4.0,
+       "from_deg": 195,
+       "from": "SSW"
+      }
+     }
+    },
+    "meaning": "wind 'from' is the direction the wind blows from; transport wind is the mean through the mixing layer, which carries smoke; a low mixing height traps it",
+    "sources": [
+     {
+      "marker": "[7]",
+      "source": "Open-Meteo forecast (winds, boundary layer)",
+      "fetched": "2026-10-30 23:52 IST"
+     }
+    ]
+   }
+  },
+  "fires_last_24_hours": {
+   "error": "/api/fires did not answer within 25 s"
+  },
+  "smoke_forecast": {
+   "output": {
+    "model_run": "2026-10-30 23:53 IST",
+    "released_from": "2026-10-29 23:30 IST",
+    "until": "2026-11-01 23:30 IST",
+    "hours": 72.0,
+    "inputs": {
+     "fires": 578,
+     "scars": 0,
+     "scars_kind": "candidate_unseen_burns",
+     "fire_tonnes": 1856.4,
+     "scar_tonnes": 0,
+     "fires_by_state": {
+      "Punjab": 229,
+      "Rajasthan": 20,
+      "outside India": 328,
+      "Jammu And Kashmir": 1
+     },
+     "particles_per_source": 40
+    },
+    "release_window": [
+     "2026-10-29 23:30 IST",
+     "2026-10-30 23:53 IST"
+    ],
+    "trajectories": 2000,
+    "models": [
+     "best_match",
+     "gfs_seamless"
+    ],
+    "cities": [
+     {
+      "city": "Amritsar",
+      "peak_smoke_index": 149.6,
+      "peak_range_across_models": [
+       71.7,
+       149.6
+      ],
+      "peak_time": "2026-10-31 03:30 IST",
+      "arrival": "2026-10-30 14:30 IST",
+      "from_state_pct": {
+       "Punjab": 20.8,
+       "Jammu And Kashmir": 0.1
+      }
+     },
+     {
+      "city": "Ludhiana",
+      "peak_smoke_index": 120.0,
+      "peak_range_across_models": [
+       81.9,
+       120.0
+      ],
+      "peak_time": "2026-10-31 15:30 IST",
+      "arrival": "2026-10-30 14:30 IST",
+      "from_state_pct": {
+       "Punjab": 41.2,
+       "Jammu And Kashmir": 0.2
+      }
+     },
+     {
+      "city": "Jalandhar",
+      "peak_smoke_index": 111.4,
+      "peak_range_across_models": [
+       85.7,
+       111.4
+      ],
+      "peak_time": "2026-10-31 12:30 IST",
+      "arrival": "2026-10-30 13:30 IST",
+      "from_state_pct": {
+       "Punjab": 45.6,
+       "Jammu And Kashmir": 0.3
+      }
+     },
+     {
+      "city": "Patiala",
+      "peak_smoke_index": 109.2,
+      "peak_range_across_models": [
+       81.6,
+       109.2
+      ],
+      "peak_time": "2026-10-31 23:30 IST",
+      "arrival": "2026-10-30 22:30 IST",
+      "from_state_pct": {
+       "Punjab": 42.2,
+       "Jammu And Kashmir": 0.2
+      }
+     },
+     {
+      "city": "Karnal",
+      "peak_smoke_index": 101.6,
+      "peak_range_across_models": [
+       47.1,
+       101.6
+      ],
+      "peak_time": "2026-11-01 10:30 IST",
+      "arrival": "2026-10-31 11:30 IST",
+      "from_state_pct": {
+       "Punjab": 54.9,
+       "Jammu And Kashmir": 0.1
+      }
+     },
+     {
+      "city": "Panipat",
+      "peak_smoke_index": 79.4,
+      "peak_range_across_models": [
+       43.3,
+       79.4
+      ],
+      "peak_time": "2026-11-01 10:30 IST",
+      "arrival": "2026-10-31 13:30 IST",
+      "from_state_pct": {
+       "Punjab": 60.5,
+       "Jammu And Kashmir": 0.1
+      }
+     },
+     {
+      "city": "Meerut",
+      "peak_smoke_index": 78.0,
+      "peak_range_across_models": [
+       4.0,
+       78.0
+      ],
+      "peak_time": "2026-11-01 13:30 IST",
+      "arrival": "2026-11-01 02:30 IST",
+      "from_state_pct": {
+       "Punjab": 60.0,
+       "Jammu And Kashmir": 0.1
+      }
+     },
+     {
+      "city": "Bathinda",
+      "peak_smoke_index": 75.5,
+      "peak_range_across_models": [
+       18.3,
+       75.5
+      ],
+      "peak_time": "2026-10-31 09:30 IST",
+      "arrival": "2026-10-30 19:30 IST",
+      "from_state_pct": {
+       "Punjab": 54.9,
+       "Rajasthan": 0.1
+      }
+     },
+     {
+      "city": "Ghaziabad",
+      "peak_smoke_index": 67.7,
+      "peak_range_across_models": [
+       3.9,
+       67.7
+      ],
+      "peak_time": "2026-11-01 12:30 IST",
+      "arrival": "2026-11-01 02:30 IST",
+      "from_state_pct": {
+       "Punjab": 67.8
+      }
+     },
+     {
+      "city": "Sonipat",
+      "peak_smoke_index": 62.3,
+      "peak_range_across_models": [
+       32.3,
+       62.3
+      ],
+      "peak_time": "2026-11-01 12:30 IST",
+      "arrival": "2026-10-31 16:30 IST",
+      "from_state_pct": {
+       "Punjab": 66.0,
+       "Jammu And Kashmir": 0.0
+      }
+     }
+    ],
+    "smoke_index_unit": "tonnes of crop residue (dry matter) burnt whose smoke is within 30 km",
+    "limits": "2-D; no deposition or rain-out; no terrain blocking over the Himalaya",
+    "sources": [
+     {
+      "marker": "[7]",
+      "source": "Open-Meteo forecast API (winds at 10 m/950/925/850 hPa, boundary layer; CC BY 4.0)",
+      "fetched": "2026-10-30 23:52 IST"
+     },
+     {
+      "marker": "[8]",
+      "source": "NASA FIRMS active fires (VIIRS 375 m, MODIS 1 km; NRT)",
+      "fetched": "2026-10-30 23:31 IST"
+     },
+     {
+      "marker": "[9]",
+      "source": "Survey of India states + LGD/Bharatmaps districts (DataMeet / ramSeraph mirror)",
+      "fetched": "2026-10-30 23:53 IST"
+     },
+     {
+      "marker": "[10]",
+      "source": "GeoNames cities15000 (CC BY 4.0)",
+      "fetched": "2026-10-30 23:51 IST"
+     }
+    ]
+   }
+  },
+  "burn_scars_season": {
+   "output": {
+    "filter": {},
+    "matching": {
+     "clusters": 2780,
+     "area_ha": 3545.0,
+     "unseen_clusters": 0,
+     "unseen_area_ha": 0.0,
+     "checked_clusters": 0
+    },
+    "passes_window": {
+     "first_pass": "2026-10-02 11:10 IST",
+     "last_pass": "2026-10-30 11:10 IST"
+    },
+    "clusters": [
+     {
+      "id": 2690,
+      "area_ha": 9.0,
+      "burnt_between": [
+       "2026-10-28 11:20 IST",
+       "2026-10-30 11:10 IST"
+      ],
+      "confidence": 1.0,
+      "hazy": false,
+      "centroid_lon_lat": [
+       75.9457,
+       30.2221
+      ]
+     },
+     {
+      "id": 2638,
+      "area_ha": 6.4,
+      "burnt_between": [
+       "2026-10-28 11:20 IST",
+       "2026-10-30 11:10 IST"
+      ],
+      "confidence": 1.0,
+      "hazy": false,
+      "centroid_lon_lat": [
+       75.9788,
+       30.3249
+      ]
+     },
+     {
+      "id": 2688,
+      "area_ha": 4.8,
+      "burnt_between": [
+       "2026-10-28 11:20 IST",
+       "2026-10-30 11:10 IST"
+      ],
+      "confidence": 1.0,
+      "hazy": false,
+      "centroid_lon_lat": [
+       75.9528,
+       30.2247
+      ]
+     },
+     {
+      "id": 2700,
+      "area_ha": 4.6,
+      "burnt_between": [
+       "2026-10-28 11:20 IST",
+       "2026-10-30 11:10 IST"
+      ],
+      "confidence": 1.0,
+      "hazy": false,
+      "centroid_lon_lat": [
+       75.944,
+       30.2146
+      ]
+     },
+     {
+      "id": 2668,
+      "area_ha": 4.4,
+      "burnt_between": [
+       "2026-10-28 11:20 IST",
+       "2026-10-30 11:10 IST"
+      ],
+      "confidence": 1.0,
+      "hazy": false,
+      "centroid_lon_lat": [
+       76.0105,
+       30.2867
+      ]
+     }
+    ],
+    "sources": [
+     {
+      "marker": "[16]",
+      "source": "Element 84 Earth Search STAC",
+      "fetched": "2026-10-30 23:45 IST"
+     },
+     {
+      "marker": "[17]",
+      "source": "s2_cog",
+      "fetched": "2026-10-30 23:55 IST"
+     },
+     {
+      "marker": "[18]",
+      "source": "ESA WorldCover",
+      "fetched": "2026-10-30 23:55 IST"
+     },
+     {
+      "marker": "[19]",
+      "source": "NASA FIRMS active fires",
+      "fetched": "2026-10-30 23:53 IST"
+     },
+     {
+      "marker": "[20]",
+      "source": "Survey of India states + LGD/Bharatmaps districts (DataMeet / ramSeraph mirror)",
+      "fetched": "2026-10-30 23:53 IST"
+     }
+    ]
+   }
+  },
+  "burn_risk": {
+   "output": {
+    "status": "26002 harvested-but-unburnt fields (59821.5 ha) are mapped; none has a risk score yet",
+    "reason": "fields are mapped but not scored yet (the risk job has not run)",
+    "totals": {
+     "clusters": 26002,
+     "area_ha": 59821.5,
+     "scored": 0,
+     "scored_area_ha": 0.0
+    },
+    "ranking_order": "risk_weighted_ha = sum over a village's fields of risk_score/100 x area_ha",
+    "top_fields": [
+     {
+      "id": 31678,
+      "village": "Gumti",
+      "village_inferred": true,
+      "area_ha": 124.5,
+      "days_since_harvest": 7.5,
+      "harvested_between": [
+       "2026-10-18 11:20 IST",
+       "2026-10-28 11:20 IST"
+      ],
+      "centroid_lon_lat": [
+       75.6493,
+       30.4644
+      ]
+     },
+     {
+      "id": 20637,
+      "village": "Gobindpura",
+      "village_inferred": true,
+      "area_ha": 106.0,
+      "days_since_harvest": 7.5,
+      "harvested_between": [
+       "2026-10-18 11:20 IST",
+       "2026-10-28 11:20 IST"
+      ],
+      "centroid_lon_lat": [
+       75.6882,
+       30.473
+      ]
+     },
+     {
+      "id": 18638,
+      "village": "Sahore",
+      "village_inferred": true,
+      "area_ha": 97.6,
+      "days_since_harvest": 7.5,
+      "harvested_between": [
+       "2026-10-18 11:20 IST",
+       "2026-10-28 11:20 IST"
+      ],
+      "centroid_lon_lat": [
+       75.5986,
+       30.4911
+      ]
+     },
+     {
+      "id": 17111,
+      "village": "Pakhoke",
+      "village_inferred": true,
+      "area_ha": 88.6,
+      "days_since_harvest": 7.5,
+      "harvested_between": [
+       "2026-10-18 11:20 IST",
+       "2026-10-28 11:20 IST"
+      ],
+      "centroid_lon_lat": [
+       75.4106,
+       30.4235
+      ]
+     },
+     {
+      "id": 20578,
+      "village": "Ramgarh",
+      "village_inferred": true,
+      "area_ha": 76.6,
+      "days_since_harvest": 7.5,
+      "harvested_between": [
+       "2026-10-18 11:20 IST",
+       "2026-10-28 11:20 IST"
+      ],
+      "centroid_lon_lat": [
+       75.7504,
+       30.4772
+      ]
+     }
+    ],
+    "method": {
+     "formula": "risk = 100 x dryness x (0.4 timing + 0.4 neighbourhood + 0.2 history)",
+     "note": "A transparent ranking, not a probability: it orders today's fields by how likely they are to burn next. See `backtest` for how well that ordering worked on this season."
+    },
+    "backtest": {
+     "computed_at": "2026-10-30 23:49 IST",
+     "headline": null,
+     "all_pairs": null,
+     "timing_tested": false,
+     "timing_note": "timing is not backtested: burn_cluster has no harvested_after/harvested_before, so the harvest date of a field that burnt is unknown",
+     "reason": "no burn scars on fields that were bare before burning yet",
+     "windows": 0,
+     "latest_attempt": null,
+     "method": "How well would the score have ranked fields that really burned?\n For every pair of consecutive clear passes (t0 -> t1) of a tile with burn scars: - burnt (label"
+    },
+    "sources": [
+     {
+      "marker": "[16]",
+      "source": "Element 84 Earth Search STAC",
+      "fetched": "2026-10-30 23:45 IST"
+     },
+     {
+      "marker": "[19]",
+      "source": "NASA FIRMS active fires",
+      "fetched": "2026-10-30 23:53 IST"
+     },
+     {
+      "marker": "[7]",
+      "source": "Open-Meteo forecast (winds, boundary layer)",
+      "fetched": "2026-10-30 23:52 IST"
+     }
+    ]
+   }
+  }
+ },
+ "refs": {
+  "1": {
+   "key": "cams",
+   "label": "Copernicus CAMS via Open-Meteo air quality",
+   "url": "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=30.3796%2C31.6200%2C30.9439%2C28.9649%2C28.6701%2C28.3419%2C29.0996%2C30.2330%2C28.2011%2C28.8062%2C30.7356%2C28.5939%2C28.2961%2C28.6363%2C28.2068%2C28.3907%2C29.5037%2C28.6854%2C28.5249%2C28.4251%2C29.6107%2C29.1406%2C31.3219%2C28.1090%2C29.3078%2C29.8006%2C29.6953%2C27.8016%2C30.7361%2C28.6112%2C29.9669%2C30.9028%2C30.6500%2C27.9002%2C28.3607%2C28.9727%2C28.7982%2C29.4689%2C28.0602%2C28.5692%2C28.1486%2C30.7058%2C29.4339%2C30.3494%2C28.6996%2C31.0325%2C29.4604%2C27.6089%2C29.5364%2C29.0272%2C29.9316%2C30.1481&longitude=76.7783%2C74.8765%2C76.8020%2C77.2788%2C76.9254%2C77.3197%2C77.2623%2C74.9078%2C76.8458%2C76.1411%2C76.7629%2C76.2707%2C74.9617%2C77.1843%2C76.7997%2C77.3157%2C75.4679%2C77.3577%2C77.4820%2C77.1066%2C74.2836%2C75.7449%2C75.5789%2C75.3866%2C76.3376%2C76.4155%2C77.0027%2C76.6365%2C76.2097%2C77.3421%2C76.8759%2C75.8086%2C76.3314%2C76.9938%2C76.9361%2C77.6410%2C77.5402%2C77.6684%2C76.1131%2C77.3577%2C77.3321%2C76.8532%2C76.9741%2C76.3666%2C76.4961%2C76.5623%2C77.3410%2C75.1533%2C75.0158%2C77.0621%2C73.8645%2C77.2893&hourly=pm2_5%2Cpm10&past_days=7&forecast_days=5&timeformat=unixtime&timezone=GMT&domains=cams_global&cell_selection=nearest",
+   "fetched_at": "2026-10-30T18:00:26.541835Z",
+   "fetch_id": 2453
+  },
+  "2": {
+   "key": "datagov_aqi",
+   "label": "data.gov.in CPCB real-time AQI",
+   "url": "https://api.data.gov.in/resource/3b01bcb8-0b14-4abf-b6f2-c1bfd384ba69?api-key=***&format=json&limit=1000&sort%5Bstation%5D=asc&offset=3000",
+   "fetched_at": "2026-10-30T18:04:26.888860Z",
+   "fetch_id": 2536
+  },
+  "3": {
+   "key": "openaq",
+   "label": "OpenAQ v3 (CPCB stations)",
+   "url": "https://api.openaq.org/v3/sensors/12235092/measurements/hourly?datetime_from=2026-10-30T14%3A30%3A00Z&datetime_to=2026-10-30T18%3A19%3A31Z&limit=1000",
+   "fetched_at": "2026-10-30T18:21:12.113518Z",
+   "fetch_id": 3137
+  },
+  "4": {
+   "key": "naaqs_2009",
+   "label": "CPCB National Ambient Air Quality Standards (2009)",
+   "url": "https://cpcb.nic.in/uploads/National_Ambient_Air_Quality_Standards.pdf",
+   "fetched_at": null,
+   "fetch_id": null
+  },
+  "5": {
+   "key": "who_aqg_2021",
+   "label": "WHO Global Air Quality Guidelines (2021)",
+   "url": "https://www.who.int/publications/i/item/9789240034228",
+   "fetched_at": null,
+   "fetch_id": null
+  },
+  "6": {
+   "key": "openaq",
+   "label": "OpenAQ v3 (CPCB stations)",
+   "url": "https://api.openaq.org/v3/sensors/14250045/measurements/hourly?datetime_from=2026-10-30T13%3A30%3A00Z&datetime_to=2026-10-30T18%3A19%3A31Z&limit=1000",
+   "fetched_at": "2026-10-30T18:20:29.803461Z",
+   "fetch_id": 3107
+  },
+  "7": {
+   "key": "openmeteo",
+   "label": "Open-Meteo forecast API (winds at 10 m/950/925/850 hPa, boundary layer; CC BY 4.0)",
+   "url": "https://api.open-meteo.com/v1/forecast",
+   "fetched_at": "2026-10-30T18:22:49.783220Z",
+   "fetch_id": 3155
+  },
+  "8": {
+   "key": "firms",
+   "label": "NASA FIRMS active fires (VIIRS 375 m, MODIS 1 km; NRT)",
+   "url": "https://firms.modaps.eosdis.nasa.gov/data/active_fire/modis-c6.1/csv/MODIS_C6_1_South_Asia_7d.csv",
+   "fetched_at": "2026-10-30T18:01:46.994382Z",
+   "fetch_id": 2464
+  },
+  "9": {
+   "key": "boundaries",
+   "label": "Survey of India states + LGD/Bharatmaps districts (DataMeet / ramSeraph mirror)",
+   "url": "https://github.com/ramSeraph/indian_admin_boundaries/releases/download/districts/LGD_Districts.parquet",
+   "fetched_at": "2026-10-30T18:23:48.912038Z",
+   "fetch_id": 3164
+  },
+  "10": {
+   "key": "geonames",
+   "label": "GeoNames cities15000 (CC BY 4.0)",
+   "url": "https://download.geonames.org/export/dump/cities15000.zip",
+   "fetched_at": "2026-10-30T18:21:52.107028Z",
+   "fetch_id": 3152
+  },
+  "11": {
+   "key": "iitm_dss",
+   "label": "IITM Decision Support System for Delhi (stubble-burning share of PM2.5)",
+   "url": "https://ews.tropmet.res.in/dss/",
+   "fetched_at": "2026-10-30T17:56:44.860947Z",
+   "fetch_id": 2212
+  },
+  "12": {
+   "key": "openmeteo",
+   "label": "Open-Meteo forecast API (winds at 10 m/950/925/850 hPa, boundary layer; CC BY 4.0)",
+   "url": "https://api.open-meteo.com/v1/forecast",
+   "fetched_at": "2026-10-30T18:21:41.314191Z",
+   "fetch_id": 3148
+  },
+  "13": {
+   "key": "firms",
+   "label": "NASA FIRMS active fires (VIIRS 375 m, MODIS 1 km; NRT)",
+   "url": "https://firms.modaps.eosdis.nasa.gov/data/active_fire/suomi-npp-viirs-c2/csv/SUOMI_VIIRS_C2_South_Asia_7d.csv",
+   "fetched_at": "2026-10-30T18:01:45.118791Z",
+   "fetch_id": 2462
+  },
+  "14": {
+   "key": "firms",
+   "label": "NASA FIRMS active fires (VIIRS 375 m, MODIS 1 km; NRT)",
+   "url": "https://firms.modaps.eosdis.nasa.gov/data/active_fire/noaa-21-viirs-c2/csv/J2_VIIRS_C2_South_Asia_7d.csv",
+   "fetched_at": "2026-10-30T18:01:43.170618Z",
+   "fetch_id": 2460
+  },
+  "15": {
+   "key": "firms",
+   "label": "NASA FIRMS active fires (VIIRS 375 m, MODIS 1 km; NRT)",
+   "url": "https://firms.modaps.eosdis.nasa.gov/data/active_fire/noaa-20-viirs-c2/csv/J1_VIIRS_C2_South_Asia_7d.csv",
+   "fetched_at": "2026-10-30T18:01:40.779139Z",
+   "fetch_id": 2457
+  },
+  "16": {
+   "key": "stac_e84",
+   "label": "Element 84 Earth Search STAC",
+   "url": "https://earth-search.aws.element84.com/v1/collections/sentinel-2-c1-l2a/items/S2B_T43REQ_20261018T054329_L2A",
+   "fetched_at": "2026-10-30T18:15:35.093168Z",
+   "fetch_id": 2956
+  },
+  "17": {
+   "key": "s2_cog",
+   "label": "s2_cog",
+   "url": "https://earth-search.aws.element84.com/v1/collections/sentinel-2-c1-l2a/items?grid:code=MGRS-43REP",
+   "fetched_at": "2026-10-30T18:25:04.142414Z",
+   "fetch_id": 3168
+  },
+  "18": {
+   "key": "worldcover",
+   "label": "ESA WorldCover",
+   "url": "https://planetarycomputer.microsoft.com/api/stac/v1/search?collections=esa-worldcover&bbox=76.0350,29.8143,77.0886,30.7287",
+   "fetched_at": "2026-10-30T18:25:08.456740Z",
+   "fetch_id": 3169
+  },
+  "19": {
+   "key": "firms",
+   "label": "NASA FIRMS active fires",
+   "url": "https://firms.modaps.eosdis.nasa.gov/api/area/csv/***/VIIRS_NOAA21_NRT/77.15,28.25,77.35,28.45/5/2026-10-24",
+   "fetched_at": "2026-10-30T18:23:48.440889Z",
+   "fetch_id": 3163
+  },
+  "20": {
+   "key": "boundaries",
+   "label": "Survey of India states + LGD/Bharatmaps districts (DataMeet / ramSeraph mirror)",
+   "url": "https://github.com/ramSeraph/indian_admin_boundaries/releases/download/subdistricts/LGD_Subdistricts.parquet",
+   "fetched_at": "2026-10-30T18:23:49.309090Z",
+   "fetch_id": 3165
+  }
+ },
+ "calls": [
+  {
+   "model": "gemini-3.8-flash",
+   "chunks": [],
+   "error": "ServerError: 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}}"
+  },
+  {
+   "model": "gemini-3.6-flash",
+   "chunks": [
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:17 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=14245\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"{\\\"title\\\":\\\"Air Quality and Crop Residue Burning Bulletin for 30 Oct\\\",\\\"summary\\\":\\\"Delhi recorded a median PM2\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.6-flash\",\"response_id\":\"s-HkavKbKI_9694P_-LDoAI\",\"usage_metadata\":{\"candidates_token_count\":25,\"prompt_token_count\":7554,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":7554}],\"thoughts_token_count\":2999,\"total_token_count\":10578}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:17 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=14245\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\".5 level of 69.8 µg/m³ at 23:00 IST on \"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.6-flash\",\"response_id\":\"s-HkavKbKI_9694P_-LDoAI\",\"usage_metadata\":{\"candidates_token_count\":49,\"prompt_token_count\":7554,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":7554}],\"thoughts_token_count\":2999,\"total_token_count\":10602}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:17 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=14245\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"30 Oct [3]. Stubble burning contributed 1.75% to Delhi's PM2.5\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.6-flash\",\"response_id\":\"s-HkavKbKI_9694P_-LDoAI\",\"usage_metadata\":{\"candidates_token_count\":73,\"prompt_token_count\":7554,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":7554}],\"thoughts_token_count\":2999,\"total_token_count\":10626}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:17 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=14245\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" concentration on 30 Oct [11].\\\",\\\"sections\\\":[{\\\"heading\\\":\\\"Air quality now\\\",\\\"body\\\":\\\"Delhi recorded a\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.6-flash\",\"response_id\":\"s-HkavKbKI_9694P_-LDoAI\",\"usage_metadata\":{\"candidates_token_count\":97,\"prompt_token_count\":7554,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":7554}],\"thoughts_token_count\":2999,\"total_token_count\":10650}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:17 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=14245\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" median PM2.5 concentration of 69.8 µg/m³ and PM10 of 1\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.6-flash\",\"response_id\":\"s-HkavKbKI_9694P_-LDoAI\",\"usage_metadata\":{\"candidates_token_count\":121,\"prompt_token_count\":7554,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":7554}],\"thoughts_token_count\":2999,\"total_token_count\":10674}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:17 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=14245\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"10.0 µg/m³ at 23:00 IST on 30 Oct [3\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.6-flash\",\"response_id\":\"s-HkavKbKI_9694P_-LDoAI\",\"usage_metadata\":{\"candidates_token_count\":145,\"prompt_token_count\":7554,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":7554}],\"thoughts_token_count\":2999,\"total_token_count\":10698}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:17 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=14245\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"]. The CPCB AQI index stood at 77 in the Satisfactory category [2]. Mundka recorded the\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.6-flash\",\"response_id\":\"s-HkavKbKI_9694P_-LDoAI\",\"usage_metadata\":{\"candidates_token_count\":169,\"prompt_token_count\":7554,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":7554}],\"thoughts_token_count\":2999,\"total_token_count\":10722}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:17 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=14245\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" highest PM2.5 level in the city at 188.0 µg/m³ at 2\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.6-flash\",\"response_id\":\"s-HkavKbKI_9694P_-LDoAI\",\"usage_metadata\":{\"candidates_token_count\":193,\"prompt_token_count\":7554,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":7554}],\"thoughts_token_count\":2999,\"total_token_count\":10746}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:17 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=14245\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"3:00 IST [3].\\\"},{\\\"heading\\\":\\\"Fires in the last 24 hours\\\",\\\"body\\\":\\\"Active\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.6-flash\",\"response_id\":\"s-HkavKbKI_9694P_-LDoAI\",\"usage_metadata\":{\"candidates_token_count\":217,\"prompt_token_count\":7554,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":7554}],\"thoughts_token_count\":2999,\"total_token_count\":10770}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:17 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=14245\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" fire detection data for the last 24 hours is unavailable today due to a service timeout.\\\"},{\\\"heading\\\":\\\"Wind and\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.6-flash\",\"response_id\":\"s-HkavKbKI_9694P_-LDoAI\",\"usage_metadata\":{\"candidates_token_count\":241,\"prompt_token_count\":7554,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":7554}],\"thoughts_token_count\":2999,\"total_token_count\":10794}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:17 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=14245\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" smoke outlook\\\",\\\"body\\\":\\\"Surface wind speed in Delhi was 2.0 km/h with a mixing height of \"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.6-flash\",\"response_id\":\"s-HkavKbKI_9694P_-LDoAI\",\"usage_metadata\":{\"candidates_token_count\":265,\"prompt_token_count\":7554,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":7554}],\"thoughts_token_count\":2999,\"total_token_count\":10818}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:17 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=14245\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"42 m at 23:30 IST on 30 Oct [7]. Smoke index is expected to\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.6-flash\",\"response_id\":\"s-HkavKbKI_9694P_-LDoAI\",\"usage_metadata\":{\"candidates_token_count\":289,\"prompt_token_count\":7554,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":7554}],\"thoughts_token_count\":2999,\"total_token_count\":10842}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:17 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=14245\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" peak at 149.6 in Amritsar at 03:30 IST on 31 Oct\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.6-flash\",\"response_id\":\"s-HkavKbKI_9694P_-LDoAI\",\"usage_metadata\":{\"candidates_token_count\":313,\"prompt_token_count\":7554,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":7554}],\"thoughts_token_count\":2999,\"total_token_count\":10866}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:17 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=14245\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" [8]. Ludhiana is forecasted to reach a peak smoke index of 120.0 at 15\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.6-flash\",\"response_id\":\"s-HkavKbKI_9694P_-LDoAI\",\"usage_metadata\":{\"candidates_token_count\":337,\"prompt_token_count\":7554,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":7554}],\"thoughts_token_count\":2999,\"total_token_count\":10890}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:17 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=14245\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\":30 IST on 31 Oct [8].\\\"},{\\\"heading\\\":\\\"Fields at risk of burning\\\",\\\"body\\\":\\\"A\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.6-flash\",\"response_id\":\"s-HkavKbKI_9694P_-LDoAI\",\"usage_metadata\":{\"candidates_token_count\":361,\"prompt_token_count\":7554,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":7554}],\"thoughts_token_count\":2999,\"total_token_count\":10914}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:17 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=14245\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" total of 26002 harvested-but-unburnt fields covering 59821.5\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.6-flash\",\"response_id\":\"s-HkavKbKI_9694P_-LDoAI\",\"usage_metadata\":{\"candidates_token_count\":385,\"prompt_token_count\":7554,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":7554}],\"thoughts_token_count\":2999,\"total_token_count\":10938}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:17 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=14245\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" ha have been mapped across the region [16]. Risk scores have not been calculated yet. The largest mapped field is\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.6-flash\",\"response_id\":\"s-HkavKbKI_9694P_-LDoAI\",\"usage_metadata\":{\"candidates_token_count\":409,\"prompt_token_count\":7554,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":7554}],\"thoughts_token_count\":2999,\"total_token_count\":10962}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:17 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=14245\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" in Gumti village covering 124.5 ha [16].\\\"},{\\\"heading\\\":\\\"What satellites missed\\\",\\\"body\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.6-flash\",\"response_id\":\"s-HkavKbKI_9694P_-LDoAI\",\"usage_metadata\":{\"candidates_token_count\":433,\"prompt_token_count\":7554,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":7554}],\"thoughts_token_count\":2999,\"total_token_count\":10986}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:17 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=14245\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\\\":\\\"Seasonal satellite tracking mapped 2780 burn clusters covering 3545.0 ha up to \"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.6-flash\",\"response_id\":\"s-HkavKbKI_9694P_-LDoAI\",\"usage_metadata\":{\"candidates_token_count\":457,\"prompt_token_count\":7554,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":7554}],\"thoughts_token_count\":2999,\"total_token_count\":11010}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:17 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=14245\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"11:10 IST on 30 Oct [16]. Candidate unseen burns area stands at 0.\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.6-flash\",\"response_id\":\"s-HkavKbKI_9694P_-LDoAI\",\"usage_metadata\":{\"candidates_token_count\":481,\"prompt_token_count\":7554,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":7554}],\"thoughts_token_count\":2999,\"total_token_count\":11034}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:17 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=14245\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"0 ha [16].\\\"}]}\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.6-flash\",\"response_id\":\"s-HkavKbKI_9694P_-LDoAI\",\"usage_metadata\":{\"candidates_token_count\":488,\"prompt_token_count\":7554,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":7554}],\"thoughts_token_count\":2999,\"total_token_count\":11041}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:17 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=14245\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\",\"thought_signature\":\"EphSCpVSAWkUfRMkseYd7-Q-NE7O5PWl026EGlO3jxo1Tcz4UW7GiE7-YHRaA_k-640SzeFO6NYPAB54bZCwZ3n4y4TK8liL5qCgkwJZDjZYAVkpx1maXzwXRg4yH5S7uG5iQb6ApCKcPLLsPnDhqQQlqTHP0kb9WVdEgj8r4fZCx2nvX3dJzuY1FN6Rk4LVsmvGgpt5ZP9kMKwSh6Zf3Tj_oxfdhBSkzlzFR4TwJkLrE1hGteKbXbbbnS49lRQeWl70h-eQjg1HncRQNPOQYdIw6uRB_EvN_ZS2pxITMMoKGL56vQc6Dy1GkfMQGbhEezommaVkUc-O7st2dEEOMksPvbp2j6Ypnm-FNTBLrzerFxXwQfjOzZMERZfyg9my_8jP46UOyUOT7p4tWAucWvaQoJnwIG5nvXApub9i9rGfY4RlqZNrenUf5UqXPt1mF0Z7354oqLq-2UlrhQRQ5ETtGd6zhvOd57iow7OLk_p_WkBwJjzQGvM0f4FaxXrk0xqz2vFg_sscpVB7lcTjhgat3CXhI7Uu9pCEeK-jdC2kpupbyiiv_-QUG-caRFw1WNSdS98nhxiVX36cEojvn-6096m_DzMVPQtKxvnCXnMBRtuPQcX7ykNywwOFTFofcMnDBtSMM_EMgL-IdJTKNiGbqENg0n4wervn9VE9TpZSn_GdHahvimJjq4Iaesh6R9WJ256ToUw7ZpfUKu7Bl8bK3YGX0banLycWWyMmQx50Cm72sTvWxqK4SAC6jYmRNWQzZe9964glMgKGqj5N4nBthJ0efdvkwROVG2Dj1OF0fpcmMKKT_DnFbBSUIN5Dv7lQwumMLbFNqCM9G7jKIn_zsOJD_DtQ_5wsd_y9baV4_U0DPtXwHShtYXYUnvziSNc4DayO_pgQc4r67bGIJD4CELxO4MMYkTAhX67sLyL1dW5_a9U29sibYk0iU3BygF7L_YWh998t6t9GeJ614OGaDxYcGxaIxG8uwIfbFjO7dLDc7RJJdfb8y5D_b2ObbIREM0SXjapNc1x_PHBYATxJ7JXjvEi92_aD8ydE8bkLESYAo8jtla6O36zK6NklUpBZSVXpQubyOhkMNIOK6vfuAWw7Fku_7VzerPOfmakCSf4YL7v2Kcv69HBauhcDIcbOwWBVLXIgG4ymKiouijymsxOVUelwo1tKNS2hM241WwgnmGFdqJQkEAeQcx7WtCfvM7zOjz0bJCr78mGneoVvEim7X6djoOjGR7qeKSIh1fd-ylwBVrRXs3VqfsrS5pkvErmUnVGSbfBa-Sv0IA1kKsAl9kdONVrD2lo95f-Ce_URkk3RRwhMTcihr9eIq9KDQuk1X0AzqM5rUE7aX1j9mdWuAG5o4lGrQZwnd7_CT7J7OqfvCWbUf7qM-QRyMW-ynlYThQTAt1xm_iVcE4DrN9aNsQGJIUbxF3kPoQr5VpBN9vFPpLCkU1ofrieY_aoZHoaVYrCKC10SGBr9UbiRX0KRHVYEMgFG45sX5XYkWLP8LHBfmOSzQr0CnW-EVNrPnHO_D867y2KEpny8LZj53-_hdVNHej1ClBBQ64nBChPt02GH6tjhAIBLpXsmo9ayi9uXa77BSky-b8N82ULyht-f8E1x2A1bTNkEPOhD8lp2gUV4GFr1r8YtqqihBrWGIWu0HgSvUWgGsWj9xDkFErKtIYlo6AG3D8x2TEElQS-UqA0jdCRQjvyAtM6g7o4lG17WqezU54NhkG139koap7nFopvXNkAXAS7vNcAKgl2oZAHNh8IPrap-OJGHLG4m4oHIgSps1k-k2qCkAlIkGRdQfHfzhAkmBMzOsOdiALin4zO7r11SXSHBUT0x5tl6EQEbUqLFzTQVrt8tyca9QaAVPJ86zfYIQLCYlVbO2l81FppMnws6vgsKgCUR-RqpCtPofS2rMdjuPDH-mBGsenMqDQ2VL_t45P4Vo8DOmOzxu_lMSJ-9CCRYS5GXGfDMV9PnzmD1PcDKRVkG9ZezjP9MBpxG05R4ApsQPyjqr4A-6XU9cexTMhaKfw-Hw23qvl2FKDfXJHgbQQ3pJpZp-WUfeyW-4TejcpN0GBGcITS98jy1qkJ5duLFbGdaCGpxrkz64OBoqhaqQt-tIO-MNE04-WTkG_0ihO7k9Zr3cKtv4Hs7XNANjUwX3gCrZGO_ovqZHAUE7F_yUkKHAgycYcdPDzI-ycj6JZuiL-g0EpVAe8NiKtoXtaws9rLLEpk4W_hmoqs3YnhWeUmDerLGo8oIK3Ti9W4F6b02yOka28EDVYvwmyvsRT6okp23rHyn5E1Q62pdhBqrnQ394P_DswLPIxnAmnIrZvRTnM84vaQEA66XjmUHutyzKNQ0VWs4ScUTjKtr4N1LHnXeml-o2CjYfRfv_iubM3CMmirgCifkatdahkKT1IsADLMj7oUA_m0fwJnu_uyBwIYigDfNS1NMsz6jRwZyMYWzemXoyvx6caH8uH0YOEOLAEoi2EFpyLqSu7mMnFYjirPDKZIHR5MNz5SqiHO8E_yKE5UG8lAAmDp9r4oVGt_R8RU-b1I2x2EAl-VsKHp3tLbxDhqWaX-ou_QO15HxLpCAwCyQz6xD-GAgJD0FPHH9LKAlidC19oCqiFyWzZ8F7ZNJ7kOeiyQf4P1HgBH8f8XRUQI_MaOUuwyYdlEcWkuFY_kzuBVH8f25oZcmZCBDBXSXi5DbuVjbSwYPKZWBmGBXDzAywjUjcsvzLb0vjJUHwWFGBMhH1OwXxpGJdh3jvXaHXU2WV7NIJGw2TyGNrAQ9tlQcWQfkj9-SirFoFoHa0ajhdRLA_tEmgSTeWwhLLzx86s6xGbIiyRd6Q_lHejN-tHFppSO1EH2FdslVkrVXEl4j7HOlj4FZRJP_iMs9I2KBT65WDDwDfXJA0faWe6nJQY8PnZANIWIDDUm1Eu6fAiGuYXv2jtf5KDpl-S5BVNBW55aCYUlceuICpNCYqPj73k4Ogp2CwDDVUxi6z44hlEJg_z3Z56hzW_mDiSOdLu3TwBoeruXf4raWKAB92r624qrrgkdzcEERvRs4kOESnCQnD0oVaDf0lDLAjCq_5o4ghQBaJa9MBoWPTQS8qPdW2tUhL7zvcZlPvSDzrvfU7eN1_vnS8z5a-q2lIJVHJT95Ge69FimOnnkGTyjWTBbZITidLlQHhbeQQeHm65pUkxL5PQW1niaM9PP0D1J7yPeiBEOTVJ0TqyQOIHb28Npf0Al9vDQiYsidCujxijOXAv-Wd4mrCMCYY7KUvQSJNs3X_KHdcWE72RBegsuZrxrmn9Ceo68T5TDGl-7aeF3RVCaBnyL8YzB2fyRibn3pU1byV2ToKWSZEp7EHLzCZmOZ431F1Hy4OAD4Mu395Ce65i5NADmBiE5TmPVVmXRR4-dWkaBPJlq4ogU6HnDp4lBvKClpTmv3hdaH1PVq7fteggeLB4DwC6wQ-5hEO3BuXshNkc6MMXP5skMe94VwDLspoPIK38HR9WAvsnBG3Kxcc7Nx05wG7-ZNic-27GK9K9_KIsO0uIZ0hAL1Hq00U-uSplXSjeyLD7sqsQuWqCx3aWZ0geZNnLiXIapOuZiN9o62-owE9v72AnuzGDsKPleKTiUF4fdlySPp648lzwy92oI2ONhS-jw3D5ajmW1TLuQPjGQ9ryml1bNkNvbiakj1orfT-WCLU5nZTd-fXJkKy_q4r1to1tL0xDcwKj_b5H-yMRGF4nUQ8qvBfqmQurW5sq4crbcRkp58ZEZUwhgTiUKADUbrZ0CEt5RLd5FTgS9bc_QL5Dy2I7P3_SYeEAbxjKznIikJ_M8pJ3fmYSIsDNAepRnzVITYi24xV9BIZ4dVhOojsw-wZTTlmLvkSa5N5W8YBz9dY4akxTwKRoDfp1Mq_AgukRnEU7teplsk9BM3KFMyNuK3x0I2-rpG8Fk2eSF5LEtBhV0rOTFwHLG37vz9XYvcPxWEd0rskm9dN3vAjLtOqYG1sczqrGFeP9Fiz6BOv3yv_cKfMCFsJLDsuQrhr9Z53vNxbyZajBCwYwQ5b7pZQ7pcVQHEUSMCDCr7nnFnbCiY0dea1xf-5sHeE0ozq24smWwK0kEJqUyE-MmZMtg_ATZL1Aod0IWoAfM3ZuGKbRFlPsnDbmdyOsXWKGuJhHGuxyCKQ8N5xY-NNB6ZS7Q8mi7nBxKI_gI7assCgr3jeSbW9tek2yuRwn61Oqt4HfY6qM8ogI6_THCYG09t_H8FJBbozYLMbQ2J71vPaIsjE_JTvMybT1uV58SCCm3AJCDdS-ebc3MTgxVXKbmdLMMndEafGy04BykXrEOqfRrzfLXWx9XGl027oZVcvmV9oWQ2hkKyb5GqKkiaU-XQ48afCl_H0lDvmjXkLWg2OtuRVs3YpNuVY-altffjF5oXShtnrQqgjYk23WvjBn8oDLQAy1fejcVC5Wv4ANfOOIxUZsyElJwbw-i29SlFWHxsaqr0L6trKhA_NifSBkFluDJPtQsqRb5CH9ZTaVMb4x0VOzrW2K5b9hphbMFLeeGBbUG9QpeaSHSxaW_D1qoG9cLbofDjx27CyPxg_nWcHhsMwiosdFzdIb2t7wCi98lokMppiHkSIIJI1kruVqT-6qZggz9PxxckXtCAfv89XK-NjZX4gE77UluAq08u3vmbXqIwz5etxW0MTrjNx1YUzx-2zVCUdpUD48Fp-qnVSPX69Ll4hzaVEHigIXPU3dPX_slQ3EDgYRnWIZUddWS7yCCRsHAxzhUJAibjKWZnJLScpwL3PBBq_wLXlH_pReUVWfZuIC6Nn40G4WyNjBZG78ZYWAS_KhKJq_2qA5vi5XIc85Uwzw-gGBWGC5_HQQaKjebsAgsUu4vThGyJU_rAfhMsQy85hk3jDUso1i8X8P0UOdCJg56QKT4b539mEeYSgRO3dUUtjXk8UG0jNAF45Ok85Fy9dxtIUIeIBUMJoDR7RF4eaNqgTqCKwlmvmusDhYU6WKmPQjhziFy6M0kJmD5JwrxUkXLvGwPHJmckDd4C3Wqx719ipAGy9xbllacx7QwSEaCX4lP2NWC_an4u8BAPiN6U2SRXITYRCGIkqNsQG51M8TgBjXPBHq3acw2wD0TYq_W_6PmK_xpcTtYwPJg6ypd7cGtSG8Y2nHbAMq8-FhDRC6oVK36mV1ftcY4HcJwftWDSsAUujKKplko7wJesw7N3YECHxqcnvwYM7jsg2vOmzOT8cKqxxELdfuVq-7In0yXdRaqp_3TS6Y8NppvMsgaFKVraUkVW6j4zB03pv54A5HmhlLbYNB7X046zwYsWaHzQaZ5EqGsXdqOS4K4kGRqIqT0IDgPnKlBe83K68aQ3WjUu5NS4b4xc_-hm2d875VVtlFJe4EMfBnf2GtsE7AfguPAYHgUIX1ESpAJL66mDNnfwEARTLITiHCz_8S6QW4JHeI8ya0s-7R0_XWmY5xfF5Ips7GeksCPEQ67Yjhff6pvCm31orHbxpaq1ogeI_J1goJ80J69D1csVXmtHGStmsOT1Tl9Xcx2YRnqFbeQ9BtOEGaMgdTmYgFJZV3SgakL_KtKQof3Conj_y-i6pjhR1Yg-XVD7Y-qxqRo5ZQgoNOHguFDalOt9KGQPyqLPvjSMermIV27FTBMsFCabrL4bj24RN80B6QOHI0vohDCT0etcOU_qJX0Gq6clHcs8XLGndFgMjV8Fqk21EvDE3yVZqhGgdcWvF981nH5kKQPU1Wg0mV3aDfbIsoBcze5ixBMu_-nQhuBAOnbcQ19ETg5lbPwjglZ5SIqh6K-tppwAXjFLnZkx4ygSq36YNiz2QLbshpkvLG8ucncVWvQJVuTo3e7Xw8Nx6anhiKYQ354k-BBa99d1Rb_fkBJgy5Cczy4goCnVU8bSvvTXvJOJBW5wc5pfRIpH1gi1ck2VRjduy9cug-UywbWRuG0-UU2NyTm6BI5uiOIbJnLJSITd0_aJn12-Scn8KSgAI--WBx5O8P94Ed-J4RbA_QZJynBfNumxns3KKiegY1KysGq6kSBaGA5ravh0jQf_fw3ayHhIQsucNWFH4FbHxEJ4emr6W5hBSWfCZ8tz72Sd0ogqgM5YObD1cfnya9FNnY0fSTbZ1mgQ_6x0MPB9IQP5IK2xYI1Jk-nJUMCaU26_Jttn0-qrvcYS7zCMvpLI38n4oXYa2GUoVkg9Qni5DULxRm1rrd7qgzf5aFKydx6C7Wr1AId7rKWHf0Cq0RblrrlmZg-cCShiDPwnb9wCT_1HDgPA4tsojjIrc_byYPVjMQVIdzQgW1n5j4yP70yGFIp8OOvQvsHpE8dGr2fhf3_X1lIj09NYWzKC7QOMcqcgoD2urs1YJ88afRlUBaTYd0iEuaKr88hxDO5SjXJfCTH9PrdKiadRaueI83uutKxrF1yz1QQ8mA20kiVYbMUiYmDcUfjSIIidNrYVa98sR84ZLEb7YUEcKbPCcCd-SS0aleuKiotbe62fuAJgziVBVBOrtnKBYhSR_O19VoS-ot8unFtjwJPpA5G9SsMxbz9GBGodxZVqhXerXT_Eov4c_tiHPWK5b2mAMxST4Zm6jE-skZDk0qg5FwJHw0FZBQHWS-DK_S8Dk3p0i19mvCJuyGCloA7cdEtxs6ZvAiS0Pn1wg6CgF2y7VjC2BztLeYb9wNRmRh_B8Hx8KmvHdthN0mmWbP0AArcVgfiaOBCIOXBu_2NrRIl8VYj5IQJmzYkACfCTJdR59frNgitVzluHxL-yO8uMLHTASFgReJaC2NxdKGTz7flESRigTKx1mEnoDeuvROGDj9U6uut9AehLORm2BVobccI8cRel_0qoEPkTTgyL8s_uSSIVnWLTSsh4AwyhWi_sHv0Od7Yto4GAfpy1fixVqRkSbFrlPePLmJA7W4qwsSj3Gla8EktU5c3qMeza1a9K8MKuR-L_kBwVmKhwT2quado-gTtgN6MIaKmFwweXaHX1vgKEWudJSJd47yBzkQTvGu50OmlbReR0PmqJXzUBkywAZHyRFVM8uoTKi6ZcsYTDMedcVamARX9ZjffTO0GILzr21cYqycpEWEYL4Hdy7j0QM9N7jG4_dMtoR-HjhaJjtoYbUjA56Gj6C1vlyngrKKezu3mGjfDNiIwGiSFiH_3TzYQjSqS927rLUqazylpFfSrXBlddgIvp6XnBYZe5XjYSrk7mDMY-zRmnAYScm0FYPfwp2zgv7z7CyKzL8n322mOKe7awa7adaW5Kg0_q1HIz9EN_ehZxFVSKIE9j_-Q8Yuk4jcUu55vIsxk6YWLQUqX3Pus-2YzZOVWq8x6S65IpDhpauCEy4nO_ezSLqE1Z4E_2sn2EruOpfqns8a0fEnOG6E824aVXKqlYR_1z52_A5uBaMNrQveuZym0mWilekRVIF9s8q2LBf7oGP5h5-f4n3P_2M2S32xNSN5grJReNnAl2V2Gv1X96tQnBBqSUMgCPVsVcGqlyZUz4JI7SOHJf7fP1CjWs3B1KZQIkqJ0LLNqdnphaH_hb4qxu9JUhmnLd3nkwCd6dHSSq0lecTJDoWb0cWSmGcrcUx-dywCllUD-yWr9xc7OB0pmZAr4Ijf5P2XBnCP_LYCXJweW7rHqNm6QdnWzUm8Hihonqe6TQFo7dKYrxHOjbkf2ep8RVK29Q8j1Udd_4tGDAsWNytc2SrvUPCON4TISM5d6PtWtWDVoAQS2AQiUb2tlrB6y6wScrYEp6s_oOiLQTT3TtQTEDQLtS6lhtEwL-MBJRMsuO3HNN32DaeH2yuQ-6jie_ktOMtkFnaX5yK0FcwaZwNw8lnwM4mCjiRhFMQPl5pvRjHsHo4xq5Acx0MOSkIfnq1DOuXBf3KS1g6MHkTznc7aMzYbDWogwJ38ilDxYBwhYyYBXRnmlowQOvqjDFYwG1PIKyFwP1hRx1DrdnGAoSgB1OqNOhfMT7U5QK61IFW1UyECoEdaAk_8rrwLsX3M1FoKTe3Qcd8jB-ZuSK6Akkteu-3x9nKce3B9obhjHqC8q0t_ytGRepWZwTSdBRILP6F7QDL4noLAP-FSfE4YqhqIS5sALUR3H6vKOPsbTuck25KIFdgabBYBN26ucMqEC-oRhLtvBCG8Xf-VgeBGzBVWSd97zr7nRs68HLHPohll3_sC4ZlJdQPYHv0sAiQTv_to6ypIKmfgEqQlzy60FXNSRDlTkGwXPkmQmXv1QtNjmjrMcbJ59gIHtp91pVDramjOSozeu0LS6ISEmPeodZwf9OZcTz4G9AinVdMGFD6yjFye-mocguMpFeIAu4lu_Pd6LfiwWD88u2lwp7-rT96brxHY5XP9RP118Ec3kBEtPYdR2k0TgRtECh7zRMJ2PA4cFM-6h6fsY4v1qziKZV09z8macpSVGfKNUuToTrxXRdpE4uSseUe0eFE-80GDho-cmdhSa_Gybue2dZP5jP8DWgeTE1JZjbxCoLJpDQT1jQ9wNRVsvM453uO6bIqRZk0Exd_vE9J4DB-tlHXMDei-Aawcf4mW-5a-UOVLxxh5yd85Ckpn0v-mYRsaCQs8WLCmfkooo14YtpHIVzDw1b2fDmBRC3uhZETyJgPEILJwtWAPiI-kMtobOkRdRWmdZP8tOrsp-_z_y9Su68uhLHwYnAMsBVYQW2_V8VYrAFxDz3poSBvK8uD463WZPLiQwelax8SrG9vwQMX-qhbr8aj-W7vyXiKLW1FWhmdtyEKwJpKKSGrW0J6Dnyr9jDD_DUdFzt-59asJVisrdt8i9grSJYgClQ7ha6cbNcomKXtuTCrLTplfASra3fTv-2ax88x3OlXXQMRyVfNGIYnQexg__Tp7MYeSxED4eNIwkTWIYcK_LV5HT7-6w2sV2V6mA7Ehsm8qLDDCm1j4qwpvxUUMA75suSGMs73XN7dxCs9mtr6UBszUWvm9MvAfQ-pGqukL8EqvdegRrhR3XV7IEEWsSQA9f2LKfuj4Jjun9gTHVQbbXIUNPkEsvXezKI7JQ6Vw4XY22_WxlRX9xEg42aT1jPVKn_mRX4UAKIG0HcET1OpLzep8BzPgoRYKhHOZWVjoWHNiv1nTAgYniiEbOGSqUVBcS9IigFwvLrbfdz-JF3aZNyqwJz2XZKRD3ClF5qNJdXZ2aEd_mDpLxB7vCTMui8tuHGy0tTOLNMWm_GZSxXhevTkwy-kUqOqd9EHFf1LyUCPRvR8f4JpOW4jzmN73EPEVh99KKoNk2JMhuIfq7mXqX16WIA9J_jGFGMskHhXbf9E7xNVfMupNwvWx4Fu6eNZhDkBp8ODKHF3KTUfoptFu4DUkFFmHmCo45YT3ijt-si4VaFTPIBxYzFPLau-52c_v6JUgKLEuy3bWoj_DfukEbQ1SqGWWf6kG7tlqcwU6x68jmGuvgBz5Z_yU2NHafsOkbw-tbXvcxNVtqskuxP1fv2qFXvYgj3PvUWPidimaC10P38zv59byXp8rM_THAsaOXcK5503AYbpwFGnXqLVOFy8APd7sxw1vFzEHVxhPrQTCynzdLTgFCShV-rtKBbe1i7ynrV3Y4NVU1gna2Rgas08z9YJxbFd3GnVb5nKwvNkjIPEWSRfCA0JU8TQXt-A4J3e5zEossWXEjBN8ImTpKJVlG0zHeF82soN8wzVJirzzPD5-C8A1eB99k2cM9MnDFCGslUMu1Kv9ytedsyeUzDz-BYjx4qqMrEP5bAL6JWEhRkg0mFYm3nPKKJ_8LMWeFIlxiCsiiijG6bhXM_QOMEWCajHIIxZvAREu5reTrr4dMC0HIRyCDXRs_a_yJ7_ChlN-kscj9x4YykY4hZR5YCvjEGzNgeCJhWv9dVCELdNvAjFXYY-BglH4wX3Oh5rkguVH2Czip5ijVOPmIc_jft37TkQ59zD8XjH2sWOUH-zzuNNhNtLUdtzQQVlxgbGkvbKSBWhQd63Qnswx82uHoWedeG6i-lkMOx_wtWfNEWiJ2dmnInL_bN1Fslf9OrbzIqUNvGLDMxvTak6ioX4q3QdVuOwejaDu9oncM-mvcVlvjr_KQGVkP_W1LZRRXrUFZiE3k-kWSy-ighwRHSRFWQtP3tIo3ei4_CImYNidB7lmn3iVzoFHsB18DsH-amDD9cAhzFOFTovharA0yq4SgFOrFxU6hBPdJM8nBu-rR-DuYe2voBqJ9sSmwaFNgfSC2_94rTqowFXGlvz24lw9UISvfjEV8BvThfzQ-0P5KTdJ3NUzCGCWmwRFUS-c1kVYJmmdY_fpGNy1cXAjk2JOBFHRlcQNIOoyr3oQp71MaC_PMGu7a0Kq2xdcLE3Hbowl8Z-HDlG5RJTVyrH_snQ4zAfeBtL-xAYhMO7G5oz5RaGKf3MQvQSVQFj6_rtrU0d1uQ8urblU0ly9VLS9BnotXA5bNjhvCOwvzaAMJVR0pyEtTjvIByF2N8_TRU1-SqmJHESQoVVtcZdwieaX_5Icv8RB2rFyKFFIA8t-V50e_g49XQRICkQk7znPhyWARnWZevUG6uYOsN0ZUBqM0a5cod2pnGSrqvbUyWdhC_9hdCrjTjgUXO31sC4glYBSEt5vUPnynaPVcMEdlH5yaNXJmV3wU8Rog_tfXNFPQEkTy_BJXBCKU1ZoNEEp4MJMAOyBQXUiJ4fdoQGRTyyKqJ4kF9mjWMd-3ObI4X1h_9Ho_Tz8fcLku7Vpx8cZ3W4NVMJ6LB-F6uuQuCnZcSsij_9StuNOPFQHMYgSARs7BN_3r90opNginRdDRyoIwO9W8M78kPGcdSfcF4JrpBu8-9cGsvM-zW6QajFcgevvKJimSBnkvtY6ql2LGEIteVP64zRx_RUHBFSVPoTWov8HjWBMLBkN8wJsgsCrNF0CWcZXvJ56iBtQFtVWLy8JvsZEywRPw0zzPYbdQJopKCV30QSWgF3h7JIi_KXoqI1628Pt7E3bqR-eNHwECtUfQc6gvRFfdyXMnOSERm8iwPewyIGnWCfgIqlim7U9R_p0Bkr-b6WnR0GOEz643NnX7w1Yi7mxNrIG37VQjSIj-hiQXc_B4rJXQXwI26AHJGzyKN_jcoTtAkdSjlZ8j2MfKWGcRomW3-9sTY_ywS0tGBIkrKm60X1nWQ-woTXAO2Sq570A5s7RfxcHAxX_OxiqqL6--7C6D05pqjAxQ3JTWEbzglr5qAHNYd-zK-OXSvxc8SdYxRfpaGZpinT8E-hDrupfoP1wAcPMCUREU9rEuB1PQnFZIu7zwD_kaHEl2SUHjYXZbfsT6Gvx3e3UVyjQwj6UcoFDN6IcYDgKabdpsZ_tl7d9-oyERUHDk0t6ojxCmFtK3GfWbhR2QcJEITWatlzjZT3Ucfdsrcb7yJvMaB9BCzIFl04jiXZoruyXPbelasX7XYS4VRPX6rxUAQAMJRZYkSOT2xChrh3oSN86fUyBMqKLVOSL758LTEffdOKOc_Sba3BsfTeap2_28Ds_qPSSrxxs15F7hVYr2SzxhNI_2Vj8TtN7Mel-x6o9ZfLQKUvu8x-1qnVId0wfr7H1Y3vBjspm-IM1dPR-A1U-uZDhMrmHpIK-ZT5KK3fdD-BQ0mu6TuXkW49mZ_NjFR--ZmkXGTJ9tS5UFrZFVs4sJ9viT85NyAEgFmQKgyZPumjhpyMkJiQ_jtq8nHXzWDV2oC7CgIiE1foT73NvC2r0ESAXC0lQRLcRF_07pijl_vcXrcEyf-SxTsTMiPghq6P1hPm1G2Wyvw-6e6cns21X_vk-_RrvH4iWNW42XLRy6YGF2cSgLN3UYoIwE9wH_J72cQIdzkhnfyRsRf8OG7Y9UpZaqWq1ns6hl_AJdThSrhVEHBwcNoiN4EB-1OrdQIp1bcYQaRzV2ze3I5pIZp-jUTay5PosZNBfn0xwMcoXkSzwwqAJc1i7aKPagH8c-bq0tVbivN-yBnNiVnUZy9QsAbF-S7GB1hA3w59BRbynM-f3A5xU43z9HovDWL7j5P0Vxz95KYwOSCIHj_j5HJSMs8pvtqVoJQ0T1iV-ZzCskHINeOVEjaXZbU2sGyf6bpFyhM9fkLzZqT8OvqZNWYnzRJ6XPDELIbyvbsacicMun5mwZJPPDH1nPr08NTCj1ApZdZC1BR4uwlok6LGuG6i8nzcLz7it0SxyJkvsbhCBwCSysAqcg1bJFb6zx5IYvOQ5yS26RTuE_kKe8ywCwSSEpshL_-ilDZ_1cD3w_cH9DkSuSAXbH3qU1NPq-IpBqwFEa28wRTxcOLJ5-yA4p53T5gVLAnWukm-CZXzdmQCgiReI09HiFWNUAOn6kvtq-7STKNogPfSUXNOYXPCf_rUmXd8h2zEnPH7TF8nD01m-0d5ZoQcN38Zz_ENiIDFNp4NRhIJrbo9O5ay6i9gf6DmqZKz-EbhJTI285iUrujjVewBy9-EnuGFGo7eIpQczpwiAMg9r_YLmZJCJfKnom38lzFzqiM99gTYQ9zgpgVdvxm6JLjHqjO3ZdaBrze5JsfzB2cSZWD9cg3r00CCvXMr9XfT1t4CtKGhif5SVbgA8Li5c3jufEhTO4tuEa_96VpZfhOouwncLczTBxQPTM-OPA4xsbSdgAWkl98QuRmbsIlCPEfzWEdqfil8Dqpp3x5pK69RM4GrM9-57_vjehpz_tW4-nJL9trkD1I27WRLA8ekMjstG4nIFVEcTeHa0EDShL7AyvJQQB0_tPqQE-gf8_8_yT6wxMcIIHsTAaOHCi8IIM60oItzmoZOEyVorSE9EsuVYW9D79xPHjZ-PdwXaKmARmeHjo-0yR77sQ-LyUVhJbr8fztY1rIQW3Cl9tPbV63pt32uy67Pez6tj8D7xD6H5DYIFEkD5qTcD5W7Un4oeaYqlc_0SbIjZc2laEAND_KAsmoyiEiHsv62QVAKVpOQY2UBAdJvty2f6hmmQCblkJnjQlbgJwBc-uE-Bu0IEQDFjgK0lPUsB6eYXPVck_GUgfRRz2TUtwD2buXOEVde73_wIgiwiWH2wi0vHEzR6N0E-Ns4VnAWPVp18v1LtkDLWSXz-3vqSWv0NmPGT0NtATX2jXk723S87OAc849Qg_5O8lJfYraD_LVQ2kF4kwWxRylzA5ZqWGmiRyv8Wr2CAz4YbeXiP6FKUahkF-IFa5t1iDFvbcfnl2Cg38678nW2X5RTwCm0pvcBICT4zXZLVszHCnqejLvdMgOIzlsQIWfK5EHLAEzjiH2HQTiALALuYic-P4f3u_xeJmJYSUORZ3DE6zFO9v-ozjssu0e2CVk2kmFFJk26gzBPWMGoc7RVpHVC-iVEGKYCdWLf1wGts6b-kXrE6JADz7UnxnKUMEZmSkZc2OWANiV30FD6I0p5s1OTp1vyaTpwZO9T8pjcAZAdVBHHPQjNbf8NclU6ws3buVFfCFL3PYfonNTuPs4HebvHdQYUFoHPhWp_PJOCaL-amXVwcz6Bh421k0BpD_MbO4WNsDh9yT45P93qry0QMUDyXPTElk_Lr6uvTcy3r-xVfhsovtl93eDtTadONcNiIiHhoFVKXtPNX7302ToXnQPhpygX72WQqR1mdn9u2CSF11nXWfiApwJbKqniroIn3tyWLk11sMTdOTzsCgb4I7HrqIgUlGA4URm-AJ9HCHgnUEdNjpT2wCANYwc4gwKywJKV58n-9cl5gt79IMrzhByc2QcSxjXDfSAFMPfRS7FRVSGz2OO4WATyn_9fl4eu_TK78uexFh4KyuX14o8iFam2BbTerXm3Y17ILhZ0b3VM8JxyBCd7GylrZYlrvFje79HSAyRd5mp4ZUprm7SF_ran7uXIggk1i4QxiYXRfbp5QA-sx9hfIAN1b5vwbjkEOdfUG_o0FlZU0g3SDWkP4v8Gn-zbIWnqiiWYGo2Eek9-ftg9J3Pl32fXgTbHKWiLW4lR3-mkYLBNh32Y872jQdBTuGW87_tfGWfbYUMNn3Mnl7E1nlTmkiGb2dujqC_1cf9c2RUOpYzyE55CBPn0T1783g39UfIEgD8GmGNi7_ltEKVy2o4ymoQLzDYqyXioCaMFhU=\"}],\"role\":\"model\"},\"finish_reason\":\"STOP\",\"index\":0}],\"model_version\":\"gemini-3.6-flash\",\"response_id\":\"s-HkavKbKI_9694P_-LDoAI\",\"usage_metadata\":{\"candidates_token_count\":488,\"prompt_token_count\":7554,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":7554}],\"thoughts_token_count\":2999,\"total_token_count\":11041}}"
+   ]
+  },
+  {
+   "model": "gemini-3.6-flash",
+   "chunks": [
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:20 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1200\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"{\\\"title\\\":\\\"30 अक्टूबर\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.6-flash\",\"response_id\":\"w-HkarL3GJX7694PwOSj8AI\",\"usage_metadata\":{\"candidates_token_count\":6,\"prompt_token_count\":608,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":608}],\"total_token_count\":614}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:20 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1200\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" के लिए वायु गुणवत्ता और फसल अवशेष जलाने से संबंधी बुलेटिन\\\",\\\"summary\\\":\\\"दिल्ली में 30 अक्टूबर को 23:00\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.6-flash\",\"response_id\":\"w-HkarL3GJX7694PwOSj8AI\",\"usage_metadata\":{\"candidates_token_count\":35,\"prompt_token_count\":608,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":608}],\"total_token_count\":643}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:20 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1200\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" बजे IST पर औसतन PM2.5 स्तर 69.8 µg/m³ दर्ज किया गया [\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.6-flash\",\"response_id\":\"w-HkarL3GJX7694PwOSj8AI\",\"usage_metadata\":{\"candidates_token_count\":60,\"prompt_token_count\":608,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":608}],\"total_token_count\":668}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:20 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1200\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"3]। 30 अक्टूबर को दिल्ली के PM2.5 सांद्रता में पराली जलाने का योगदान 1.7\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.6-flash\",\"response_id\":\"w-HkarL3GJX7694PwOSj8AI\",\"usage_metadata\":{\"candidates_token_count\":86,\"prompt_token_count\":608,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":608}],\"total_token_count\":694}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:20 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1200\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"5% रहा [11]।\\\",\\\"sections\\\":[{\\\"heading\\\":\\\"अभी वायु गुणवत्ता\\\",\\\"body\\\":\\\"दिल्ली में 30 अक्टूबर को \"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.6-flash\",\"response_id\":\"w-HkarL3GJX7694PwOSj8AI\",\"usage_metadata\":{\"candidates_token_count\":112,\"prompt_token_count\":608,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":608}],\"total_token_count\":720}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:20 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1200\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"23:00 बजे IST पर 69.8 µg/m³ का मध्यमान PM2.5 सांद्र\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.6-flash\",\"response_id\":\"w-HkarL3GJX7694PwOSj8AI\",\"usage_metadata\":{\"candidates_token_count\":139,\"prompt_token_count\":608,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":608}],\"total_token_count\":747}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:20 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1200\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ता और 110.0 µg/m³ का PM10 दर्ज किया गया [3]। C\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.6-flash\",\"response_id\":\"w-HkarL3GJX7694PwOSj8AI\",\"usage_metadata\":{\"candidates_token_count\":163,\"prompt_token_count\":608,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":608}],\"total_token_count\":771}}"
+   ],
+   "error": "ServerError: 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}}"
+  },
+  {
+   "model": "gemini-3.6-flash",
+   "chunks": [
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:20 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1618\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"{\\\"title\\\":\\\"30 ਅਕ\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.6-flash\",\"response_id\":\"w-HkauL5J9jg694P3I_kmQI\",\"usage_metadata\":{\"candidates_token_count\":7,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":621}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:20 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1618\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ਤੂਬਰ ਲਈ ਹਵਾ ਦੀ ਗੁਣਵੱਤਾ ਅਤੇ ਫ਼ਸਲ ਦੇ ਰਹਿੰਦ-ਖ\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.6-flash\",\"response_id\":\"w-HkauL5J9jg694P3I_kmQI\",\"usage_metadata\":{\"candidates_token_count\":31,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":645}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:20 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1618\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ੂੰਹਦ ਨੂੰ ਸਾੜਨ ਬਾਰੇ ਬੁਲੇਟਿਨ\\\",\\\"summary\\\":\\\"ਦਿੱਲੀ ਵਿੱਚ 30 ਅਕਤ\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.6-flash\",\"response_id\":\"w-HkauL5J9jg694P3I_kmQI\",\"usage_metadata\":{\"candidates_token_count\":59,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":673}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:20 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1618\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ੂਬਰ ਨੂੰ 23:00 IST 'ਤੇ ਔਸਤ PM2.5 ਪੱਧਰ 69\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.6-flash\",\"response_id\":\"w-HkauL5J9jg694P3I_kmQI\",\"usage_metadata\":{\"candidates_token_count\":86,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":700}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:20 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1618\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\".8 µg/m³ ਦਰਜ ਕੀਤਾ ਗਿਆ [3]। 30 ਅਕਤੂਬਰ ਨੂੰ\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.6-flash\",\"response_id\":\"w-HkauL5J9jg694P3I_kmQI\",\"usage_metadata\":{\"candidates_token_count\":110,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":724}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:20 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1618\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" ਦਿੱਲੀ ਦੇ PM2.5 ਇਕਾਗਰਤਾ ਵਿੱਚ ਪਰਾਲੀ ਸਾੜਨ ਦਾ ਯੋਗਦਾਨ \"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.6-flash\",\"response_id\":\"w-HkauL5J9jg694P3I_kmQI\",\"usage_metadata\":{\"candidates_token_count\":136,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":750}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:20 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1618\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"1.75% ਸੀ [11]।\\\",\\\"sections\\\":[{\\\"heading\\\":\\\"ਹੁਣ ਹਵਾ ਦੀ ਗੁਣਵ\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.6-flash\",\"response_id\":\"w-HkauL5J9jg694P3I_kmQI\",\"usage_metadata\":{\"candidates_token_count\":160,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":774}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:20 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1618\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ੱਤਾ\\\",\\\"body\\\":\\\"ਦਿੱਲੀ ਵਿੱਚ 30 ਅਕਤੂਬਰ ਨੂੰ 23:00\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.6-flash\",\"response_id\":\"w-HkauL5J9jg694P3I_kmQI\",\"usage_metadata\":{\"candidates_token_count\":184,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":798}}"
+   ],
+   "error": "ServerError: 503 UNAVAILABLE. {'error': {'code': 503, 'message': 'This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.', 'status': 'UNAVAILABLE'}}"
+  },
+  {
+   "model": "gemini-3.5-flash-lite",
+   "chunks": [
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1055\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"{\\n  \\\"title\\\": \\\"३० अक्त\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xeHkarSvHrLv694Pn7_y-QI\",\"usage_metadata\":{\"candidates_token_count\":10,\"prompt_token_count\":608,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":608}],\"total_token_count\":618}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1055\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ूबर के लिए वायु गुणवत्ता और फसल अवशेष जलाने का बुलेटिन\\\",\\n  \\\"summary\\\": \\\"दिल्ली में ३० अक्तूबर को\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xeHkarSvHrLv694Pn7_y-QI\",\"usage_metadata\":{\"candidates_token_count\":37,\"prompt_token_count\":608,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":608}],\"total_token_count\":645}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1055\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" २३:०० IST पर औसत PM2.5 का स्तर ६९.८ µg/m³ दर्ज किया गया\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xeHkarSvHrLv694Pn7_y-QI\",\"usage_metadata\":{\"candidates_token_count\":62,\"prompt_token_count\":608,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":608}],\"total_token_count\":670}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1055\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" [3]। ३० अक्तूबर को दिल्ली के PM2.5 सांद्रण में पराली जलाने का योगदान १.७५%\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xeHkarSvHrLv694Pn7_y-QI\",\"usage_metadata\":{\"candidates_token_count\":90,\"prompt_token_count\":608,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":608}],\"total_token_count\":698}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1055\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" था [11]।\\\",\\n  \\\"sections\\\": [\\n    {\\n      \\\"heading\\\": \\\"अब वायु गुणवत्ता\\\",\\n      \\\"\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xeHkarSvHrLv694Pn7_y-QI\",\"usage_metadata\":{\"candidates_token_count\":118,\"prompt_token_count\":608,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":608}],\"total_token_count\":726}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1055\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"body\\\": \\\"दिल्ली में ३० अक्तूबर को २३:०० IST पर औसत PM2.5 सांद्रण\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xeHkarSvHrLv694Pn7_y-QI\",\"usage_metadata\":{\"candidates_token_count\":142,\"prompt_token_count\":608,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":608}],\"total_token_count\":750}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1055\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" ६९.८ µg/m³ और PM10 ११००.० µg/m³ दर्ज किया गया [3\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xeHkarSvHrLv694Pn7_y-QI\",\"usage_metadata\":{\"candidates_token_count\":169,\"prompt_token_count\":608,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":608}],\"total_token_count\":777}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1055\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"]। CPCB AQI सूचकांक संतोषजनक श्रेणी में ७७ पर रहा [2]। मुंडका में २३:०० IST\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xeHkarSvHrLv694Pn7_y-QI\",\"usage_metadata\":{\"candidates_token_count\":198,\"prompt_token_count\":608,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":608}],\"total_token_count\":806}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1055\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" पर शहर में सबसे अधिक PM2.5 स्तर १८८.० µg/m³ दर्ज किया गया [3]।\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xeHkarSvHrLv694Pn7_y-QI\",\"usage_metadata\":{\"candidates_token_count\":223,\"prompt_token_count\":608,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":608}],\"total_token_count\":831}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1055\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\\\"\\n    },\\n    {\\n      \\\"heading\\\": \\\"पिछले २४ घंटों में आग\\\",\\n      \\\"body\\\": \\\"\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xeHkarSvHrLv694Pn7_y-QI\",\"usage_metadata\":{\"candidates_token_count\":248,\"prompt_token_count\":608,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":608}],\"total_token_count\":856}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1055\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"सेवा समय समाप्त होने के कारण पिछले २४ घंटों के लिए सक्रिय अग्नि पहचान डेटा आज अनुपलब्ध है।\\\"\\n    },\\n    {\\n      \\\"heading\\\": \\\"हवा और धुएं का दृष्टिकोण\\\",\\n      \\\"body\\\": \\\"३०\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xeHkarSvHrLv694Pn7_y-QI\",\"usage_metadata\":{\"candidates_token_count\":297,\"prompt_token_count\":608,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":608}],\"total_token_count\":905}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1055\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" अक्तूबर को २३:३० IST पर दिल्ली में सतह हवा की गति २.० किमी/घंटा थी\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xeHkarSvHrLv694Pn7_y-QI\",\"usage_metadata\":{\"candidates_token_count\":321,\"prompt_token_count\":608,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":608}],\"total_token_count\":929}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1055\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" और मिश्रण ऊंचाई ४२ मीटर थी [7]। ३१ अक्तूबर को ०३:३० IST पर अमृतसर में धुआ\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xeHkarSvHrLv694Pn7_y-QI\",\"usage_metadata\":{\"candidates_token_count\":348,\"prompt_token_count\":608,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":608}],\"total_token_count\":956}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1055\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ं सूचकांक १४९.६ पर पहुंचने की उम्मीद है [8]। ३१ अक्तूबर को १५:३० IST पर लु\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xeHkarSvHrLv694Pn7_y-QI\",\"usage_metadata\":{\"candidates_token_count\":377,\"prompt_token_count\":608,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":608}],\"total_token_count\":985}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1055\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"धियाना में धुआं सूचकांक १२.० तक पहुंचने का अनुमान है [8]।\\\"\\n    },\\n    {\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xeHkarSvHrLv694Pn7_y-QI\",\"usage_metadata\":{\"candidates_token_count\":406,\"prompt_token_count\":608,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":608}],\"total_token_count\":1014}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1055\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\\n      \\\"heading\\\": \\\"जलने के जोखिम वाले खेत\\\",\\n      \\\"body\\\": \\\"पूरे क्षेत्र में ५९८\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xeHkarSvHrLv694Pn7_y-QI\",\"usage_metadata\":{\"candidates_token_count\":432,\"prompt_token_count\":608,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":608}],\"total_token_count\":1040}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1055\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"२१.५ हेक्टेयर को कवर करने वाले कुल २६००२ कटे-लेकिन-बिना-जले खेतों\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xeHkarSvHrLv694Pn7_y-QI\",\"usage_metadata\":{\"candidates_token_count\":456,\"prompt_token_count\":608,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":608}],\"total_token_count\":1064}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1055\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" को मैप किया गया है [16]। जोखिम स्कोर अभी तक गणना नहीं किए गए हैं। सबसे बड़ा मैप किया गया\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xeHkarSvHrLv694Pn7_y-QI\",\"usage_metadata\":{\"candidates_token_count\":480,\"prompt_token_count\":608,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":608}],\"total_token_count\":1088}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1055\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" खेत गुमती गांव में १२४.५ हेक्टेयर को कवर करता है [16]।\\\"\\n    },\\n    {\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xeHkarSvHrLv694Pn7_y-QI\",\"usage_metadata\":{\"candidates_token_count\":505,\"prompt_token_count\":608,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":608}],\"total_token_count\":1113}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1055\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\\n      \\\"heading\\\": \\\"जो उपग्रहों से छूट गया\\\",\\n      \\\"body\\\": \\\"मौसमी उप\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xeHkarSvHrLv694Pn7_y-QI\",\"usage_metadata\":{\"candidates_token_count\":529,\"prompt_token_count\":608,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":608}],\"total_token_count\":1137}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1055\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ग्रह ट्रैकिंग ने ३० अक्तूबर को ११:१० IST तक ३५४५.० हेक्टेयर को कवर करने\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xeHkarSvHrLv694Pn7_y-QI\",\"usage_metadata\":{\"candidates_token_count\":553,\"prompt_token_count\":608,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":608}],\"total_token_count\":1161}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1055\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" वाले २७८० बर्न क्लस्टर मैप किए [16]। उम्मीदवार अनदेखे बर्न क्षेत्र ०.०\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xeHkarSvHrLv694Pn7_y-QI\",\"usage_metadata\":{\"candidates_token_count\":578,\"prompt_token_count\":608,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":608}],\"total_token_count\":1186}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1055\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" हेक्टेयर पर है [16]।\\\"\\n    }\\n  ]\\n}\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xeHkarSvHrLv694Pn7_y-QI\",\"usage_metadata\":{\"candidates_token_count\":594,\"prompt_token_count\":608,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":608}],\"total_token_count\":1202}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=1055\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\",\"thought_signature\":\"EmAKXgFpFH0TwGP1CqjwnijaP13EeAujWq8XQ28PNtVxcnpSJ3S4KWXkTgKE0EtA_813pVxaGyFuP6vRCae1kyXLNmo9x94tbp1rOMPAEOzRejQdbJMk6EHTtZeXe8tZqZU=\"}],\"role\":\"model\"},\"finish_reason\":\"STOP\",\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xeHkarSvHrLv694Pn7_y-QI\",\"usage_metadata\":{\"candidates_token_count\":594,\"prompt_token_count\":608,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":608}],\"total_token_count\":1202}}"
+   ]
+  },
+  {
+   "model": "gemini-3.5-flash-lite",
+   "chunks": [
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=722\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"{\\\"title\\\":\\\"30 ਅਕ\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xuHkaoSCBPuz694PsILtQA\",\"usage_metadata\":{\"candidates_token_count\":7,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":621}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=722\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ਤੂਬਰ ਲਈ ਹਵਾ ਦੀ ਗੁਣਵੱਤਾ ਅਤੇ ਫ਼ਸਲ ਦੀ ਰਹਿੰਦ-ਖੂੰਹਦ\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xuHkaoSCBPuz694PsILtQA\",\"usage_metadata\":{\"candidates_token_count\":34,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":648}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=722\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" ਨੂੰ ਅੱਗ ਲਗਾਉਣ ਬਾਰੇ ਬੁਲੇਟਿਨ\\\",\\\"summary\\\":\\\"ਦਿੱਲੀ ਵਿੱਚ 30 ਅਕਤ\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xuHkaoSCBPuz694PsILtQA\",\"usage_metadata\":{\"candidates_token_count\":62,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":676}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=722\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ੂਬਰ ਨੂੰ 23:00 IST 'ਤੇ PM2.5 ਦਾ ਮੱਧਮ ਪੱਧਰ\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xuHkaoSCBPuz694PsILtQA\",\"usage_metadata\":{\"candidates_token_count\":87,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":701}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=722\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" 69.8 µg/m³ ਦਰਜ ਕੀਤਾ ਗਿਆ [3]। 30 ਅਕਤੂਬਰ\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xuHkaoSCBPuz694PsILtQA\",\"usage_metadata\":{\"candidates_token_count\":113,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":727}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=722\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" ਨੂੰ ਦਿੱਲੀ ਦੇ PM2.5 ਗਾੜ੍ਹਾਪਣ ਵਿੱਚ ਪਰਾਲੀ ਸਾੜਨ ਦਾ ਯੋ\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xuHkaoSCBPuz694PsILtQA\",\"usage_metadata\":{\"candidates_token_count\":137,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":751}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=722\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ਗਦਾਨ 1.75% ਸੀ [11]।\\\",\\\"sections\\\":[{\\\"heading\\\":\\\"ਹਵਾ ਦੀ ਗੁ\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xuHkaoSCBPuz694PsILtQA\",\"usage_metadata\":{\"candidates_token_count\":161,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":775}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=722\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ਣਵੱਤਾ ਹੁਣ\\\",\\\"body\\\":\\\"ਦਿੱਲੀ ਵਿੱਚ 30 ਅਕਤੂਬਰ ਨੂੰ 23\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xuHkaoSCBPuz694PsILtQA\",\"usage_metadata\":{\"candidates_token_count\":187,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":801}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=722\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\":00 IST 'ਤੇ PM2.5 ਦਾ ਮੱਧਮ ਗਾੜ੍ਹਾਪਣ 69.8 µg\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xuHkaoSCBPuz694PsILtQA\",\"usage_metadata\":{\"candidates_token_count\":215,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":829}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=722\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"/m³ ਅਤੇ PM10 110.0 µg/m³ ਦਰਜ ਕੀਤਾ ਗਿਆ [\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xuHkaoSCBPuz694PsILtQA\",\"usage_metadata\":{\"candidates_token_count\":239,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":853}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=722\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"3]। CPCB AQI ਸੂਚਕਾਂਕ ਤਸੱਲੀਬਖਸ਼ ਸ਼੍ਰੇਣੀ ਵਿੱਚ 77 ਰ\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xuHkaoSCBPuz694PsILtQA\",\"usage_metadata\":{\"candidates_token_count\":267,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":881}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=722\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ਿਹਾ [2]। ਮੁੁੰਡਕਾ ਵਿੱਚ 23:00 IST 'ਤੇ ਸ਼ਹਿਰ ਵਿੱਚ ਸਭ ਤੋਂ ਵੱ\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xuHkaoSCBPuz694PsILtQA\",\"usage_metadata\":{\"candidates_token_count\":295,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":909}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=722\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ਧ PM2.5 ਪੱਧਰ 188.0 µg/m³ ਦਰਜ ਕੀਤਾ\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xuHkaoSCBPuz694PsILtQA\",\"usage_metadata\":{\"candidates_token_count\":319,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":933}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=722\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" ਗਿਆ [3]।\\\"},{\\\"heading\\\":\\\"ਪਿਛਲੇ 24 ਘੰਟਿਆਂ ਵਿੱਚ ਅੱਗ ਦੀਆਂ ਘ\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xuHkaoSCBPuz694PsILtQA\",\"usage_metadata\":{\"candidates_token_count\":344,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":958}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=722\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ਟਨਾਵਾਂ\\\",\\\"body\\\":\\\"ਸਰਵਿਸ ਟਾਈਮਆਉਟ ਕਾਰਨ ਪਿਛਲੇ\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xuHkaoSCBPuz694PsILtQA\",\"usage_metadata\":{\"candidates_token_count\":368,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":982}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=722\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" 24 ਘੰਟਿਆਂ ਲਈ ਸਰਗਰਮ ਅੱਗ ਦੀ ਖੋਜ ਦਾ ਡੇਟਾ ਅੱਜ ਉ\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xuHkaoSCBPuz694PsILtQA\",\"usage_metadata\":{\"candidates_token_count\":396,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":1010}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=722\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ਪਲਬਧ ਨਹੀਂ ਹੈ।\\\"},{\\\"heading\\\":\\\"ਹਵਾ ਅਤੇ ਧੂੰਏਂ ਦਾ ਨਜ਼ਰੀਆ\\\",\\\"body\\\":\\\"3\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xuHkaoSCBPuz694PsILtQA\",\"usage_metadata\":{\"candidates_token_count\":423,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":1037}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=722\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"0 ਅਕਤੂਬਰ ਨੂੰ 23:30 IST 'ਤੇ ਦਿੱਲੀ ਵਿੱਚ ਜ਼ਮੀਨੀ ਹਵਾ ਦੀ ਗ\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xuHkaoSCBPuz694PsILtQA\",\"usage_metadata\":{\"candidates_token_count\":449,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":1063}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=722\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ਤੀ 42 ਮੀਟਰ ਦੀ ਮਿਕਸਿੰਗ ਉਚਾਈ ਦੇ ਨਾਲ 2.0 ਕਿਲੋਮੀਟਰ ਪ੍ਰ\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xuHkaoSCBPuz694PsILtQA\",\"usage_metadata\":{\"candidates_token_count\":477,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":1091}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=722\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ਤੀ ਘੰਟਾ ਸੀ [7]। 31 ਅਕਤੂਬਰ ਨੂੰ 03:30 IST 'ਤੇ\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xuHkaoSCBPuz694PsILtQA\",\"usage_metadata\":{\"candidates_token_count\":504,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":1118}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=722\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" ਅੰਮ੍ਰਿਤਸਰ ਵਿੱਚ ਧੂੰਏਂ ਦਾ ਸੂਚਕਾਂਕ 149.6\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xuHkaoSCBPuz694PsILtQA\",\"usage_metadata\":{\"candidates_token_count\":530,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":1144}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=722\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" 'ਤੇ ਪਹੁੰਚਣ ਦੀ ਉਮੀਦ ਹੈ [8]। 31 ਅਕਤੂਬਰ ਨੂੰ\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xuHkaoSCBPuz694PsILtQA\",\"usage_metadata\":{\"candidates_token_count\":554,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":1168}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=722\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" 15:30 IST 'ਤੇ ਲੁਧਿਆਣਾ ਵਿੱਚ ਧੂੰਏਂ ਦਾ ਸੂਚਕਾਂਕ 1\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xuHkaoSCBPuz694PsILtQA\",\"usage_metadata\":{\"candidates_token_count\":583,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":1197}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=722\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"20.0 ਤੱਕ ਪਹੁੰਚਣ ਦਾ ਅਨੁਮਾਨ ਹੈ [8]।\\\"},{\\\"heading\\\":\\\"ਖ\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xuHkaoSCBPuz694PsILtQA\",\"usage_metadata\":{\"candidates_token_count\":608,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":1222}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=722\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ੇਤ ਜਿਨ੍ਹਾਂ ਨੂੰ ਅੱਗ ਲੱਗਣ ਦਾ ਖ਼ਤਰਾ ਹੈ\\\",\\\"body\\\":\\\"ਪੂ\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xuHkaoSCBPuz694PsILtQA\",\"usage_metadata\":{\"candidates_token_count\":632,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":1246}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=722\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ਰੇ ਖੇਤਰ ਵਿੱਚ 59821.5 ਹੈਕਟੇਅਰ ਖੇਤਰ ਨੂੰ ਕਵਰ ਕਰਨ\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xuHkaoSCBPuz694PsILtQA\",\"usage_metadata\":{\"candidates_token_count\":659,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":1273}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=722\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" ਵਾਲੇ ਕੁੱਲ 26002 ਵਾਢੀ ਕੀਤੇ ਗਏ ਪਰ ਬਿਨਾਂ ਸਾ\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xuHkaoSCBPuz694PsILtQA\",\"usage_metadata\":{\"candidates_token_count\":684,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":1298}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=722\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ੜੇ ਖੇਤ ਮੈਪ ਕੀਤੇ ਗਏ ਹਨ [16]। ਜੋਖਮ ਸਕੋਰ ਅਜੇ ਤ\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xuHkaoSCBPuz694PsILtQA\",\"usage_metadata\":{\"candidates_token_count\":710,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":1324}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=722\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ੱਕ ਨਹੀਂ ਗਣਨਾ ਕੀਤੇ ਗਏ ਹਨ। ਸਭ ਤੋਂ ਵੱਡਾ ਮੈਪ ਕੀਤਾ ਗਿਆ ਖੇਤ ਗੁੰਮ\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xuHkaoSCBPuz694PsILtQA\",\"usage_metadata\":{\"candidates_token_count\":738,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":1352}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=722\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ਟੀ ਪਿੰਡ ਵਿੱਚ ਹੈ ਜੋ 124.5 ਹੈਕਟੇਅਰ ਨੂੰ ਕਵਰ ਕਰ\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xuHkaoSCBPuz694PsILtQA\",\"usage_metadata\":{\"candidates_token_count\":762,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":1376}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=722\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ਦਾ ਹੈ [16]।\\\"},{\\\"heading\\\":\\\"ਜੋ ਸੈਟੇਲਾਈਟਾਂ ਤੋਂ ਖੁੰਝ ਗਿਆ\\\",\\\"body\\\":\\\"ਮ\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xuHkaoSCBPuz694PsILtQA\",\"usage_metadata\":{\"candidates_token_count\":790,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":1404}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=722\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ੌਸਮੀ ਸੈਟੇਲਾਈਟ ਟਰੈਕਿੰਗ ਨੇ 30 ਅਕਤੂਬਰ\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xuHkaoSCBPuz694PsILtQA\",\"usage_metadata\":{\"candidates_token_count\":815,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":1429}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=722\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" ਨੂੰ 11:10 IST ਤੱਕ 3545.0 ਹੈਕਟੇਅਰ ਖ\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xuHkaoSCBPuz694PsILtQA\",\"usage_metadata\":{\"candidates_token_count\":839,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":1453}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=722\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ੇਤਰ ਨੂੰ ਕਵਰ ਕਰਨ ਵਾਲੇ 2780 ਸੜਨ ਵਾਲੇ ਸਮੂਹਾਂ ਨੂੰ\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xuHkaoSCBPuz694PsILtQA\",\"usage_metadata\":{\"candidates_token_count\":863,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":1477}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=722\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" ਮੈਪ ਕੀਤਾ [16]। ਅਣਡਿੱਠੇ ਸੜਨ ਵਾਲੇ ਖੇਤਰ ਉਮੀਦ\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xuHkaoSCBPuz694PsILtQA\",\"usage_metadata\":{\"candidates_token_count\":888,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":1502}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=722\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"ਵਾਰ ਦਾ ਖੇਤਰ 0.0 ਹੈਕਟੇਅਰ ਹੈ [16]।\\\"}]}\"}],\"role\":\"model\"},\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xuHkaoSCBPuz694PsILtQA\",\"usage_metadata\":{\"candidates_token_count\":911,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":1525}}",
+    "{\"sdk_http_response\":{\"headers\":{\"content-type\":\"text/event-stream\",\"content-disposition\":\"attachment\",\"vary\":\"Origin, X-Origin, Referer\",\"transfer-encoding\":\"chunked\",\"date\":\"Fri, 30 Oct 2026 18:28:22 GMT\",\"server\":\"scaffolding on HTTPServer2\",\"x-xss-protection\":\"0\",\"x-frame-options\":\"SAMEORIGIN\",\"x-content-type-options\":\"nosniff\",\"server-timing\":\"gfet4t7; dur=722\",\"alt-svc\":\"h3=\\\":443\\\"; ma=2592000,h3-29=\\\":443\\\"; ma=2592000\"}},\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\",\"thought_signature\":\"EmAKXgFpFH0TlHDIkCQAxAwCtwZdYdCb_4muh5nqBCmGA-hi6weFCwOJMNRrEq_wGdN9VjoHZ5Ky8Ak0702XPZAW8pvJ3vx8MUeLknoik0fHHvPQre4o28J3aFltXxfWNjM=\"}],\"role\":\"model\"},\"finish_reason\":\"STOP\",\"index\":0}],\"model_version\":\"gemini-3.5-flash-lite\",\"response_id\":\"xuHkaoSCBPuz694PsILtQA\",\"usage_metadata\":{\"candidates_token_count\":911,\"prompt_token_count\":614,\"prompt_tokens_details\":[{\"modality\":\"TEXT\",\"token_count\":614}],\"total_token_count\":1525}}"
+   ]
+  }
+ ]
+}

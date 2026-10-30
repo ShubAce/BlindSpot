@@ -1,0 +1,109 @@
+# BlindSpot data pipeline on free GitHub Actions runners (public repo).
+# Each schedule runs one group of jobs from `python -m blindspot.jobs`; results land in Neon (PostGIS),
+# which the Vercel API reads. Chained jobs run automatically: met -> smoke, sentinel -> risk + featured,
+# bulletin -> featured_investigations. Secrets: DATABASE_URL (Neon direct endpoint) and the API keys;
+# set them with infra/set_github_secrets.py. Until DATABASE_URL is set, every run skips quietly.
+name: data-jobs
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"   # fires, official counts, air quality, geostationary scans
+    - cron: "15 */3 * * *"   # met grid (-> smoke trajectories), IITM DSS
+    - cron: "40 */6 * * *"   # Sentinel-2 scenes (-> burn risk, featured frames), smoke check, orbits
+    - cron: "0 2-7 * * *"    # bulletin 07:30 IST, hourly retries to 12:30 IST (idempotent)
+    - cron: "30 6 * * *"     # 12:00 IST: season backfills
+    - cron: "0 3 * * 1"      # weekly: boundaries and places
+  workflow_dispatch:
+    inputs:
+      jobs:
+        description: "Space-separated job names (python -m blindspot.jobs list)"
+        required: true
+        default: "firms_nrt air"
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ github.event.schedule == '40 */6 * * *' && 150 || 60 }}
+    concurrency:
+      group: data-jobs-${{ github.event.schedule || 'manual' }}
+      cancel-in-progress: false
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      FIRMS_MAP_KEY: ${{ secrets.FIRMS_MAP_KEY }}
+      DATA_GOV_IN_API_KEY: ${{ secrets.DATA_GOV_IN_API_KEY }}
+      OPENAQ_API_KEY: ${{ secrets.OPENAQ_API_KEY }}
+      LSASAF_USERNAME: ${{ secrets.LSASAF_USERNAME }}
+      LSASAF_PASSWORD: ${{ secrets.LSASAF_PASSWORD }}
+      ENABLE_SCHEDULER: "0"
+      INIT_DB_ON_STARTUP: "0"
+      SENTINEL_BUDGET_MIN: "40"
+      CACHE_DIR: /tmp/blindspot-cache   # the runner context is not available in job-level env
+      PUBLIC_API_URL: https://blindspot-api-azure.vercel.app
+    defaults:
+      run:
+        working-directory: services/api
+    steps:
+      - name: Check that the database secret is set
+        id: guard
+        shell: bash
+        working-directory: .
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::notice::DATABASE_URL secret is not set; skipping (run infra/set_github_secrets.py)."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.guard.outputs.configured == 'true'
+
+      - uses: astral-sh/setup-uv@v6
+        if: steps.guard.outputs.configured == 'true'
+        with:
+          enable-cache: true
+          cache-dependency-glob: services/api/uv.lock
+
+      - name: Install locked dependencies
+        if: steps.guard.outputs.configured == 'true'
+        run: uv sync --frozen --no-dev
+
+      - name: Pick the jobs for this trigger
+        if: steps.guard.outputs.configured == 'true'
+        id: pick
+        shell: bash
+        run: |
+          case "${{ github.event.schedule }}" in
+            "*/30 * * * *") jobs="firms_nrt creams_daily air geostationary" ;;
+            "15 */3 * * *") jobs="met air_dss" ;;
+            "40 */6 * * *") jobs="sentinel smoke_validate tle" ;;
+            "0 2-7 * * *")  jobs="bulletin" ;;
+            "30 6 * * *")   jobs="firms_backfill geostationary_backfill" ;;
+            "0 3 * * 1")    jobs="boundaries" ;;
+            *)              jobs="${{ github.event.inputs.jobs }}" ;;
+          esac
+          echo "jobs=$jobs" >> "$GITHUB_OUTPUT"
+
+      - name: Run jobs
+        if: steps.guard.outputs.configured == 'true'
+        shell: bash
+        run: |
+          status=0
+          for job in ${{ steps.pick.outputs.jobs }}; do
+            echo "::group::$job"
+            uv run python -m blindspot.jobs run "$job" || status=1
+            echo "::endgroup::"
+          done
+          exit $status
+
+      - name: Refresh the API's CDN cache
+        if: always() && steps.guard.outputs.configured == 'true'
+        shell: bash
+        run: |
+          for path in /api/health /api/stats/headline /api/imagery/featured /api/sources; do
+            curl -fsS -o /dev/null --max-time 60 "$PUBLIC_API_URL$path" && echo "warmed $path" || echo "could not warm $path"
+          done

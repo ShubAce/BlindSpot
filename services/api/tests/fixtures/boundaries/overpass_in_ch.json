@@ -1,0 +1,226 @@
+{
+  "version": 0.6,
+  "generator": "Overpass API 0.7.62.11 87bfad18",
+  "osm3s": {
+    "timestamp_osm_base": "2026-10-30T18:07:36Z",
+    "timestamp_areas_base": "2026-10-30T16:09:51Z",
+    "copyright": "The data included in this document is from www.openstreetmap.org. The data is made available under ODbL."
+  },
+  "elements": [
+
+{
+  "type": "node",
+  "id": 1425699942,
+  "lat": 30.7315387,
+  "lon": 76.7266050,
+  "tags": {
+    "name": "Palsora",
+    "place": "village"
+  }
+},
+{
+  "type": "node",
+  "id": 1425480420,
+  "lat": 30.7150277,
+  "lon": 76.7372740,
+  "tags": {
+    "name": "Kajheri",
+    "place": "village"
+  }
+},
+{
+  "type": "node",
+  "id": 1426239116,
+  "lat": 30.7319514,
+  "lon": 76.7349309,
+  "tags": {
+    "name": "Badheri",
+    "place": "village"
+  }
+},
+{
+  "type": "node",
+  "id": 1426239119,
+  "lat": 30.7322203,
+  "lon": 76.7397516,
+  "tags": {
+    "name": "Buterla",
+    "place": "village"
+  }
+},
+{
+  "type": "node",
+  "id": 1427179128,
+  "lat": 30.7266270,
+  "lon": 76.7502525,
+  "tags": {
+    "name": "Atawa",
+    "place": "village"
+  }
+},
+{
+  "type": "node",
+  "id": 1834001956,
+  "lat": 30.7689995,
+  "lon": 76.7551503,
+  "tags": {
+    "name": "Dhanas",
+    "place": "village",
+    "wikidata": "Q28403245"
+  }
+},
+{
+  "type": "node",
+  "id": 2457887911,
+  "lat": 30.6779496,
+  "lon": 76.7994100,
+  "tags": {
+    "name": "Behlana",
+    "place": "village"
+  }
+},
+{
+  "type": "node",
+  "id": 2457887908,
+  "lat": 30.6774144,
+  "lon": 76.8117267,
+  "tags": {
+    "name": "Raipur Khurd",
+    "place": "village"
+  }
+},
+{
+  "type": "node",
+  "id": 342117043,
+  "lat": 30.7334421,
+  "lon": 76.7797143,
+  "tags": {
+    "alt_name": "चंडीगढ़",
+    "alt_name:ur": "چنڈی گڑھ",
+    "is_capital": "union_territory",
+    "name": "Chandigarh",
+    "name:ar": "شانديغار",
+    "name:bn": "চন্ডীগড়",
+    "name:cs": "Čandígarh",
+    "name:de": "Chandigarh",
+    "name:en": "Chandigarh",
+    "name:eo": "Ĉandigaro",
+    "name:es": "Chandigarh",
+    "name:fa": "چندی‌گر",
+    "name:fr": "Chandigarh",
+    "name:he": "צ'אנדיגאר",
+    "name:hi": "चण्डीगढ़",
+    "name:ja": "チャンディーガル",
+    "name:kn": "ಚಂಡೀಗಡ",
+    "name:ko": "찬디가르",
+    "name:ku": "Çandîgar",
+    "name:ml": "ചണ്ഡീഗഢ്",
+    "name:ne": "चण्डीगढ",
+    "name:pa": "ਚੰਡੀਗੜ੍ਹ",
+    "name:ru": "Чандигарх",
+    "name:ta": "சண்டிகர்",
+    "name:te": "చండీగఢ్",
+    "name:uk": "Чандіґарг",
+    "name:ur": "چندی گڑھ",
+    "name:zh": "昌迪加尔",
+    "place": "city",
+    "place:cca": "b2",
+    "population": "1028667",
+    "wikidata": "Q43433",
+    "wikipedia": "en:Chandigarh"
+  }
+},
+{
+  "type": "node",
+  "id": 11135765091,
+  "lat": 30.6983838,
+  "lon": 76.8142779,
+  "tags": {
+    "name": "Daria",
+    "name:en": "Daria",
+    "place": "village"
+  }
+},
+{
+  "type": "node",
+  "id": 1819740738,
+  "lat": 30.7344276,
+  "lon": 76.8282124,
+  "tags": {
+    "name": "Kishangarh",
+    "place": "village"
+  }
+},
+{
+  "type": "node",
+  "id": 1834001353,
+  "lat": 30.7758211,
+  "lon": 76.7718444,
+  "tags": {
+    "name": "Khuda Lahora",
+    "place": "village"
+  }
+},
+{
+  "type": "node",
+  "id": 1834001352,
+  "lat": 30.7808724,
+  "lon": 76.7575965,
+  "tags": {
+    "name": "Sarangpur",
+    "place": "village"
+  }
+},
+{
+  "type": "node",
+  "id": 5998436435,
+  "lat": 30.7584694,
+  "lon": 76.8260622,
+  "tags": {
+    "name": "Kaimbwala",
+    "place": "village"
+  }
+},
+{
+  "type": "node",
+  "id": 5998436866,
+  "lat": 30.7750633,
+  "lon": 76.8120289,
+  "tags": {
+    "name": "Khuda Ali Sher",
+    "place": "village"
+  }
+},
+{
+  "type": "way",
+  "id": 260209343,
+  "center": {
+    "lat": 30.6844954,
+    "lon": 76.7632680
+  },
+  "tags": {
+    "name": "Jagatpura",
+    "place": "village"
+  }
+},
+{
+  "type": "way",
+  "id": 677724717,
+  "center": {
+    "lat": 30.7756208,
+    "lon": 76.8511811
+  },
+  "tags": {
+    "addr:city": "chandigarh",
+    "addr:postcode": "160103",
+    "boundary": "protected_area",
+    "name": "Sukhna Lake WLS",
+    "place": "village",
+    "protect_class": "4",
+    "wikidata": "Q23995986",
+    "wikipedia": "Sukhna Wildlife Sanctuary"
+  }
+}
+
+  ]
+}
