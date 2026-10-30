@@ -1,7 +1,7 @@
 [project]
 name = "blindspot-api"
 version = "0.1.0"
-description = "Add your description here"
+description = "BlindSpot API: ingest jobs, analytics and a FastAPI service over PostGIS"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -33,4 +33,18 @@ dependencies = [
     "tenacity>=9.1.4",
     "uvicorn[standard]>=0.54.0",
     "xarray>=2026.9.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]
+
+[tool.pytest.ini_options]
+# The project is not installed as a package, so put services/api on the import path.
+pythonpath = ["."]
+testpaths = ["tests"]
+filterwarnings = [
+    # Starlette 1.x wants the separate httpx2 package for its TestClient; plain httpx still works.
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated",
 ]
