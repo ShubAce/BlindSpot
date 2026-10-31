@@ -34,7 +34,8 @@ time farmers burn, not how much they burn.
    char in the short-wave infrared) are matched against every NASA FIRMS alert. A scar with no alert nearby is a
    candidate unseen burn. A visual audit of random samples of image chips measures how many candidates are real burns.
 2. **Who is watching right now.** Orbital elements from CelesTrak and SGP4 give each fire satellite's passes over
-   Punjab. The predicted pass times match FIRMS acquisition times to well under a minute.
+   Punjab. The predicted pass times match FIRMS acquisition times to within a minute at the median, and all within
+   three minutes.
 3. **The evening fires, measured.** GK-2A scans the region every 10 minutes. BlindSpot finds its fire pixels and
    reports the burning that happens while no polar satellite is overhead, validated against VIIRS and MODIS.
 4. **Where help should go next.** Fields that are harvested but not yet burnt are ranked by burn risk (time since
@@ -55,10 +56,10 @@ As of 31 October 2026. The site's `/method` page shows the current values, read 
 
 | Check | Result |
 | --- | --- |
-| Predicted pass times vs FIRMS acquisition times (1,236 detections, 3 days) | median error 0.6 min; all within 3 min |
+| Predicted pass times vs FIRMS acquisition times (940 detections, 3 days) | median error 0.7 min; all within 3 min |
 | Candidate unseen burns that are real burns (visual audit of random Sentinel-2 chip samples) | precision 0.87, 95% CI 0.68–0.95, n = 23 |
-| Smoke index vs Delhi's measured PM2.5 | r = 0.65; r = 0.85 with a 4 h lag |
-| GK-2A fire pixels vs MODIS on Aqua (strong fires) | 84% detected; 7% false alarms |
+| Smoke index vs measured PM2.5 (22 cities, 25–30 Oct) | r = 0.60 (CAMS 0.63, ventilation alone 0.14); only ~4 independent hours, so not yet robust |
+| GK-2A fire pixels vs MODIS on Aqua (strong fires) | 84% detected (16 of 19); 7% false alarms |
 
 ## Architecture
 
@@ -75,18 +76,20 @@ flowchart LR
     AIR["CPCB via data.gov.in, OpenAQ<br/>CAMS, IITM DSS"]
     GEO["Survey of India, LGD<br/>OpenStreetMap, GeoNames"]
   end
-  subgraph J["Scheduled jobs (GitHub Actions)"]
+  subgraph J["Scheduled jobs (GitHub Actions, timetable kept by scheduler.yml)"]
     direction TB
     J1["hourly, afternoon and evening<br/>fires, official counts, air, GK-2A"]
     J2["every 6 h<br/>weather, then smoke"]
     J3["daily<br/>Sentinel-2 scars, then risk"]
     J4["daily<br/>bulletin, backfills, retention"]
   end
+  R["Relay on Vercel, Mumbai<br/>data.gov.in and FIRMS reads"]
   DB[("Postgres + PostGIS<br/>Neon")]
-  API["FastAPI on Vercel<br/>sources on every response<br/>CDN cache"]
+  API["FastAPI on Vercel<br/>sources on every response<br/>CDN copies on the job clock<br/>stored answers"]
   AG["Investigator<br/>Gemini function calling<br/>number verifier"]
   WEB["Next.js site on Vercel<br/>MapLibre + deck.gl"]
   S --> J --> DB --> API --> WEB
+  S -. "refuse US runners" .-> R -.-> J
   API <--> AG
 ```
 
@@ -96,7 +99,11 @@ flowchart LR
   carries `sources`. The investigator cites them.
 - **Free tiers only.** Neon free (PostGIS), Vercel Hobby (site and API, in Singapore beside the database), GitHub
   Actions on this public repository (jobs), Gemini free tier with an answer cache and a daily budget guard. The job
-  schedule is sized to Neon's monthly compute and transfer allowances.
+  schedule is sized to Neon's monthly compute and transfer allowances, and the API's CDN copies expire on the same
+  clock, so one database wake-up refreshes a whole group of answers ([docs/neon-budget.md](docs/neon-budget.md)).
+- **A relay for blocked upstreams.** data.gov.in refuses GitHub's US runners, and NASA FIRMS stopped answering them on
+  31 October 2026, so the jobs reach both through one small function in Mumbai (`infra/relay`) that forwards only
+  those reads. FIRMS falls back to its own host if the relay fails.
 
 ## Repository
 
@@ -110,8 +117,9 @@ flowchart LR
 | `services/api/tests/` | pytest suite; fixtures are recorded real responses |
 | `apps/web/` | The website (Next.js 16) |
 | `docs/` | Architecture, API contract, research notes with citations, build logs |
-| `infra/` | Local PostGIS (Docker Compose), Vercel deploy, Neon loader, GitHub secrets helper |
-| `.github/workflows/data-jobs.yml` | The job schedule |
+| `infra/` | Local PostGIS (Docker Compose), Vercel deploys (API, site, relay), Neon loader, GitHub secrets helper |
+| `infra/relay/` | The Mumbai relay for data.gov.in and FIRMS reads |
+| `.github/workflows/data-jobs.yml` | The job schedule; `scheduler.yml` dispatches its slots on time |
 
 ## Run it locally
 
