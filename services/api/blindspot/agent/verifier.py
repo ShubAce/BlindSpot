@@ -44,10 +44,13 @@ for _number, _names in enumerate(
         "june jun जून ਜੂਨ",
         "july jul जुलाई ਜੁਲਾਈ",
         "august aug अगस्त ਅਗਸਤ",
-        "september sept sep सितंबर सितम्बर ਸਤੰਬਰ ਸਿਤੰਬਰ",
-        "october oct अक्टूबर अक्तूबर ਅਕਤੂਬਰ",
-        "november nov नवंबर नवम्बर ਨਵੰਬਰ",
-        "december dec दिसंबर दिसम्बर ਦਸੰਬਰ",
+        # The season's months also in their Hindi and Punjabi abbreviations ("31 अक्टू 03:00 IST"):
+        # without them every dated Hindi sentence failed the number check and was dropped. Short
+        # forms that are also ordinary words (जन) are left out.
+        "september sept sep सितंबर सितम्बर सितं ਸਤੰਬਰ ਸਿਤੰਬਰ ਸਤੰ",
+        "october oct अक्टूबर अक्तूबर अक्टू अक्तू ਅਕਤੂਬਰ ਅਕਤੂ",
+        "november nov नवंबर नवम्बर नवं ਨਵੰਬਰ ਨਵੰ",
+        "december dec दिसंबर दिसम्बर दिसं ਦਸੰਬਰ ਦਸੰ",
     ),
     start=1,
 ):

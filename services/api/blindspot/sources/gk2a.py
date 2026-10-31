@@ -39,7 +39,7 @@ import orjson
 
 from blindspot.config import BBox, get_settings
 from blindspot.http import fetch, set_fetch_records
-from blindspot.provenance import SourceInfo, register_source
+from blindspot.provenance import HOURLY_GROUP_CADENCE, SourceInfo, register_source
 
 if TYPE_CHECKING:  # pyproj and pandas are imported where they are used (job-time only), so the
     # web API, which imports this module just for its source label, starts without them.
@@ -53,7 +53,7 @@ register_source(
         SOURCE_KEY,
         "KMA GK-2A AMI L1B full disk, via NOAA Open Data on AWS",
         "fires_geo",
-        30,
+        HOURLY_GROUP_CADENCE,
         "https://registry.opendata.aws/noaa-gk2a-pds/",
     )
 )

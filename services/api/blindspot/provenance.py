@@ -79,9 +79,14 @@ def register_source(info: SourceInfo) -> SourceInfo:
     return info
 
 
+# The hourly job group (fires, air, GK-2A) runs hourly in the afternoon and every 3 h otherwise
+# (data-jobs.yml), and the CDN keeps answers until :30: its sources declare 80 minutes, so 3 x
+# cadence is the headline's 4-hour rule and fresh data is never called stale between runs.
+HOURLY_GROUP_CADENCE = 80
+
 for _info in (
     SourceInfo(
-        "firms", "NASA FIRMS active fires", "fires", 30, "https://firms.modaps.eosdis.nasa.gov/api/"
+        "firms", "NASA FIRMS active fires", "fires", HOURLY_GROUP_CADENCE, "https://firms.modaps.eosdis.nasa.gov/api/"
     ),
     SourceInfo(
         "celestrak",
@@ -90,19 +95,19 @@ for _info in (
         12 * 60,
         "https://celestrak.org/NORAD/documentation/gp-data-formats.php",
     ),
-    SourceInfo("openaq", "OpenAQ v3 (CPCB stations)", "air", 30, "https://docs.openaq.org/"),
+    SourceInfo("openaq", "OpenAQ v3 (CPCB stations)", "air", HOURLY_GROUP_CADENCE, "https://docs.openaq.org/"),
     SourceInfo(
         "datagov_aqi",
         "data.gov.in CPCB real-time AQI",
         "air",
-        30,
+        HOURLY_GROUP_CADENCE,
         "https://data.gov.in/resource/real-time-air-quality-index-various-locations",
     ),
     SourceInfo(
         "cams",
         "Copernicus CAMS via Open-Meteo air quality",
         "air_model",
-        30,
+        HOURLY_GROUP_CADENCE,
         "https://open-meteo.com/en/docs/air-quality-api",
     ),
     SourceInfo(

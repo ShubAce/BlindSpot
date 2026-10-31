@@ -33,7 +33,7 @@ from pydantic import SecretStr
 
 from blindspot.config import BBox, get_settings
 from blindspot.http import FetchError, FetchResult, fetch
-from blindspot.provenance import SourceInfo, register_source
+from blindspot.provenance import HOURLY_GROUP_CADENCE, SourceInfo, register_source
 
 log = logging.getLogger(__name__)
 
@@ -49,7 +49,7 @@ register_source(
         "firms",
         "NASA FIRMS active fires (VIIRS 375 m, MODIS 1 km; NRT)",
         "fires",
-        30,
+        HOURLY_GROUP_CADENCE,
         "https://firms.modaps.eosdis.nasa.gov/api/",
     )
 )

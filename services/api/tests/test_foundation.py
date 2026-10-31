@@ -587,7 +587,8 @@ def test_api_health_sources_and_json_errors(open_meteo: FetchResult) -> None:
         crashed = client.get("/api/_test/boom", headers=origin)
         assert crashed.status_code == 500
         assert crashed.json()["detail"] == "internal server error"
-        assert "deliberate route failure" in crashed.json()["error"]
+        # the type only: an exception's message can carry SQL or internals (the log keeps it)
+        assert crashed.json()["error"] == "RuntimeError" and "deliberate route failure" not in crashed.text
         assert crashed.headers["access-control-allow-origin"] == "http://localhost:3000"
 
         unavailable = client.get("/api/_test/paused")

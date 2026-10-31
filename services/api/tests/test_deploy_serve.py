@@ -170,6 +170,9 @@ def test_cdn_headers_on_real_routes(client: TestClient) -> None:
     assert r.headers["cache-control"].startswith("public, max-age=10, s-maxage="), r.headers["cache-control"]
     r = client.get("/robots.txt")  # crawlers stay off the API host (each request could wake Neon)
     assert r.status_code == 200 and "Disallow: /" in r.text and "max-age=86400" in r.headers["cache-control"]
+    for path in ("/api/scars?district=%00&limit=1", "/api/risk?district=%00&limit=1"):
+        r = client.get(path)  # a value Postgres cannot take: the caller's fault, and no SQL in the body
+        assert r.status_code == 400 and "SELECT" not in r.text and "s-maxage" not in r.headers.get("cache-control", ""), path
     assert "s-maxage" not in client.post("/api/agent/ask", json={}).headers.get("cache-control", "")
 
 

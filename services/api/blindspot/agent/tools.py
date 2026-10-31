@@ -749,6 +749,10 @@ async def get_burn_scars(api: InternalApi, args: dict[str, Any]) -> ToolResult:
     if season:
         summary += (f": {season.get('clusters')} clusters, {season.get('area_ha')} ha since "
                     f"{season.get('since')}, candidate unseen {season.get('unseen_share_pct')}%")  # fmt: skip
+        audit = data.get("candidate_unseen_audit")
+        if audit:  # the step line shows the share, so it carries its audit too
+            lo, hi = audit["precision_ci95_pct"]
+            summary += f" (audited precision {audit['precision_pct']:g}%, 95% CI {lo:g}-{hi:g}%)"
     elif "matching" in data:
         summary += f": {data['matching']}"
     return ToolResult(True, data, _dedupe(sources), summary)
@@ -959,10 +963,18 @@ async def trace_air_back(api: InternalApi, args: dict[str, Any]) -> ToolResult:
             "stale": body.get("stale"),
             "today": compact(body.get("today")),
             "recent_days": compact((body.get("daily") or [])[-5:]),
-            "outlook": [{"date": o.get("date"), "stubble_pct": rnd(o.get("stubble_pct"), 1),
-                         "fire_input": o.get("fire_input")} for o in body.get("outlook") or []][:4],
             "method_note": str(body.get("method_note") or "")[:300] or None,
         }  # fmt: skip
+        # IITM's next days run on climatological fire input: a forecast, never the estimate (a
+        # verified answer once quoted the outlook's 19.2% as "IITM estimated" beside today's 1.7%).
+        outlook = [{"date": o.get("date"), "forecast_stubble_pct": rnd(o.get("stubble_pct"), 1),
+                    "fire_input": o.get("fire_input")} for o in body.get("outlook") or []][:4]  # fmt: skip
+        if outlook:
+            data["iitm_dss_forecast_not_an_estimate"] = {
+                "what": "IITM's forecast for the coming days, driven by climatological fire input; "
+                        "quote it only as a forecast, never as IITM's estimate for today",
+                "days": outlook,
+            }
         today = rnd((body.get("today") or {}).get("stubble_pct"), 1)
         summary += f" IITM DSS stubble share {today}% ({body.get('run_date')})"
         sources += dss.sources()

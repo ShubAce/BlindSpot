@@ -462,6 +462,12 @@ def test_ask_streams_sse_and_the_run_is_readable(created: list[str], monkeypatch
         _give_recorded_citations(run_id)
         examples = client.get("/api/agent/examples?limit=20").json()
         assert run_id in [x["id"] for x in examples["examples"]] and "sources" in examples
+        # a run from before the honesty check (no honesty block) is never a verified example
+        with session_scope() as session:
+            session.execute(text("UPDATE agent_run SET verification = verification - 'honesty' WHERE id = :i"),
+                            {"i": run_id})  # fmt: skip
+        examples = client.get("/api/agent/examples?limit=20").json()
+        assert run_id not in [x["id"] for x in examples["examples"]]
         assert client.get("/api/agent/runs/no-such-run").status_code == 404
         status = client.get("/api/agent/status").json()
         assert status["key_configured"] in (True, False) and status["models"]

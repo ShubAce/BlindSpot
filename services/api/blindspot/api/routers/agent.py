@@ -147,6 +147,9 @@ _EXAMPLES_SQL = text(
         FROM agent_run
         WHERE kind IN ('ask', 'featured') AND ok AND answer IS NOT NULL
           AND (verification->>'passed')::boolean IS TRUE
+          -- and the honesty check (candidate wording, audit, no "unobserved" claims...): runs made
+          -- before it existed carry no honesty block and are never shown as verified examples
+          AND (verification->'honesty'->>'passed')::boolean IS TRUE
           AND jsonb_array_length(COALESCE(citations, '[]'::jsonb)) > 0  -- cites evidence
           AND (CAST(:lang AS text) IS NULL OR lang = :lang)
         ORDER BY cache_key, started_at DESC

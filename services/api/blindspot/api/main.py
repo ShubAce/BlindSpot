@@ -22,7 +22,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import DataError, OperationalError
 from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import Response
@@ -92,6 +92,14 @@ async def _missing_dependency(request: Request, exc: Exception) -> Response:
     return ORJSONResponse(body, status_code=503)
 
 
+async def _bad_value(request: Request, exc: Exception) -> Response:
+    # A value the database cannot take (a NUL byte in a text parameter): the request's fault. The
+    # body names no SQL; the log keeps the detail.
+    log.info("rejected a value on %s: %s", request.url.path, exc)
+    body = _error_body(400, "a parameter holds a value the database cannot take", request.url.path)
+    return ORJSONResponse(body, status_code=400)
+
+
 async def _database_error(request: Request, exc: Exception) -> Response:
     log.warning("database error on %s: %s", request.url.path, exc)
     body = _error_body(503, "database unavailable", request.url.path)
@@ -126,8 +134,8 @@ class _JSONServerErrors:
             log.exception("unhandled error on %s %s", scope.get("method"), scope.get("path"))
             if started:  # part of the response is already out; nothing better can be sent
                 raise
-            error = get_settings().redact(f"{type(exc).__name__}: {exc}")[:500]
-            body = _error_body(500, "internal server error", scope.get("path", ""), error=error)
+            # The exception's type only: its message can carry SQL or internals (the log has it all).
+            body = _error_body(500, "internal server error", scope.get("path", ""), error=type(exc).__name__)
             await ORJSONResponse(body, status_code=500)(scope, receive, send)
 
 
@@ -257,6 +265,7 @@ def create_app() -> FastAPI:
     app.add_exception_handler(RequestValidationError, _validation_error)
     app.add_exception_handler(FetchError, _upstream_error)
     app.add_exception_handler(OperationalError, _database_error)
+    app.add_exception_handler(DataError, _bad_value)
     app.add_exception_handler(ImportError, _missing_dependency)
     # The middleware added last runs first: CORS -> gzip -> CDN headers -> JSON 500s -> routes.
     app.add_middleware(_JSONServerErrors)

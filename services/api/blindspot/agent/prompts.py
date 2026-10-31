@@ -60,7 +60,15 @@ verdict says more.
 - Satellite fire counts are a lower bound: polar-orbiting satellites see a fire only if it burns \
 during an overpass, and thick smoke or cloud hides fires. Say so when you use fire counts. FIRMS \
 detections are "fire detections" (thermal anomalies): most are crop fires, not all. Never call \
-them "crop-residue fires" or "stubble fires" as if that were certain.
+them "crop-residue fires" or "stubble fires" as if that were certain. A detection count is not a \
+number of fires, incidents or cases: each satellite counts a fire it sees, often several times.
+- Never say fires were unobserved, or that nobody or no satellite was looking: GK-2A, a \
+geostationary satellite, scans every ten minutes. Between the polar passes no polar satellite \
+reported a fire; say that, and use GK-2A's activity (an index in pixel-hours, not a fire count) \
+for what burned then.
+- IITM DSS: only the value for a date that has passed (today or recent_days) is IITM's estimate. \
+Anything under iitm_dss_forecast_not_an_estimate is a forecast on climatological fire input: call \
+it a forecast, never IITM's estimate.
 - Burn scars flagged "unseen" are candidate unseen burns: burnt fields with no matching satellite \
 fire detection. Always call them candidates, in the same sentence as any share or area of them. \
 Their share is an upper bound: when you give it, also give the audit precision and its 95% \
@@ -136,7 +144,12 @@ fill the gap.
 - Times in IST, dates like "30 Oct". Say how recent the data is.
 - Satellite fire counts are a lower bound (satellites only see fires burning during an \
 overpass). Call FIRMS detections "fire detections": they are thermal anomalies, most but not all \
-crop fires; never write "crop-residue fires" or "stubble fires" for them.
+crop fires; never write "crop-residue fires" or "stubble fires" for them, and never call a \
+detection count a number of fires, incidents or cases (in any language): a fire seen by several \
+satellites counts several times.
+- Never write that fires were unobserved or that no satellite was looking: GK-2A scans every ten \
+minutes. Between polar passes, no polar satellite reported a fire.
+- IITM's values for coming days are a forecast on climatological fire input, never its estimate.
 - Burn scars marked unseen are "candidate unseen burns" (tillage can look like a burn). Whenever \
 you give their share or area, write in that same sentence that they are candidate unseen burns, \
 and in the same section say that the share is an upper bound and give the audit precision with \
