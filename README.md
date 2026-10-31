@@ -16,7 +16,7 @@ explains any day's air with cited, number-checked answers.
 - **Method and accuracy:** [/method](https://blindspot-web-five.vercel.app/method), with every validation number read
   live
 - **Design and contracts:** [docs/architecture.md](docs/architecture.md), [docs/api-contract-notes.md](docs/api-contract-notes.md)
-- **Team Praise** (Forge'26 NxtWave Launchpad buildathon, Theme 2): Shubham Suman (lead), Anurag Ranjan, Drgesh Kumar
+- **Team Praise** (Forge'26 NxtWave Launchpad buildathon, Theme 2): Shubham Suman (lead), Anurag Ranjan, Durgesh Kumar
 
 ## Why this matters
 
