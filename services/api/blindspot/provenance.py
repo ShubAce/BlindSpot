@@ -126,6 +126,15 @@ for _info in (
         6 * 60,
         "https://element84.com/earth-search/",
     ),
+    # Registered here as well as in sources/stac.py, which the API never imports: burn-scar answers
+    # cite it, and without a label the investigator showed the raw key "s2_cog".
+    SourceInfo(
+        "s2_cog",
+        "Sentinel-2 L2A pixels (Earth Search COGs on AWS)",
+        "imagery",
+        6 * 60,
+        "https://registry.opendata.aws/sentinel-2-l2a-cogs/",
+    ),
     SourceInfo(
         "pc_data",
         "Planetary Computer data/tiler API",
