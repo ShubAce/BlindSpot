@@ -504,7 +504,7 @@ def content_stamp(session: Session, table: str, columns: str, where: str = "TRUE
     the text of their `columns` (in `order`), computed by Postgres, so ~40 bytes come back.
 
     Unlike table_stamp it changes only when a row the query reads changes in a column the answer
-    shows: a job that rewrites a bookkeeping column on every row (sentinel's `matched_at`) or adds
+    shows: a job that rewrites a bookkeeping column (sentinel's `matched_at`) or adds
     rows outside the query's window (newer scars, for a replay day) leaves it as it was. `table`,
     `columns`, `where` and `order` are trusted constants; values go in `params`."""
     from sqlalchemy import text

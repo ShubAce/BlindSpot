@@ -83,6 +83,15 @@ def session_scope() -> Iterator[Session]:
         session.close()
 
 
+def vacuum(table: str) -> None:
+    """VACUUM (ANALYZE) one table, outside any transaction: the space of its old row versions is
+    reused at once instead of whenever autovacuum gets to it, and no lock blocks the readers. Never
+    VACUUM FULL from a job: it locks the table and needs a second copy of it on disk (giving space
+    back to Neon is done by hand, infra/neon_compact.py)."""
+    with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+        conn.execute(text(f"VACUUM (ANALYZE) {table}"))
+
+
 def get_session() -> Iterator[Session]:
     """FastAPI dependency for routes. It does not commit; a route that writes calls commit()."""
     with SessionLocal() as session:

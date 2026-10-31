@@ -42,7 +42,7 @@ from sqlalchemy.orm import Session
 
 from blindspot.analytics import risk as model
 from blindspot.config import get_settings
-from blindspot.db import session_scope
+from blindspot.db import session_scope, vacuum
 from blindspot.geo import AOI_BBOX
 from blindspot.http import FetchError, fetch, set_fetch_records
 from blindspot.jobs import job
@@ -605,16 +605,6 @@ def store_scores(scored: list[model.Scored], as_of: datetime) -> tuple[int, int]
 
 
 VACUUM_SHARE = 0.1  # vacuum harvest_cluster when a run rewrote more than this share of its rows
-
-
-def vacuum(table: str) -> None:
-    """VACUUM (ANALYZE) one table, so the space of the old row versions is reused at once instead
-    of whenever autovacuum gets to it (on a 0.5 GB database that matters). Never VACUUM FULL: it
-    locks the table and needs a second copy of it on disk."""
-    from blindspot.db import engine
-
-    with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
-        conn.execute(text(f"VACUUM (ANALYZE) {table}"))
 
 
 # --- 4. backtest ----------------------------------------------------------------------------------------

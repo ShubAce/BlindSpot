@@ -36,7 +36,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from blindspot.db import engine, session_scope
+from blindspot.db import session_scope, vacuum
 from blindspot.jobs import job
 from blindspot.provenance import utcnow
 
@@ -105,7 +105,7 @@ def run_prune(dry_run: bool = False) -> dict[str, Any]:
     if not dry_run:
         touched = [t for t in ("smoke_run", "met_grid", "met_run", "source_fetch") if summary[t]["rows"]]
         for table in touched:
-            _vacuum(table)
+            vacuum(table)
         summary["vacuumed"] = touched
     summary["database_bytes"] = _database_bytes()
     return summary
@@ -154,12 +154,6 @@ def _unreferenced_fetches(session: Session, cutoff: Any) -> list[int]:
                                            "c": cutoff}).scalars()
         candidates -= {int(i) for i in used if i is not None}
     return sorted(candidates)
-
-
-def _vacuum(table: str) -> None:
-    """VACUUM (not FULL): the freed space is reused at once and no lock blocks the readers."""
-    with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
-        conn.execute(text(f"VACUUM (ANALYZE) {table}"))
 
 
 def _database_bytes() -> int | None:

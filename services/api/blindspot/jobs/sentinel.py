@@ -42,14 +42,15 @@ from rasterio import features
 from rasterio.windows import Window
 from shapely.geometry import Polygon, mapping, shape
 from shapely.geometry.base import BaseGeometry
-from sqlalchemy import delete, func, insert, select, text, update
+from sqlalchemy import column, delete, func, insert, select, table, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from blindspot.analytics import burnscar
 from blindspot.analytics.burnscar import RULE, BlockState, Part
 from blindspot.config import get_settings
-from blindspot.db import session_scope
+from blindspot.db import session_scope, vacuum
 from blindspot.geo import fill_admin
 from blindspot.jobs import job
 from blindspot.models.sentinel import BurnCluster, HarvestCluster, S2Scene
@@ -552,11 +553,11 @@ def store_tile(result: TileResult, fetch_id: int | None) -> None:
                 cond & func.date(BurnCluster.burn_before).in_(days)
                 & BurnCluster.block.in_(sorted(result.processed_blocks))))
         if result.burn_rows:
-            session.execute(insert(BurnCluster), [{**r, "fetch_id": fetch_id} for r in result.burn_rows])
+            _insert_named(session, BurnCluster, [{**r, "fetch_id": fetch_id} for r in result.burn_rows])
         session.execute(delete(HarvestCluster).where(
             (HarvestCluster.mgrs_tile == tile) & (HarvestCluster.scope == stage_name)))
         if result.harvest_rows:
-            session.execute(insert(HarvestCluster), [{**r, "fetch_id": fetch_id} for r in result.harvest_rows])
+            _insert_named(session, HarvestCluster, [{**r, "fetch_id": fetch_id} for r in result.harvest_rows])
         current = dict(session.execute(
             select(S2Scene.item_id, S2Scene.stats).where(S2Scene.item_id.in_(list(result.item_stats)))
         ).all())
@@ -636,6 +637,8 @@ _MATCH_SQL = text(
            matched_at = now()
       FROM m
      WHERE m.id = b.id
+       AND (b.fire_matches IS DISTINCT FROM m.n OR b.unseen IS DISTINCT FROM (m.n = 0)
+            OR b.nearest_fire_m IS DISTINCT FROM round(m.nearest::numeric, 1)::float8)
     """
 )
 _UNCOVERED_SQL = text(
@@ -673,7 +676,9 @@ def match_fires(session: Session) -> dict[str, Any]:
     1 km, so "unseen" stays conservative) and was acquired between the clear pass before the burn
     and 3 h after the pass that shows it. A scar gets a verdict only when fire records cover every
     day of its window for every FIRMS source; otherwise unseen stays NULL: no data is not the same as
-    no fire. Re-run every job run, so verdicts follow late-arriving fire data."""
+    no fire. Re-run every job run, so verdicts follow late-arriving fire data, but only scars whose
+    verdict changes are rewritten (an UPDATE writes a whole new row version, and rewriting all of
+    them every run kept the table twice its size), so matched_at is when the current verdict was set."""
     if session.execute(text("SELECT to_regclass('public.fire_detection')")).scalar() is None:
         return {"skipped": "fire_detection table does not exist yet (fires module)"}
     n_fires = session.execute(text("SELECT count(*) FROM fire_detection")).scalar()
@@ -683,7 +688,7 @@ def match_fires(session: Session) -> dict[str, Any]:
     matched = session.execute(_MATCH_SQL, {"days": days}).rowcount
     unknown = session.execute(_UNCOVERED_SQL, {"days": days}).rowcount
     return {"fire_records": n_fires, "covered_days": [str(days[0]), str(days[-1]), len(days)] if days else [],
-            "coverage_basis": basis, "clusters_matched": matched, "clusters_without_fire_coverage": unknown}
+            "coverage_basis": basis, "verdicts_changed": matched, "verdicts_withdrawn_no_coverage": unknown}
 
 
 _SUBDISTRICT_SQL = """
@@ -707,15 +712,36 @@ _VILLAGE_SQL = """
 """
 
 
+def _name_places(session: Session, name: str) -> dict[str, int]:
+    """District/state (via geo.fill_admin), sub-district and nearest village for the unnamed rows of
+    table `name`. A row that has its names, or has none within reach, is not rewritten."""
+    return {
+        "district": fill_admin(session, name),
+        "subdistrict": session.execute(text(_SUBDISTRICT_SQL.format(table=name))).rowcount,
+        "village": session.execute(text(_VILLAGE_SQL.format(table=name)), {"max_km": VILLAGE_MAX_KM}).rowcount,
+    }
+
+
+def _insert_named(session: Session, model: type[BurnCluster | HarvestCluster], rows: list[dict[str, Any]]) -> None:
+    """Insert new rows with their place names already set, so each is written once: they go into a
+    temporary copy of the table (same columns, defaults and id sequence), are named there, then move
+    over in one INSERT. Naming them after they landed wrote every new row three more times, and the
+    daily rebuild left both tables four to six times their live size on a 1 GB database."""
+    real = model.__table__
+    stage = table(f"new_{real.name}", *(column(c.name, c.type) for c in real.columns))
+    session.execute(text(f"CREATE TEMP TABLE {stage.name} (LIKE {real.name} INCLUDING DEFAULTS) ON COMMIT DROP"))
+    session.execute(insert(stage), rows)
+    _name_places(session, stage.name)
+    session.execute(text(f"INSERT INTO {real.name} SELECT * FROM {stage.name}"))
+    session.execute(text(f"DROP TABLE {stage.name}"))
+
+
 def label_places(session: Session) -> dict[str, int]:
-    """District/state (via geo.fill_admin), sub-district and nearest village for unnamed rows."""
+    """Names for rows that are still unnamed: new rows arrive named (_insert_named), so this catches
+    rows stored before the boundary and place tables were loaded."""
     out: dict[str, int] = {}
-    for table in ("burn_cluster", "harvest_cluster"):
-        out[f"{table}.district"] = fill_admin(session, table)
-        out[f"{table}.subdistrict"] = session.execute(text(_SUBDISTRICT_SQL.format(table=table))).rowcount
-        out[f"{table}.village"] = session.execute(
-            text(_VILLAGE_SQL.format(table=table)), {"max_km": VILLAGE_MAX_KM}
-        ).rowcount
+    for name in ("burn_cluster", "harvest_cluster"):
+        out.update({f"{name}.{k}": n for k, n in _name_places(session, name).items()})
     return out
 
 
@@ -795,6 +821,16 @@ def run_sentinel(*, budget_min: float | None = None, stages: tuple[str, ...] | N
         summary["fire_match"] = match_fires(session)
     with session_scope() as session:
         summary["labels"] = label_places(session)
+    if done:
+        # The stored tiles' old rows are dead now: make their room reusable before the risk job
+        # writes a score onto every new harvested field, instead of growing the files for it.
+        summary["vacuumed"] = []
+        for name in ("burn_cluster", "harvest_cluster"):
+            try:
+                vacuum(name)
+                summary["vacuumed"].append(name)
+            except SQLAlchemyError as exc:  # space housekeeping; the stored rows are already committed
+                log.warning("sentinel: VACUUM %s failed: %s", name, exc)
     with session_scope() as session:
         summary["totals"] = dict(session.execute(text(
             "SELECT count(*) AS burn_clusters, coalesce(round(sum(area_ha)::numeric, 1), 0) AS burn_area_ha, "

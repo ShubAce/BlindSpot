@@ -99,7 +99,8 @@ class BurnCluster(Base):
     ndvi_pre: Mapped[float | None] = mapped_column(Double)
     ndvi_post: Mapped[float | None] = mapped_column(Double)
     confidence: Mapped[float] = mapped_column(Double)
-    # Fire matching (re-run every job run, so late-arriving fire data updates it)
+    # Fire matching (re-run every job run, so late-arriving fire data updates it; a row is rewritten
+    # only when its verdict changes, so matched_at is when the current verdict was set)
     unseen: Mapped[bool | None] = mapped_column(Boolean)
     fire_matches: Mapped[int | None] = mapped_column(Integer)
     nearest_fire_m: Mapped[float | None] = mapped_column(Double)  # within 5 km, any time in the window

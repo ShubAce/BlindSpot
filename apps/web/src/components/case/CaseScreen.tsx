@@ -233,7 +233,7 @@ export function CaseScreen({ data }: { data: CaseFile }) {
             <Row label="Clear pass before">{passText(pre?.item_id ?? c.scene_pre, c.burn_after)}</Row>
             <Row label="Pass that shows it">{passText(post?.item_id ?? c.scene_post, c.burn_before)}</Row>
             <Row label="Sentinel-2 tile">{c.mgrs_tile ?? <span className="missing">{MISSING}</span>}</Row>
-            <Row label="Checked against alerts">{c.matched_at ? dateTimeIST(c.matched_at, { suffix: true }) : 'Not yet'}</Row>
+            <Row label="Checked against alerts">{c.matched_at ? `Daily; unchanged since ${dateTimeIST(c.matched_at, { suffix: true })}` : 'Not yet'}</Row>
           </dl>
           {c.centroid ? (
             <Suspense fallback={<Skeleton height={180} />}>

@@ -282,6 +282,7 @@ def test_fire_matching_on_a_recorded_firms_confirmed_scar() -> None:
             "'hotspots', 'r0_c0', :after, :before, 5, :pre, :post, :col, false, 0.5, :ver) RETURNING id"),
             {**rec["scar"], "tile": TEST_TILE, "ver": RULE.version}).scalar_one()
         out = job.match_fires(session)
+        again = job.match_fires(session)  # nothing changed in between: no row may be rewritten
         n, unseen, nearest = session.execute(text(
             "SELECT fire_matches, unseen, nearest_fire_m FROM burn_cluster WHERE id = :i"), {"i": scar_id}).one()
         # Independent check in Python: UTM 43N distances to the polygon, the window and the radius.
@@ -295,10 +296,55 @@ def test_fire_matching_on_a_recorded_firms_confirmed_scar() -> None:
         # This database holds no complete fire record for some day of the window: no verdict.
         assert n is None and unseen is None
         return
-    assert out.get("clusters_matched", 0) >= 1
+    assert out.get("verdicts_changed", 0) >= 1
+    assert again["verdicts_changed"] == 0 and again["verdicts_withdrawn_no_coverage"] == 0
     assert expected >= 1  # the recorded detections explain this scar
     assert n == expected and unseen is False
     assert nearest == pytest.approx(nearest_py, abs=2.0)
+
+
+def test_new_rows_arrive_named() -> None:
+    """store_tile writes each new row once, with its place names already set (through a temporary
+    copy of the table), instead of inserting it and then rewriting it once per name. Uses the
+    recorded Tarn Taran/Amritsar scar; rolled back, so no other test sees the row."""
+    from shapely import wkt
+
+    from blindspot.jobs import sentinel as job
+    from blindspot.models.sentinel import BurnCluster
+
+    scar = json.loads((FIXTURES / "matched_scar.json").read_text())["scar"]
+    poly = wkt.loads(scar["wkt"])
+    row = {
+        "geom": f"SRID=4326;{poly.wkt}", "centroid": f"SRID=4326;{poly.representative_point().wkt}",
+        "area_ha": scar["area"], "n_px": scar["n"], "res_m": 20, "mgrs_tile": TEST_TILE, "scope": "hotspots",
+        "block": "r0_named", "burn_after": dt.datetime.fromisoformat(scar["after"]),
+        "burn_before": dt.datetime.fromisoformat(scar["before"]), "gap_days": 5.0, "scene_pre": scar["pre"],
+        "scene_post": scar["post"], "collection": scar["col"], "hazy": False, "confidence": 0.5,
+        "model_version": RULE.version, "fetch_id": None,
+    }
+    with SessionLocal() as session:
+        district = session.execute(text(
+            "SELECT state, name FROM boundary WHERE level = 'district' "
+            "AND ST_Intersects(geom, ST_PointOnSurface(ST_GeomFromText(:w, 4326)))"), {"w": scar["wkt"]}).first()
+        if district is None:  # the test database has no boundaries: a stand-in district around the scar
+            session.execute(text(
+                "INSERT INTO boundary (level, name, state, geom, source) VALUES ('district', 'Test district', "
+                "'Test state', ST_Multi(ST_Expand(ST_GeomFromText(:w, 4326), 0.01)), 'test')"), {"w": scar["wkt"]})
+            district = ("Test state", "Test district")
+        # Differences, not totals: the view also holds this pooled connection's unflushed counts.
+        writes = text("SELECT n_tup_ins, n_tup_upd FROM pg_stat_xact_user_tables WHERE relname = 'burn_cluster'")
+        before = session.execute(writes).one()
+        job._insert_named(session, BurnCluster, [row])
+        after = session.execute(writes).one()
+        got = session.execute(text(
+            "SELECT id, state, district, created_at, (SELECT last_value FROM burn_cluster_id_seq) AS seq "
+            "FROM burn_cluster WHERE mgrs_tile = :t AND block = 'r0_named'"), {"t": TEST_TILE}).all()
+        session.rollback()
+    assert len(got) == 1
+    assert (got[0].state, got[0].district) == tuple(district)
+    assert got[0].id == got[0].seq and got[0].created_at is not None  # the real table's id sequence and defaults
+    # Named before it landed: one INSERT and no UPDATE on burn_cluster.
+    assert (after.n_tup_ins - before.n_tup_ins, after.n_tup_upd - before.n_tup_upd) == (1, 0)
 
 
 def _expected_matches(session, scar: dict) -> tuple[int, float]:

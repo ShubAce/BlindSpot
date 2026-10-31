@@ -257,9 +257,20 @@ variants per 10 minutes per instance, each at most ~4.3 MB (a whole boundary lev
 speed bump, not a wall: for a sustained attack add a Vercel Firewall rate-limit rule on the API
 project.
 
-Storage: 333 MB on Neon; stored answers add ~10 MB (the 47 replay days are 4.5 MB). The brief
-gives the plan's storage as 1 GB; `infra/load_neon.py` and `services/api/README.md` were sized
-for 0.5 GB, which still leaves ~160 MB. Check the cap on the console's Usage page.
+Storage: 333 MB on Neon at load; stored answers add ~10 MB (the 47 replay days are 4.5 MB). The
+brief gives the plan's storage as 1 GB; `infra/load_neon.py` and `services/api/README.md` were
+sized for 0.5 GB. Check the cap on the console's Usage page.
+
+Storage after the first daily runs (2026-10-31): 949 MB, of which ~420 MB live rows. Postgres never
+returns the room of old row versions to Neon, only reuses it, and the sentinel run wrote every new
+row several times: insert, then district, sub-district and village one UPDATE each, then the risk
+score; fire matching also rewrote all ~80k scars to stamp `matched_at`. That left `harvest_cluster`
+at 479 MB (121 MB live) and `burn_cluster` at 288 MB (47 MB live). Since then new rows are named
+before they land (`sentinel._insert_named`), fire matching rewrites only scars whose verdict
+changed, and the sentinel run vacuums both tables before the risk job scores the new fields, so a
+run needs about one spare copy of the harvested fields instead of four. The room already taken is
+given back by hand, once: `infra/neon_compact.py` (VACUUM FULL per table, ~2 minutes, no row
+deleted).
 
 ## 6. What to watch in the Neon console
 
@@ -273,7 +284,8 @@ for 0.5 GB, which still leaves ~160 MB. Check the cap on the console's Usage pag
   visible `/live` tab (agent status, every minute), an uptime monitor on `/api/health` (it
   queries the database and is never cached), or a job stuck in a loop.
 - **Storage**: `response_body` should stay ~10 MB (`SELECT count(*), sum(octet_length(body))
-  FROM response_body`); `smoke_run` and `met_grid` are pruned daily.
+  FROM response_body`); `smoke_run` and `met_grid` are pruned daily. Over ~800 MB: run
+  `infra/neon_compact.py --dry-run` to see which table carries dead room, then without the flag.
 - **`response_body` must exist on Neon** (`SELECT to_regclass('public.response_body')`). On
   2026-10-31 it did not: until the first job run of the new code creates it (`init_db`), every cold
   request is live (forward 600/2 13.4 MB, scars 1.68 MB, boundaries 1.45 MB, back Delhi 1.40 MB,
