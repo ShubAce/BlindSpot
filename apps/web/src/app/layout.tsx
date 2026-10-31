@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Anton, Work_Sans } from 'next/font/google';
 import type { ReactNode } from 'react';
 
+import { OfflineSupport } from '@/components/pwa/OfflineSupport';
 import { ThemeScript } from '@/lib/theme';
 
 import './globals.css';
@@ -58,7 +59,10 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
       <head>
         <ThemeScript />
       </head>
-      <body>{children}</body>
+      <body>
+        {children}
+        <OfflineSupport />
+      </body>
     </html>
   );
 }

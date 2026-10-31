@@ -1,0 +1,159 @@
+/* Offline support (components/pwa): the notice that says a page is showing saved data, and the
+   /offline screen's own bits. A global stylesheet (the app's Turbopack CSS rule compiles .module.css
+   as global CSS anyway), every class prefixed pwa-.
+
+   Colours are the app tokens only. The notice carries data-surface="app" so it reads them on every
+   page, the landing included, and the light theme recolours it with everything else. On the dark
+   tokens: text #fff on --raised #1c1814 17.65:1, --muted #b6b0a7 on --raised 8.20:1; the 1px
+   --control border (#4a443c) separates it from both grounds. */
+
+/* The dock holds the live region, so it is always in the page, empty and zero-sized when there is
+   nothing to say; it never takes a click outside its notice. */
+.pwa-dock[data-surface] {
+  position: fixed;
+  left: 16px;
+  bottom: calc(16px + var(--sn-tabs-h, 0px));
+  /* over page content and mission control's sheet (25), under the site's bars (60) */
+  z-index: 55;
+  /* wide enough for the whole sentence on one line at 13px, with its age and the Hide button */
+  max-width: min(640px, calc(100vw - 32px));
+  background: transparent;
+  pointer-events: none;
+}
+.pwa-dock > * {
+  pointer-events: auto;
+}
+
+.pwa-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 6px 6px 6px 12px;
+  background: var(--raised);
+  color: var(--text);
+  border: 1px solid var(--control);
+  border-radius: var(--radius-card);
+}
+.pwa-notice__dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-top: 8px;
+  border-radius: 50%;
+  background: var(--warning);
+}
+[data-tone="neutral"] > .pwa-notice__dot {
+  background: var(--muted);
+}
+.pwa-notice__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 2px 0;
+  font-size: 13px;
+  line-height: 20px;
+  text-wrap: pretty;
+}
+.pwa-notice__text strong {
+  font-weight: 600;
+}
+.pwa-notice__age {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.pwa-notice__hide {
+  flex: none;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color var(--t-hover) var(--ease-out), background-color var(--t-hover) var(--ease-out);
+}
+.pwa-notice__hide:hover {
+  color: var(--text);
+  background: var(--active);
+}
+
+/* folded: the state in two words, a button that brings the notice back */
+.pwa-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 14px 0 12px;
+  border: 1px solid var(--control);
+  border-radius: 999px;
+  background: var(--raised);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.pwa-pill .pwa-notice__dot {
+  margin-top: 0;
+}
+.pwa-pill:hover {
+  border-color: var(--muted);
+}
+
+/* ---- the /offline screen ------------------------------------------------------------------ */
+
+.pwa-saved {
+  max-width: 760px;
+}
+.pwa-saved__link {
+  color: var(--text);
+  font-weight: 600;
+  text-decoration: underline;
+  text-decoration-color: var(--control);
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+.pwa-saved__link:hover {
+  text-decoration-color: currentColor;
+}
+.pwa-saved__empty {
+  margin-top: 0;
+}
+
+@media (max-width: 700px) {
+  .pwa-dock[data-surface] {
+    left: 8px;
+    right: 8px;
+    bottom: calc(var(--sn-tabs-h, 0px) + 8px);
+    max-width: none;
+  }
+  /* mission control's ranked list is a 52px sheet over the tab bar on a phone: sit above it */
+  body:has(.lv-listCard) .pwa-dock[data-surface] {
+    bottom: calc(var(--sn-tabs-h, 0px) + 60px);
+  }
+  /* touch targets */
+  .pwa-notice__hide,
+  .pwa-pill {
+    min-height: 44px;
+  }
+  .pwa-notice__dot {
+    margin-top: 14px;
+  }
+  .pwa-notice__text {
+    padding: 12px 0;
+  }
+  .pwa-saved__link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+}
+
+@media print {
+  .pwa-dock[data-surface] {
+    display: none;
+  }
+}
