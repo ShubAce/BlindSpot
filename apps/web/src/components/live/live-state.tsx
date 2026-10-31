@@ -38,6 +38,13 @@ export type LiveState = {
   focusHighlights: number;
   /** City for the back trajectories (smoke reaching a city). */
   smokeBackCity: string;
+  /** How the map draws burn scars at its current zoom: the season by district when zoomed out
+   *  (live only), hexagon tiles of the drawn fields in between, the fields themselves when zoomed in
+   *  (components/map/layers/scar-tiles.ts). The key follows it. */
+  scarsView: 'districts' | 'tiles' | 'fields';
+  /** The district whose own newest scars the map loads besides the newest overall (a district
+   *  tile was clicked), so zooming into it never finds it empty. */
+  scarDistrict: string | null;
 };
 
 export const DEFAULT_LAYERS: Record<LiveLayer, boolean> = {
@@ -62,6 +69,8 @@ const initialState: LiveState = {
   places: [],
   focusHighlights: 0,
   smokeBackCity: 'Delhi',
+  scarsView: 'districts',
+  scarDistrict: null,
 };
 
 type Action =
@@ -73,7 +82,9 @@ type Action =
   | { type: 'highlight'; kind: HighlightKind; ids: readonly (string | number)[]; replace: boolean; focus: boolean }
   | { type: 'place'; place: PlaceMark; replace: boolean }
   | { type: 'clear' }
-  | { type: 'smokeBackCity'; city: string };
+  | { type: 'smokeBackCity'; city: string }
+  | { type: 'scarsView'; view: LiveState['scarsView'] }
+  | { type: 'scarDistrict'; district: string | null };
 
 function reducer(s: LiveState, a: Action): LiveState {
   switch (a.type) {
@@ -106,6 +117,10 @@ function reducer(s: LiveState, a: Action): LiveState {
       return { ...s, highlights: EMPTY_HIGHLIGHTS, places: [], hoverScar: null };
     case 'smokeBackCity':
       return { ...s, smokeBackCity: a.city };
+    case 'scarsView':
+      return s.scarsView === a.view ? s : { ...s, scarsView: a.view };
+    case 'scarDistrict':
+      return s.scarDistrict === a.district ? s : { ...s, scarDistrict: a.district };
   }
 }
 

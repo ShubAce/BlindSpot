@@ -459,23 +459,30 @@
   border-radius: var(--radius-control);
 }
 
-/* the key, over the map's lower left */
+/* the key, in the map's lower left corner: a small button when closed, a panel growing up from it
+   when open (the credits sit in the lower right, so the two never share a corner) */
 .lv-key {
   position: absolute;
   left: 10px;
-  bottom: 30px;
+  bottom: 10px;
+  z-index: 2;
   display: flex;
-  flex-direction: column;
-  width: 272px;
-  max-height: min(52%, 360px);
+  flex-direction: column-reverse;
+  width: auto;
+  max-height: min(calc(100% - 20px), 440px);
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-control);
 }
+.lv-key[data-state="open"] {
+  width: 256px;
+}
 .lv-keyButton {
   display: flex;
+  flex: none;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
   height: 30px;
   padding: 0 10px;
   font: inherit;
@@ -502,7 +509,7 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 0 12px 10px;
+  padding: 10px 12px 4px;
   overflow: auto;
 }
 .lv-key[data-state="closed"] .lv-keyBody {
@@ -542,7 +549,16 @@
   align-items: center;
   gap: 8px;
 }
-
+/* the scar tiles' colour steps under what they measure */
+.lv-keyRamp {
+  margin: 0 0 6px;
+}
+.lv-keyRamp figcaption {
+  margin-bottom: 4px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted);
+}
 /* the case summary floats over the map's right edge, left of the zoom buttons */
 .lv-caseCard {
   position: absolute;
@@ -1236,10 +1252,13 @@
     height: 44px;
   }
   .lv-key {
+    left: 8px;
+    bottom: 8px;
+    max-height: calc(100% - 16px);
+  }
+  .lv-key[data-state="open"] {
     width: auto;
-    right: 10px;
-    bottom: 26px;
-    max-height: 60%;
+    right: 8px;
   }
   .lv-caseCard {
     left: 8px;
@@ -1357,6 +1376,32 @@
   font-size: 11px;
   line-height: 15px;
 }
+/* the credits: folded behind their (i) in the lower right, with the map data's own credit always in
+   view beside it; opened, they stay inside the map and never reach the key's corner */
+.lv-mapBody .maplibregl-ctrl-bottom-right .maplibregl-ctrl-attrib.maplibregl-compact {
+  margin: 0 10px 10px 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+}
+.lv-mapBody .maplibregl-ctrl-attrib.maplibregl-compact:not(.maplibregl-compact-show)::before {
+  content: "\00a9  OpenStreetMap";
+  display: block;
+  padding: 0 4px 0 8px;
+  font-size: 11px;
+  line-height: 20px;
+  color: var(--faint);
+  white-space: nowrap;
+}
+/* opened, the credits stop short of the key's corner: their corner starts right of the key button
+   (~64px wide at the left edge; the corner takes no pointer events), so the key never lies over
+   them and every credit stays readable */
+.lv-mapBody .maplibregl-ctrl-bottom-right {
+  left: 92px;
+}
+.lv-mapBody .maplibregl-ctrl-attrib.maplibregl-compact-show {
+  max-width: min(440px, 100%);
+  z-index: 3;
+}
 .lv-mapBody .maplibregl-ctrl-attrib a {
   color: var(--faint);
 }
@@ -1365,11 +1410,13 @@
   cursor: help;
 }
 
-/* pause motion: over the map's lower right, left of the credits button */
+/* pause motion: in the map's lower right, above the credits however far they unfold (MapPanel
+   measures their corner into --lv-credits-h), so the WCAG 2.2.2 control is never under them */
 .lv-mapHeadEnd {
   position: absolute;
-  right: 40px;
-  bottom: 8px;
+  z-index: 4;
+  right: 10px;
+  bottom: calc(var(--lv-credits-h, 32px) + 4px);
 }
 .lv-mapHeadEnd .lv-ctrl {
   background: var(--surface);
@@ -1383,6 +1430,14 @@
   font-size: 12px;
   color: var(--faint);
   white-space: nowrap;
+}
+/* on a phone the map is short: pause motion goes up beside the zoom buttons */
+@media (max-width: 700px) {
+  .lv-mapHeadEnd {
+    top: 8px;
+    right: 48px;
+    bottom: auto;
+  }
 }
 .lv-toggle,
 .lv-row,

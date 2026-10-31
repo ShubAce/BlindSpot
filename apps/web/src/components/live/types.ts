@@ -125,8 +125,8 @@ export type LiveScarsResponse = Envelope & {
 
 /** GET /api/scars/summary (by_district only, the part /live reads). */
 export type ScarsSummaryLive = Envelope & {
-  season?: { since: string; unseen_area_ha: number; last_pass?: string | null };
-  by_district?: { district: string; state: string; area_ha: number; clusters: number; unseen_area_ha: number; unseen_share: number | null }[];
+  season?: { since: string; unseen_area_ha: number; area_ha?: number | null; clusters?: number | null; last_pass?: string | null };
+  by_district?: { district: string; state: string; area_ha: number; clusters: number; unseen_area_ha: number; unseen_share: number | null; fire_detections?: number | null }[];
 };
 
 /** GET /api/scars/{id} (the case summary reads these). */

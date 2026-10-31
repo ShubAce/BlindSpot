@@ -6,6 +6,7 @@ import { number, relative, toDate } from '@/lib/format';
 import { useNow, useSources } from '@/lib/live';
 
 import { s } from './styles';
+import { shortLabel } from './words';
 
 const HOUR_MS = 3_600_000;
 
@@ -30,7 +31,7 @@ export function SourcesLine({ initial }: { initial: SourcesResponse | null }) {
     <p className={s.statusLine} aria-live="polite">
       {`${number(ok)} of ${number(list.length)} sources are on schedule`}
       {recent != null ? `; ${number(recent)} answered in the last hour` : ''}
-      {late.length ? `. Running late: ${late.map((x) => x.label).join(', ')}` : ''}
+      {late.length ? `. Running late: ${late.map((x) => shortLabel(x.label)).join(', ')}` : ''}
       {'. '}
       {now && q.data.generated_at ? `Checked ${relative(Math.min(Date.parse(q.data.generated_at), now.getTime()), now)}.` : ''}
     </p>

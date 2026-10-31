@@ -45,6 +45,7 @@ const styles = {
   keyGroup: 'lv-keyGroup',
   keyList: 'lv-keyList',
   keyStatus: 'lv-keyStatus',
+  keyRamp: 'lv-keyRamp',
   keyTick: 'lv-keyTick',
   keyTitle: 'lv-keyTitle',
   keyWindow: 'lv-keyWindow',

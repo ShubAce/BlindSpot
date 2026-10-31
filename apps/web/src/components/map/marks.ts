@@ -22,6 +22,8 @@ export type Mark =
   /** A moving trail that fades behind its head, drawn as three steps of its own alpha. */
   | { kind: 'trail'; color: RGBA; width: number }
   /** A swath band: a fill with edges. */
-  | { kind: 'band'; fill: RGBA; edge: RGBA };
+  | { kind: 'band'; fill: RGBA; edge: RGBA }
+  /** A hexagon tile (binned scars); `scale` 0-1 draws a smaller tile in the same box. */
+  | { kind: 'hex'; fill: RGBA; stroke?: RGBA; strokeWidth?: number; scale?: number };
 
 export type LegendItem = { label: string; mark: Mark; note?: string };

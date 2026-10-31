@@ -1,9 +1,10 @@
 import 'server-only';
 
 import { PATHS } from '@/lib/api';
+import { REFERENCE_SITE } from '@/lib/aoi';
 import { serverGet, type ApiResult } from '@/lib/api-server';
 
-import type { AgentExamples, Featured, FireHours, Headline, MetNow, Risk, ScarCase, ScarList } from './types';
+import type { AgentExamples, Diurnal, Featured, FireHours, FrameScars, Headline, MetNow, OrbitPasses, Risk, ScarCase, ScarList } from './types';
 
 /**
  * The landing page's reads, one per endpoint, through serverGet (short cache, never throws). Each
@@ -17,6 +18,17 @@ export const getRisk = () => serverGet<Risk>(PATHS.risk, { limit: 1 }, 10_000);
 export const getExamples = () => serverGet<AgentExamples>(PATHS.agentExamples);
 export const getFireHours = () => serverGet<FireHours>(PATHS.firesHours, { days: 7 });
 export const getDelhiMet = () => serverGet<MetNow>(PATHS.metNow, { city: 'Delhi' });
+
+/** The fire sensors' passes over the reference site (Sangrur), 30 h either side of now: enough for
+ *  the whole IST day on the clock and for the next look. Fixed parameters, so the read caches. */
+export const getPasses = () =>
+  serverGet<OrbitPasses>(PATHS.orbitsPasses, { lat: REFERENCE_SITE.lat, lon: REFERENCE_SITE.lon, hours_back: 30, hours_ahead: 30, instruments: 'VIIRS,MODIS' });
+
+/** GK-2A's fire activity by IST hour over the last days (the clock's red bars). */
+export const getDiurnal = () => serverGet<Diurnal>(PATHS.geostationaryDiurnal);
+
+/** Every burn scar inside a picture's box (the outlines on the hero's frames). */
+export const getFrameScars = (bbox: number[]) => serverGet<FrameScars>(PATHS.scars, { bbox: bbox.join(','), limit: 2000 }, 10_000);
 
 /** How many case slips the showcase stands up. */
 export const SLIPS = 6;

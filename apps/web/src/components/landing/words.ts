@@ -52,7 +52,7 @@ export const order = (i: number): CSSProperties => ({ ['--i' as string]: i });
 /** An investigator answer as the model wrote it (a lead line, then "- " points, then a caveat) split for
  *  print: the lead, and n points without their list markers (those matching `prefer` first). The words
  *  are the model's own. */
-export function answerParts(text: string | null | undefined, n: number, prefer?: RegExp): { lead: string | null; points: string[] } {
+export function answerParts(text: string | null | undefined, n: number, prefer?: RegExp, avoid?: RegExp): { lead: string | null; points: string[] } {
   const lines = (text ?? '')
     .split('\n')
     .map((l) => l.trim())
@@ -62,8 +62,17 @@ export function answerParts(text: string | null | undefined, n: number, prefer?:
   const points = lines
     .filter(isPoint)
     .map((l) => l.replace(/^[-*•]\s+/, '').replace(/\*\*/g, ''))
+    // Points matching `avoid` are left out (a figure that would contradict one shown elsewhere).
+    .filter((l) => !avoid || !avoid.test(l))
     // Points matching `prefer` first (in their own order), then the rest.
     .sort((a, b) => (prefer ? Number(prefer.test(b)) - Number(prefer.test(a)) : 0))
     .slice(0, n);
   return { lead: lead ? lead.replace(/\*\*/g, '') : null, points };
+}
+
+/** A source label without its parenthetical detail, for lists that must stay short:
+ *  "NASA FIRMS active fires (VIIRS 375 m, MODIS 1 km; NRT)" -> "NASA FIRMS active fires". The full
+ *  label stays in a title. */
+export function shortLabel(label: string): string {
+  return label.replace(/\s*\([^)]*\)/g, '').trim() || label;
 }

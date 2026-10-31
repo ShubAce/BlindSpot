@@ -17,6 +17,8 @@ import {
   RISK_STYLE,
   SATELLITE_STYLE,
   SCAR_STYLE,
+  SCAR_TILE_SHARE_EDGES,
+  SCAR_TILE_STYLE,
   SMOKE_STYLE,
   WIND_STYLE,
 } from '@/components/map/palette';
@@ -97,10 +99,38 @@ export function layerKey(layer: LiveLayer, city = 'Delhi', meta: LayerKeyMeta = 
           { label: 'Satellite now', mark: { kind: 'dot', fill: SATELLITE_STYLE.dot, stroke: SATELLITE_STYLE.dotStroke, strokeWidth: 1.5, radius: SATELLITE_STYLE.dotPx } },
           { label: 'Ground track', mark: { kind: 'line', color: SATELLITE_STYLE.track, width: SATELLITE_STYLE.trackPx } },
           { label: 'Strip being imaged', mark: { kind: 'band', fill: SATELLITE_STYLE.swathFill, edge: SATELLITE_STYLE.swathEdge } },
-          { label: 'Next look at Punjab, with its time', mark: { kind: 'band', fill: SATELLITE_STYLE.passFill, edge: SATELLITE_STYLE.passEdge } },
+          { label: 'Next look at Punjab: the line its scanner sweeps through it, with the time', mark: { kind: 'line', color: SATELLITE_STYLE.lookLine, width: SATELLITE_STYLE.lookLinePx } },
         ],
       };
   }
+}
+
+/**
+ * The scars' key at region zoom, where they are binned into hexagon tiles: a ramp of the four
+ * colour steps (share of a tile's checked hectares that is candidate unseen burn), then the
+ * unchecked outline and what a tile's size means. Same style objects as the tiles themselves.
+ */
+export function scarTileKey(view: 'districts' | 'tiles' = 'tiles'): { rampTitle: string; ramp: LegendItem[]; legend: LegendItem[] } {
+  const edges = SCAR_TILE_SHARE_EDGES.map((e) => Math.round(e * 100));
+  const steps = SCAR_TILE_STYLE.steps.map((fill, i) => ({
+    label: i === 0 ? `under ${edges[0]}%` : i === edges.length ? `${edges[i - 1]}% or more` : `${edges[i - 1]}–${edges[i]}%`,
+    mark: { kind: 'hex' as const, fill },
+  }));
+  if (view === 'districts') {
+    return {
+      rampTitle: 'Share of each district’s checked hectares that is candidate unseen burn, this season',
+      ramp: steps,
+      legend: [{ label: 'Size: hectares burnt this season; click a district for its fields', mark: { kind: 'hex', fill: SCAR_TILE_STYLE.steps[3], scale: 0.6 } }],
+    };
+  }
+  return {
+    rampTitle: 'Share of each tile’s checked hectares that is candidate unseen burn',
+    ramp: steps,
+    legend: [
+      { label: 'Fields not yet checked against fire alerts', mark: { kind: 'hex', fill: SCAR_TILE_STYLE.uncheckedFill, stroke: SCAR_TILE_STYLE.uncheckedStroke, strokeWidth: 1 } },
+      { label: 'Tile size: hectares burnt; zoom in or click for the fields', mark: { kind: 'hex', fill: SCAR_TILE_STYLE.steps[3], scale: 0.6 } },
+    ],
+  };
 }
 
 /** One swatch per toggle: the layer's main mark. */

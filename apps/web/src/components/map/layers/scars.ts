@@ -106,7 +106,12 @@ export function scarsLayers(data: ScarsResponse | null | undefined, opts: ScarsL
 export function describeScar(f: ScarFeature): string {
   const p = f.properties;
   const state = scarState(p);
-  const head = state === 'unseen' ? 'Candidate unseen burn' : state === 'alerted' ? 'Burn with a fire alert' : 'Burn not yet checked against fire alerts';
+  // the API's own label when it sends one ("candidate unseen burn", "candidate burn, FIRMS-confirmed",
+  // "candidate burn (no fire-record verdict yet)"), word for word with a capital first letter
+  const apiLabel = (p as ScarProps & { label?: string | null }).label?.trim();
+  const head = apiLabel
+    ? apiLabel[0].toUpperCase() + apiLabel.slice(1)
+    : state === 'unseen' ? 'Candidate unseen burn' : state === 'alerted' ? 'Burn with a fire alert' : 'Burn not yet checked against fire alerts';
   const fires =
     state === 'unchecked'
       ? null

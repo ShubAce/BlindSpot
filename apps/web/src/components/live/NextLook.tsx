@@ -44,7 +44,7 @@ export function NextLook() {
           <p className={styles.nextValue}>
             {name} <span className="nums">{timeIST(at)}</span> <span className={styles.unit}>IST</span>
           </p>
-          <p className={styles.figSub}>{now ? <>in <span className="nums">{duration(at.getTime() - now.getTime())}</span>; nobody is looking until then</> : <Skeleton width={120} height={12} />}</p>
+          <p className={styles.figSub}>{now ? <>in <span className="nums">{duration(at.getTime() - now.getTime())}</span>; no fire satellite until then</> : <Skeleton width={120} height={12} />}</p>
         </>
       ) : head.data?.passes?.available === false ? (
         <p className={styles.figSub}>No pass prediction: {head.data.passes.reason ?? 'orbital elements missing'}.</p>

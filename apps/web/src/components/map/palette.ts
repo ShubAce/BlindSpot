@@ -111,6 +111,45 @@ export const SCAR_STYLE = {
   dotPx: 2.5,
 };
 
+/**
+ * Scars binned into hexagons at region zoom (layers/scar-tiles.ts). Colour: the share of a tile's
+ * checked hectares that no fire alert explains, in four ordinal steps on the line from the grey of a
+ * burn with an alert (#7d776f) to the gold of a candidate unseen burn (#c9a45a), so a tile reads
+ * like the fields inside it. Lightness rises with the share (one hue family, no rainbow).
+ */
+// The edges sit where the data varies: across the season's districts the share runs from about 60%
+// (Tarn Taran, where FIRMS sees the most fires) to 100%, and at even quarters every tile fell in the
+// top step. The key prints these edges, so they are a drawing choice, never a figure.
+export const SCAR_TILE_SHARE_EDGES = [0.7, 0.8, 0.9] as const;
+export const SCAR_TILE_RAMP = ['#7d776f', '#968668', '#b09561', '#c9a45a'] as const;
+export const SCAR_TILE_STYLE = {
+  steps: SCAR_TILE_RAMP.map((c) => rgba(c, 235)),
+  stroke: rgba(MARK.ground, 0),
+  uncheckedFill: rgba(MARK.alerted, 40),
+  uncheckedStroke: rgba(MARK.alerted, 200),
+  /** Hexagon radius on screen, px (about 25 px across). */
+  radiusPx: 14,
+  /** A full tile is drawn at this fraction of its cell, so neighbours never touch. */
+  gap: 0.92,
+  /** The smallest tile, as a fraction of a full one (sqrt of hectares below that clamps here). */
+  minScale: 0.45,
+  /** Below this zoom the map shows tiles; at and above it, the fields. */
+  fieldsZoom: 9,
+  /** Below this zoom (live, not replaying) the map shows the season by district instead. */
+  districtZoom: 8,
+  /** A district's hexagon cell, km of ground (the largest district by hectares fills it to `gap`;
+   *  22 km keeps Amritsar and Tarn Taran, the closest large pair, apart), and a floor in px so it
+   *  stays a mark when zoomed out; smaller districts scale by the square root of hectares. */
+  districtRadiusKm: 22,
+  districtMinPx: 9,
+  districtMinScale: 0.2,
+};
+/** Which of the four steps a share falls in. */
+export const scarTileStep = (share: number): number => {
+  const i = SCAR_TILE_SHARE_EDGES.findIndex((e) => share < e);
+  return i === -1 ? SCAR_TILE_SHARE_EDGES.length : i;
+};
+
 export const RISK_STYLE = {
   ramp: RISK_RAMP.map((c) => rgba(c, 255)),
   fillAlpha: 34,
@@ -153,6 +192,12 @@ export const SATELLITE_STYLE = {
   swathEdge: rgba(MARK.satellite, 70),
   passFill: rgba(MARK.satellite, 10),
   passEdge: rgba(MARK.satellite, 110),
+  /** The next look at a site: the line its scanner sweeps through the site at closest approach. */
+  lookLine: rgba(MARK.satellite, 215),
+  lookLinePx: 1.5,
+  /** That pass's ground track, either side of the moment it looks. */
+  lookTrack: rgba(MARK.satellite, 170),
+  lookTrackPx: 1.5,
   dot: rgba(MARK.satellite, 255),
   dotStroke: rgba(MARK.ground, 255),
   dotPx: 4,

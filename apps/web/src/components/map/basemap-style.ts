@@ -16,7 +16,7 @@
 import type { LayerSpecification, StyleSpecification } from 'maplibre-gl';
 
 import { MARK } from './palette';
-import { BOUNDARY_ANCHOR, DATA_ANCHOR } from './types';
+import { BOUNDARY_ANCHOR, DATA_ANCHOR, TOP_ANCHOR } from './types';
 
 export const OFM_DARK_STYLE_URL = 'https://tiles.openfreemap.org/styles/dark';
 
@@ -118,20 +118,24 @@ function addAnchorsAndImagery(layers: LayerSpecification[], imagery: boolean): L
   const firstPlace = out.findIndex((l) => l.type === 'symbol' && sourceLayer(l) === 'place');
   const at = firstPlace < 0 ? out.length : firstPlace;
   out.splice(at, 0, anchor(DATA_ANCHOR), anchor(BOUNDARY_ANCHOR));
+  out.push(anchor(TOP_ANCHOR));
   return out.map((l) => {
     if (!imagery || l.type !== 'fill') return l;
     return { ...l, layout: { ...(l.layout ?? {}), visibility: 'none' } } as LayerSpecification;
   });
 }
 
-/** OpenFreeMap's style, made India-compliant and warm. Pure: returns a new object. */
-export function indiaCompliantStyle(input: StyleSpecification, opts: { imagery?: boolean } = {}): StyleSpecification {
-  const layers = input.layers
+/** OpenFreeMap's style, made India-compliant and warm. Pure: returns a new object.
+ *  `foreignLabels: 'dim'` starts the style in the state before the Indian states are known (see
+ *  `withForeignLabelsHeld`): no full-size place label anywhere, cities only, small and dim. */
+export function indiaCompliantStyle(input: StyleSpecification, opts: { imagery?: boolean; foreignLabels?: 'show' | 'dim' } = {}): StyleSpecification {
+  let layers = input.layers
     .filter((l) => !BOUNDARY_LAYER_IDS.has(l.id) && sourceLayer(l) !== 'boundary')
     .map(withoutBadLabels)
     .map(warmPaint)
     .map(placeLabelColours)
     .map((l) => (l.type === 'background' ? ({ ...l, paint: { ...(l.paint ?? {}), 'background-color': MARK.ground } } as LayerSpecification) : l));
+  if (opts.foreignLabels === 'dim') layers = withForeignLabelsHeld(layers);
   return {
     ...input,
     sources: {
@@ -153,8 +157,152 @@ export function fallbackStyle(): StyleSpecification {
   return {
     version: 8,
     sources: {},
-    layers: [{ id: 'background', type: 'background', paint: { 'background-color': MARK.ground } }, anchor(DATA_ANCHOR), anchor(BOUNDARY_ANCHOR)],
+    layers: [{ id: 'background', type: 'background', paint: { 'background-color': MARK.ground } }, anchor(DATA_ANCHOR), anchor(BOUNDARY_ANCHOR), anchor(TOP_ANCHOR)],
   };
+}
+
+// ---------------------------------------------------------------------------------------------
+// labels outside India
+
+type Pos = [number, number];
+type Ring2 = Pos[];
+export type LabelMask = { type: 'MultiPolygon'; coordinates: Ring2[][] };
+
+/** Douglas-Peucker on one ring, tolerance in degrees (iterative, keeps the ring closed). */
+function simplifyRing(ring: Ring2, tol: number): Ring2 {
+  if (ring.length <= 4) return ring;
+  const keep = new Uint8Array(ring.length);
+  keep[0] = 1;
+  keep[ring.length - 1] = 1;
+  const stack: [number, number][] = [[0, ring.length - 1]];
+  const t2 = tol * tol;
+  while (stack.length) {
+    const [a, b] = stack.pop() as [number, number];
+    const [ax, ay] = ring[a];
+    const [bx, by] = ring[b];
+    const dx = bx - ax;
+    const dy = by - ay;
+    const len2 = dx * dx + dy * dy;
+    let worst = -1;
+    let at = -1;
+    for (let i = a + 1; i < b; i++) {
+      const [px, py] = ring[i];
+      let d2: number;
+      if (len2 === 0) d2 = (px - ax) ** 2 + (py - ay) ** 2;
+      else {
+        const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2));
+        d2 = (px - ax - t * dx) ** 2 + (py - ay - t * dy) ** 2;
+      }
+      if (d2 > worst) {
+        worst = d2;
+        at = i;
+      }
+    }
+    if (at > 0 && worst > t2) {
+      keep[at] = 1;
+      stack.push([a, at], [at, b]);
+    }
+  }
+  return ring.filter((_, i) => keep[i]);
+}
+
+/**
+ * The Indian states we draw (Survey of India polygons from /api/geo/boundaries?level=state), as one
+ * light MultiPolygon for a `within` label filter: outer rings only (a hole there is another Indian
+ * state or UT), simplified to about 1 km, which moves no label across a border by more than that.
+ * Null when there is nothing usable.
+ */
+export function labelMaskFrom(fc: { features: readonly { geometry?: { type: string; coordinates: unknown } | null }[] } | null | undefined, tolDeg = 0.01): LabelMask | null {
+  const polys: Ring2[][] = [];
+  for (const f of fc?.features ?? []) {
+    const g = f.geometry;
+    if (!g) continue;
+    const outers = g.type === 'Polygon' ? [(g.coordinates as Ring2[])[0]] : g.type === 'MultiPolygon' ? (g.coordinates as Ring2[][]).map((p) => p[0]) : [];
+    for (const ring of outers) {
+      if (!ring || ring.length < 4) continue;
+      const s = simplifyRing(ring, tolDeg);
+      if (s.length >= 4) polys.push([s]);
+    }
+  }
+  return polys.length ? { type: 'MultiPolygon', coordinates: polys } : null;
+}
+
+export const ABROAD_LABEL_LAYER = 'bs-place-abroad';
+/** Where a held place layer keeps its own filter while `withForeignLabelsHeld` hides it. */
+const OWN_FILTER = 'bs:own-filter';
+/** A filter no feature passes (every place feature has a class). */
+const NONE = ['==', ['get', 'class'], '__bs_none__'];
+const CITY = ['all', ['match', ['geometry-type'], ['Point', 'MultiPoint'], true, false], ['==', ['get', 'class'], 'city']];
+
+const isPlaceLabel = (l: LayerSpecification) => l.type === 'symbol' && sourceLayer(l) === 'place' && l.id !== ABROAD_LABEL_LAYER;
+const ownFilter = (l: LayerSpecification): unknown => {
+  const meta = ('metadata' in l ? l.metadata : undefined) as Record<string, unknown> | undefined;
+  if (meta && OWN_FILTER in meta) return meta[OWN_FILTER] ?? undefined;
+  return 'filter' in l ? l.filter : undefined;
+};
+
+/** The quiet city layer: Latin script, small, dim (4.6:1 on the ground: the size and case carry
+ *  the step down from India's own city names, not unreadable contrast). */
+function abroadLayer(city: LayerSpecification, filter: unknown): LayerSpecification | null {
+  if (!('source' in city)) return null;
+  return {
+    id: ABROAD_LABEL_LAYER,
+    type: 'symbol',
+    source: city.source,
+    'source-layer': 'place',
+    filter,
+    layout: {
+      'text-field': ['coalesce', ['get', 'name:latin'], ['get', 'name_en'], ['get', 'name']],
+      'text-font': (city.layout as Record<string, unknown> | undefined)?.['text-font'] ?? ['Noto Sans Regular'],
+      'text-size': 10,
+      'text-max-width': 8,
+    },
+    paint: { 'text-color': '#7e7972', 'text-halo-color': 'rgba(12,10,8,0.85)', 'text-halo-width': 1 },
+  } as unknown as LayerSpecification;
+}
+
+/**
+ * The labels before the Indian states are known (they arrive from the API after the basemap, and may
+ * not arrive at all): every place label layer is held (its own filter kept in its metadata) and only
+ * the quiet city layer shows, everywhere. So no country or province name ("PAKISTAN", "PUNJAB
+ * پنجاب") and no full-size foreign city ever paints, even for a moment or when the states fail.
+ */
+export function withForeignLabelsHeld(layers: readonly LayerSpecification[]): LayerSpecification[] {
+  const places = layers.filter(isPlaceLabel);
+  const city = places.find((l) => /city/.test(l.id)) ?? places[0];
+  const abroad = city ? abroadLayer(city, CITY) : null;
+  const out: LayerSpecification[] = [];
+  for (const l of layers) {
+    if (l.id === ABROAD_LABEL_LAYER) continue;
+    if (abroad && l === places[0]) out.push(abroad);
+    if (!isPlaceLabel(l)) {
+      out.push(l);
+      continue;
+    }
+    const meta = { ...((('metadata' in l ? l.metadata : undefined) as Record<string, unknown> | undefined) ?? {}), [OWN_FILTER]: ownFilter(l) ?? null };
+    out.push({ ...l, filter: NONE, metadata: meta } as LayerSpecification);
+  }
+  return out;
+}
+
+/**
+ * How to keep the basemap's place labels to India: every `place` label layer gets `within` the
+ * mask added to its own filter, and one quiet layer shows only the cities outside it (Lahore,
+ * Faisalabad), in Latin script, smaller and dim, so the far side of the border keeps its bearings
+ * without its country and province names standing in the frame. No boundary is drawn from this.
+ * `abroadFilter` is set on the quiet layer when the style already has it (a held style).
+ */
+export function foreignLabelPlan(layers: readonly LayerSpecification[], mask: LabelMask): { filters: { id: string; filter: unknown }[]; abroad: LayerSpecification | null; abroadFilter: unknown; beforeId: string | null } {
+  const places = layers.filter(isPlaceLabel);
+  const inside = ['within', mask];
+  const filters = places.map((l) => {
+    const own = ownFilter(l);
+    return { id: l.id, filter: own ? ['all', own, inside] : inside };
+  });
+  const abroadFilter = ['all', CITY, ['!', inside]];
+  const city = places.find((l) => /city/.test(l.id)) ?? places[0];
+  const abroad = city ? abroadLayer(city, abroadFilter) : null;
+  return { filters, abroad, abroadFilter, beforeId: places[0]?.id ?? null };
 }
 
 /** True if a style still contains anything drawn from a boundary source layer (the lab checks this). */

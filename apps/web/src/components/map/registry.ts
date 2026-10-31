@@ -29,6 +29,7 @@ import { describeFire, type FireFeature } from './layers/fires';
 import { describeGeoPixel } from './layers/geostationary';
 import { describeRisk, type RiskFeature } from './layers/risk';
 import { describeSatellite } from './layers/satellites';
+import { describeDistrictTile, describeScarTile, type ScarTile } from './layers/scar-tiles';
 import { describeScar, type ScarFeature } from './layers/scars';
 
 export type MapLayerId = 'imagery' | 'risk' | 'scars' | 'geostationary' | 'smoke' | 'wind' | 'air' | 'fires' | 'satellites';
@@ -215,6 +216,7 @@ export function describePick(info: PickingInfo): string | null {
     case 'fires':
       return describeFire(o as FireFeature);
     case 'scars':
+      if ('drawn' in o && 'unseenShare' in o) return o.district ? describeDistrictTile(o as unknown as ScarTile, null) : describeScarTile(o as unknown as ScarTile);
       return describeScar((('f' in o ? o.f : o) as ScarFeature));
     case 'risk':
       return describeRisk((('f' in o ? o.f : o) as RiskFeature));

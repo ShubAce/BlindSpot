@@ -239,7 +239,14 @@ export type RiskProps = {
   harvested_after: string;
   harvested_before: string;
   days_since_harvest: number | null;
-  risk_score: number; // 0..1
+  risk_score: number; // a relative index 0..100 (risk-v3: 2 decimals), not a probability
+  risk_rank?: number | null; // 1 = highest score of the run
+  risk_rank_of?: number | null;
+  risk_percentile?: number | null;
+  risk_band?: string | null; // 'top 1%', '1-5%', ...
+  burn_probability?: number | null; // for the tested ordering only; see method.fields
+  burn_probability_ci95?: [number, number] | null;
+  burn_probability_band?: string | null;
   risk_factors: Record<string, unknown> | null;
   district: string | null;
   village: string | null;

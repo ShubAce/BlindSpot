@@ -86,7 +86,8 @@ export type Headline = Envelope & {
     days?: number;
     peak_ist?: string | null;
     share_outside_polar_windows?: number | null;
-    unobserved_span_ist?: { start: string; end: string; minutes?: number } | null;
+    pixel_hours?: number | null;
+    unobserved_span_ist?: { start: string; end: string; minutes?: number; pixel_hours?: number | null } | null;
   };
 };
 
@@ -159,7 +160,7 @@ export type Risk = Envelope & {
   method?: { note?: string; formula?: string };
   backtest?: {
     headline?: { auc?: number; tile?: string; burnt?: number; unburnt?: number; baselines?: { random?: { auc?: number } } } | null;
-    all_pairs?: { pairs?: number; auc_weighted_mean?: number } | null;
+    all_pairs?: { pairs?: number; auc_weighted_mean?: number; auc_ci95?: [number, number] | null } | null;
   } | null;
   reason?: string | null;
 };
@@ -230,3 +231,53 @@ export type FireHours = Envelope & {
 };
 
 export type MetNow = Envelope & { city?: string; t?: IsoTime; blh_m?: number | null };
+
+// ---------------------------------------------------------------------------------------------
+// GET /api/orbits/passes and GET /api/geostationary/diurnal (the blind-spot clock)
+
+export type OrbitPass = {
+  satellite: string;
+  key?: string;
+  instrument: string;
+  start_utc: IsoTime;
+  peak_utc?: IsoTime;
+  end_utc: IsoTime;
+  daynight?: string;
+  min_ground_distance_km?: number;
+};
+
+export type OrbitPasses = Envelope & {
+  site?: { lat: number; lon: number; name?: string };
+  window?: { from_utc: IsoTime; to_utc: IsoTime };
+  passes: OrbitPass[];
+};
+
+export type Diurnal = Envelope & {
+  days?: number;
+  since?: IsoTime;
+  unit?: string;
+  scans?: number;
+  hourly_ist?: { hour: number; mean_count: number | null; scans?: number }[];
+  peak_ist?: string | null;
+  share_outside_polar_windows?: number | null;
+  pixel_hours?: number | null;
+  pixel_hours_outside_polar_windows?: number | null;
+  /** IST times of day a polar fire satellite looked at the region on at least one day of the period
+   *  (from its FIRMS detections, padded and merged across days). */
+  polar_windows_ist?: { start: string; end: string; start_min: number; end_min: number; satellites?: string[] }[];
+  polar_passes?: number | null;
+  /** The spans between those windows (wrapping past midnight), longest first, with GK-2A's activity in each. */
+  unobserved_gaps_ist?: { start: string; end: string; minutes: number; pixel_hours?: number | null }[];
+};
+
+// ---------------------------------------------------------------------------------------------
+// GET /api/scars?bbox= (the outlines on the hero's frames)
+
+export type ScarPolygon = { type: 'Polygon'; coordinates: number[][][] } | { type: 'MultiPolygon'; coordinates: number[][][][] };
+
+export type FrameScars = Envelope & {
+  totals?: { clusters: number; area_ha: number; unseen_clusters: number; unseen_area_ha: number; checked_clusters?: number };
+  truncated?: boolean;
+  window?: { first_pass: IsoTime | null; last_pass: IsoTime | null };
+  features: { type: 'FeatureCollection'; features: { type: 'Feature'; id?: number | string; geometry: ScarPolygon | null; properties: ScarListProps }[] };
+};

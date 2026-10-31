@@ -1,17 +1,18 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 
 import { LegendSwatch } from '@/components/map/Legend';
+import { lookOffsetText, nextLookParts } from '@/components/map/look';
 import { EmptyNote, ErrorNote, Freshness, Skeleton } from '@/components/ui/states';
 import { PATHS, type ApiError, type Envelope, type RiskResponse, type SmokeForwardResponse, type WindFieldResponse } from '@/lib/api';
-import { dateIST, number } from '@/lib/format';
+import { dateIST, metricText, number, timeIST } from '@/lib/format';
 import { CADENCE, useApi } from '@/lib/live';
 
 import { CaseSummary } from './CaseSummary';
-import { SCAR_QUERY, SMOKE_FORWARD_QUERY, useAirLive, useLiveFires, useLiveScars, useScarCaseLive, useSmokeBackLive, useSourceCadence } from './data';
-import { layerKey, levelText, toggleSwatch, type LayerKeyMeta } from './legend';
+import { SCAR_QUERY, SMOKE_FORWARD_QUERY, useAirLive, useDistrictScars, useLiveFires, useLiveScars, useScarCaseLive, useScarsSummaryLive, useSmokeBackLive, useSourceCadence } from './data';
+import { layerKey, levelText, scarTileKey, toggleSwatch, type LayerKeyMeta } from './legend';
 import { LIVE_LAYERS, useLiveActions, useLiveState, type LiveLayer } from './live-state';
 import type { MapData } from './LiveMapCanvas';
 import styles from './styles';
@@ -81,6 +82,27 @@ function LayerStatus({ st }: { st: Status }) {
   );
 }
 
+/** The tiles' colour steps, highest share first, under what they measure. */
+function TileRamp({ view }: { view: 'districts' | 'tiles' }) {
+  const k = scarTileKey(view);
+  return (
+    <figure className={styles.keyRamp}>
+      <figcaption>{k.rampTitle}</figcaption>
+      <ul className={styles.keyList}>
+        {k.ramp
+          .slice()
+          .reverse()
+          .map((it) => (
+            <li key={it.label}>
+              <LegendSwatch mark={it.mark} />
+              <span>{it.label}</span>
+            </li>
+          ))}
+      </ul>
+    </figure>
+  );
+}
+
 export function MapPanel() {
   const s = useLiveState();
   const { dispatch } = useLiveActions();
@@ -97,6 +119,8 @@ export function MapPanel() {
   // data: the heavy layers load only while switched on
   const fires = useLiveFires(s.replayDay);
   const scars = useLiveScars(s.replayDay);
+  const districtScars = useDistrictScars(s.scarDistrict, s.replayDay);
+  const summary = useScarsSummaryLive();
   const risk = useApi<RiskResponse>(on.risk ? PATHS.risk : null, { limit: 1000 }, { refreshInterval: CADENCE.risk, timeoutMs: SLOW });
   const smoke = useApi<SmokeForwardResponse>(on.smoke ? PATHS.smokeForward : null, SMOKE_FORWARD_QUERY, { refreshInterval: CADENCE.smoke, timeoutMs: 60_000 });
   const back = useSmokeBackLive(on.smokeBack ? s.smokeBackCity : null);
@@ -114,9 +138,23 @@ export function MapPanel() {
     return around.filter((p) => status.next && p.tca.getTime() === status.next.at.getTime());
   }, [around, status]);
 
+  // where the next look's track lies from the site, for the key (the map draws the same geometry)
+  const look = useMemo(() => (on.satellites && site && passes[0] ? nextLookParts(sats, passes[0], site) : null), [on.satellites, site, passes, sats]);
+
+  // the map draws the newest scars overall plus, once a district was clicked, that district's newest
+  // (the list and the counts read the overall list alone)
+  const drawnScars = useMemo(() => {
+    const a = scars.data;
+    const b = districtScars.data;
+    if (!a || !b) return a ?? b;
+    const seen = new Set(a.features.features.map((f) => f.properties.id));
+    const extra = b.features.features.filter((f) => !seen.has(f.properties.id));
+    return extra.length ? { ...a, features: { ...a.features, features: [...a.features.features, ...extra] } } : a;
+  }, [scars.data, districtScars.data]);
+
   const data: MapData = {
     fires: fires.data,
-    scars: scars.data,
+    scars: drawnScars,
     risk: risk.data,
     smoke: smoke.data,
     smokeBack: back.data,
@@ -124,6 +162,7 @@ export function MapPanel() {
     air: air.data,
     sats,
     passes,
+    site,
     now,
     cases: selected.data ? [selected.data] : [],
   };
@@ -146,7 +185,16 @@ export function MapPanel() {
       live: scars,
       what: 'burn scars',
       line: scars.data
-        ? `Newest ${number(scars.data.features.features.length)} of ${number(scars.data.totals.clusters)} scars with confidence ${number(SCAR_QUERY.min_confidence, { decimals: 1 })} or more${dayLabel ? `, up to ${dayLabel}` : ''}`
+        ? [
+            s.scarsView === 'districts' && summary.data?.season
+              ? `This season by district: ${metricText('area_ha', summary.data.season.area_ha)} in ${number(summary.data.by_district?.length ?? 0)} districts, since ${dateIST(`${summary.data.season.since}T12:00:00+05:30`)}.`
+              : null,
+            `${s.scarsView === 'districts' ? 'Zoomed in, the fields: newest' : 'Newest'} ${number(scars.data.features.features.length)} of ${number(scars.data.totals.clusters)} scars with confidence ${number(SCAR_QUERY.min_confidence, { decimals: 1 })} or more${dayLabel ? `, up to ${dayLabel}` : ''}${
+              districtScars.data && s.scarDistrict && !dayLabel ? `, and newest ${number(districtScars.data.features.features.length)} of ${number(districtScars.data.totals.clusters)} in ${s.scarDistrict}` : ''
+            }`,
+          ]
+            .filter(Boolean)
+            .join(' ')
         : null,
       empty: scars.data && scars.data.totals.clusters === 0 ? (dayLabel ? `No Sentinel-2 burn scars mapped up to ${dayLabel}.` : 'No burn scars mapped yet.') : null,
       cadenceMs: cadence('stac_e84'),
@@ -189,10 +237,49 @@ export function MapPanel() {
     satellites: {
       live: tle,
       what: 'orbital elements',
-      line: tle.data ? `${number(sats.length)} satellites from CelesTrak elements` : null,
+      line: tle.data
+        ? `${number(sats.length)} satellites from CelesTrak elements.${look && passes[0] ? ` Next look: ${passes[0].satName} at ${timeIST(passes[0].tca)} IST, ${lookOffsetText(look)}.` : ''}`
+        : null,
       empty: tle.data && sats.length === 0 ? 'No usable orbital elements.' : null,
       cadenceMs: cadence('celestrak'),
     },
+  };
+
+  // the key and MapLibre's credits share the map's lower edge: opening one folds the other
+  const bodyRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const body = bodyRef.current;
+    if (!body) return;
+    const onClick = (e: MouseEvent) => {
+      if (!(e.target instanceof Element) || !e.target.closest('.maplibregl-ctrl-attrib-button')) return;
+      requestAnimationFrame(() => {
+        if (body.querySelector('.maplibregl-compact-show')) setKeyChoice(false);
+      });
+    };
+    body.addEventListener('click', onClick);
+    // pause motion sits above the credits: follow the credits' corner as it folds and unfolds
+    let ro: ResizeObserver | null = null;
+    let seen: Element | null = null;
+    const watch = () => {
+      const corner = body.querySelector('.maplibregl-ctrl-bottom-right');
+      if (!corner || corner === seen) return;
+      ro?.disconnect();
+      seen = corner;
+      ro = new ResizeObserver(() => body.style.setProperty('--lv-credits-h', `${Math.round(corner.getBoundingClientRect().height)}px`));
+      ro.observe(corner);
+    };
+    const mo = new MutationObserver(watch);
+    mo.observe(body, { childList: true, subtree: true });
+    watch();
+    return () => {
+      body.removeEventListener('click', onClick);
+      mo.disconnect();
+      ro?.disconnect();
+    };
+  }, []);
+  const toggleKey = () => {
+    if (!keyOpen) bodyRef.current?.querySelector('.maplibregl-compact-show')?.classList.remove('maplibregl-compact-show');
+    setKeyChoice(!keyOpen);
   };
 
   const active = LIVE_LAYERS.filter((l) => on[l]);
@@ -229,7 +316,7 @@ export function MapPanel() {
         </div>
       </header>
 
-      <div className={styles.mapBody}>
+      <div className={styles.mapBody} ref={bodyRef}>
         {mapReady ? <LiveMapCanvas data={data} label={mapLabel} /> : <MapWaiting />}
 
         {s.replayDay ? (
@@ -242,7 +329,7 @@ export function MapPanel() {
         ) : null}
 
         <div className={styles.key} data-state={keyOpen ? 'open' : 'closed'}>
-          <button type="button" className={styles.keyButton} aria-expanded={keyOpen} aria-controls="map-key" onClick={() => setKeyChoice(!keyOpen)}>
+          <button type="button" className={styles.keyButton} aria-expanded={keyOpen} aria-controls="map-key" onClick={toggleKey}>
             Key
           </button>
           <div id="map-key" className={styles.keyBody}>
@@ -253,8 +340,9 @@ export function MapPanel() {
                   <section key={l} className={styles.keyGroup} aria-label={k.label}>
                     <h3 className={styles.keyTitle}>{k.label}</h3>
                     <LayerStatus st={statuses[l]} />
+                    {l === 'scars' && s.scarsView !== 'fields' ? <TileRamp view={s.scarsView} /> : null}
                     <ul className={styles.keyList}>
-                      {k.legend.map((it) => (
+                      {(l === 'scars' && s.scarsView !== 'fields' ? scarTileKey(s.scarsView).legend : k.legend).map((it) => (
                         <li key={it.label}>
                           <LegendSwatch mark={it.mark} />
                           <span>{it.label}</span>

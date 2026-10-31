@@ -24,5 +24,9 @@ export const DATA_ANCHOR = 'bs-anchor-data';
 /** Boundary lines are inserted below this anchor (it sits right after DATA_ANCHOR). */
 export const BOUNDARY_ANCHOR = 'bs-anchor-boundaries';
 
+/** The last layer of the basemap: a deck.gl layer placed before it draws over the place labels
+ *  (for the few labels of our own that must not hide under a town name). */
+export const TOP_ANCHOR = 'bs-anchor-top';
+
 /** Extra props deck.gl's MapboxOverlay reads in interleaved mode. */
 export type AnchorProps = { beforeId?: string };

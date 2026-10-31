@@ -3,16 +3,16 @@
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 import type { PickingInfo } from '@deck.gl/core';
-import type { ExpressionSpecification, FilterSpecification, StyleSpecification } from 'maplibre-gl';
+import type { ExpressionSpecification, FilterSpecification, Map as MapLibreMap, StyleSpecification } from 'maplibre-gl';
 import { useCallback, useEffect, useMemo, useState, type CSSProperties, type ReactNode, type Ref } from 'react';
 import MapGL, { AttributionControl, Layer, NavigationControl, Source, type MapLayerMouseEvent, type MapRef } from 'react-map-gl/maplibre';
 import useSWR from 'swr';
 
 import { AOI_BBOX, MAP_MAX_BOUNDS, type BBox } from '@/lib/aoi';
-import { ApiError, readBoundaries, type BoundaryLevel, type BoundarySourceSpec } from '@/lib/api';
-import { useBoundaries } from '@/lib/live';
+import { ApiError, PATHS, readBoundaries, type BoundaryLevel, type BoundarySourceSpec, type GeoBoundariesResponse } from '@/lib/api';
+import { useApi, useBoundaries } from '@/lib/live';
 
-import { fallbackStyle, indiaCompliantStyle, OFM_DARK_STYLE_URL } from './basemap-style';
+import { ABROAD_LABEL_LAYER, fallbackStyle, foreignLabelPlan, indiaCompliantStyle, labelMaskFrom, OFM_DARK_STYLE_URL } from './basemap-style';
 import { mapClock, usePrefersReducedMotion } from './clock';
 import { ensureMapWorker, patchMapForDeck } from './compat';
 import { DeckOverlay, type TooltipContent } from './DeckOverlay';
@@ -44,11 +44,18 @@ export type BaseMapProps = {
   mapRef?: Ref<MapRef>;
   className?: string;
   style?: CSSProperties;
+  /** Basemap place labels outside the Indian states we draw: 'show' (default, as the basemap has
+   *  them) or 'dim' (only cities, small, dim and in Latin script; no country or province names). */
+  foreignLabels?: 'show' | 'dim';
   /** Text for screen readers: what the map shows. */
   label?: string;
   /** react-map-gl children: Marker, Popup, extra Source/Layer. */
   children?: ReactNode;
 };
+
+/** The label mask's read: all states across the map's pan range, simplified (see BaseMap). */
+const MASK_QUERY = { level: 'state', bbox: MAP_MAX_BOUNDS.join(','), simplify: 0.01 } as const;
+const MASK_OPTIONS = { refreshInterval: 0, revalidateOnFocus: false, revalidateIfStale: false, timeoutMs: 30_000 } as const;
 
 // MapLibre 6 needs its worker URL set before the first map exists (./compat.ts).
 ensureMapWorker();
@@ -61,14 +68,14 @@ async function fetchStyle(url: string): Promise<StyleSpecification> {
 
 /** OpenFreeMap's style, fetched once per session and made India-compliant; a plain ground if the
  *  service is down, so the map never blocks on it. */
-function useBasemapStyle(imagery: boolean): { style: StyleSpecification | null; fallback: boolean } {
+function useBasemapStyle(imagery: boolean, foreignLabels: 'show' | 'dim'): { style: StyleSpecification | null; fallback: boolean } {
   const { data, error } = useSWR(OFM_DARK_STYLE_URL, fetchStyle, {
     revalidateOnFocus: false,
     revalidateIfStale: false,
     revalidateOnReconnect: false,
     errorRetryCount: 2,
   });
-  const style = useMemo(() => (data ? indiaCompliantStyle(data, { imagery }) : error ? fallbackStyle() : null), [data, error, imagery]);
+  const style = useMemo(() => (data ? indiaCompliantStyle(data, { imagery, foreignLabels }) : error ? fallbackStyle() : null), [data, error, imagery, foreignLabels]);
   return { style, fallback: !data && !!error };
 }
 
@@ -158,9 +165,10 @@ export function BaseMap({
   className,
   style,
   label = 'Map of Punjab, Haryana and Delhi',
+  foreignLabels = 'show',
   children,
 }: BaseMapProps) {
-  const { style: mapStyle, fallback } = useBasemapStyle(basemap === 'imagery');
+  const { style: mapStyle, fallback } = useBasemapStyle(basemap === 'imagery', foreignLabels);
   const wantStates = boundaries === 'state' || boundaries === 'both';
   const wantDistricts = boundaries === 'district' || boundaries === 'both';
   const states = useBoundaries({ level: 'state' }, { isPaused: () => !wantStates });
@@ -175,11 +183,54 @@ export function BaseMap({
   }, [reduced]);
 
   const [loaded, setLoaded] = useState(false);
-  const handleLoad = useCallback((e: { target: Parameters<typeof patchMapForDeck>[0] }) => {
+  const [mapObj, setMapObj] = useState<MapLibreMap | null>(null);
+  const handleLoad = useCallback((e: { target: MapLibreMap }) => {
     patchMapForDeck(e.target);
+    setMapObj(e.target);
     setLoaded(true);
     onLoad?.();
   }, [onLoad]);
+  // place labels kept to India (a runtime filter on the live map, so deck.gl's interleaved layers
+  // and our boundary lines are untouched; undone if the map is reused elsewhere). The style starts
+  // with them held (indiaCompliantStyle's `foreignLabels`), so nothing foreign paints full size
+  // while the mask loads or if it never does. The mask is its own small read: every Survey of India
+  // state across the map's whole pan range (Ladakh and Gujarat included, so Leh is not styled as
+  // abroad), simplified to ~1 km by the API (about 90 KB gzip, cached like the other boundaries).
+  const maskStates = useApi<GeoBoundariesResponse>(foreignLabels === 'dim' ? PATHS.geoBoundaries : null, MASK_QUERY, MASK_OPTIONS);
+  const labelMask = useMemo(() => {
+    const spec = maskStates.data ? readBoundaries(maskStates.data) : null;
+    return spec?.kind === 'geojson' ? labelMaskFrom(spec.data) : null;
+  }, [maskStates.data]);
+  useEffect(() => {
+    if (!mapObj || !labelMask || !mapStyle) return;
+    const plan = foreignLabelPlan(mapStyle.layers, labelMask);
+    const originals = new Map(mapStyle.layers.map((l) => [l.id, 'filter' in l ? l.filter : undefined]));
+    const apply = () => {
+      try {
+        for (const f of plan.filters) if (mapObj.getLayer(f.id)) mapObj.setFilter(f.id, f.filter as FilterSpecification);
+        if (mapObj.getLayer(ABROAD_LABEL_LAYER)) mapObj.setFilter(ABROAD_LABEL_LAYER, plan.abroadFilter as FilterSpecification);
+        else if (plan.abroad) mapObj.addLayer(plan.abroad, plan.beforeId && mapObj.getLayer(plan.beforeId) ? plan.beforeId : undefined);
+      } catch {
+        // a style still loading: the style.load listener applies it once it has
+      }
+    };
+    apply();
+    mapObj.on('style.load', apply);
+    return () => {
+      mapObj.off('style.load', apply);
+      try {
+        for (const f of plan.filters) if (mapObj.getLayer(f.id)) mapObj.setFilter(f.id, (originals.get(f.id) ?? null) as FilterSpecification | null);
+        // back to the style's own state: held (the layer is the style's) or gone (it was added here)
+        if (mapObj.getLayer(ABROAD_LABEL_LAYER)) {
+          if (originals.has(ABROAD_LABEL_LAYER)) mapObj.setFilter(ABROAD_LABEL_LAYER, (originals.get(ABROAD_LABEL_LAYER) ?? null) as FilterSpecification | null);
+          else mapObj.removeLayer(ABROAD_LABEL_LAYER);
+        }
+      } catch {
+        // the map is already gone
+      }
+    };
+  }, [mapObj, labelMask, mapStyle]);
+
   const handleClick = useCallback((e: MapLayerMouseEvent) => onMapClick?.({ lng: e.lngLat.lng, lat: e.lngLat.lat }), [onMapClick]);
 
   const tooltip = useMemo(() => {

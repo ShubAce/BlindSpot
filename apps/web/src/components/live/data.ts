@@ -47,6 +47,14 @@ export const useScarsSummaryLive = () => useApi<ScarsSummaryLive>(PATHS.scarsSum
 export const useLiveScars = (day: ReplayDay) =>
   useApi<LiveScarsResponse>(PATHS.scars, { ...SCAR_QUERY, until: day ?? undefined }, { refreshInterval: day ? 0 : CADENCE.scars, timeoutMs: SLOW });
 
+/**
+ * One district's newest scars, loaded when its tile on the map is clicked, so zooming into a
+ * district the newest-overall list misses (Amritsar, Tarn Taran) still finds its fields. One URL
+ * per district: the API stores the answer and the CDN caches it like the main list. Live only.
+ */
+export const useDistrictScars = (district: string | null, day: ReplayDay) =>
+  useApi<LiveScarsResponse>(district && !day ? PATHS.scars : null, { ...SCAR_QUERY, district: district ?? undefined }, { refreshInterval: CADENCE.scars, timeoutMs: SLOW });
+
 /** Fire detections: the last 24 h, or the IST day being replayed. */
 export const useLiveFires = (day: ReplayDay) =>
   useApi<FiresResponse>(PATHS.fires, day ? { hours: 24, end: istDayEndUtc(day) } : { hours: 24 }, { refreshInterval: day ? 0 : CADENCE.fires, timeoutMs: SLOW });

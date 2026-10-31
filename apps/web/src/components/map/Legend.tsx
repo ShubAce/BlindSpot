@@ -45,6 +45,15 @@ export function LegendSwatch({ mark, size = 1 }: { mark: Mark; size?: number }) 
       );
       break;
     }
+    case 'hex': {
+      const r = ((h - 1) / 2) * (mark.scale ?? 1);
+      const pts = Array.from({ length: 6 }, (_, i) => {
+        const a = (Math.PI / 180) * (60 * i - 30);
+        return `${(w / 2 + r * Math.cos(a)).toFixed(2)},${(h / 2 + r * Math.sin(a)).toFixed(2)}`;
+      }).join(' ');
+      body = <polygon points={pts} fill={c(mark.fill)} stroke={mark.stroke ? c(mark.stroke) : undefined} strokeWidth={mark.strokeWidth} />;
+      break;
+    }
     case 'band':
       body = (
         <g>

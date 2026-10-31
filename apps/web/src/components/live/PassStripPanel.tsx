@@ -58,7 +58,7 @@ export function PassStripPanel() {
           </li>
           <li>
             <span className={styles.keyBlind} aria-hidden="true" />
-            Nobody looking
+            No fire satellite looking
           </li>
           <li>
             <span className={styles.keyTick} aria-hidden="true" />
@@ -97,7 +97,7 @@ export function PassStripPanel() {
             was looking{g.peak_ist ? <>; it peaked at <span className="nums">{g.peak_ist}</span> IST</> : null}
             {span ? (
               <>
-                , and nobody looked from <span className="nums">{span.start}</span> to <span className="nums">{span.end}</span>
+                , and none looked from <span className="nums">{span.start}</span> to <span className="nums">{span.end}</span>
               </>
             ) : null}
             . An activity index in pixel-hours, not a count of fires.

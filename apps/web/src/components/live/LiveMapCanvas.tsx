@@ -2,35 +2,50 @@
 
 import type { Layer, PickingInfo } from '@deck.gl/core';
 import { GeoJsonLayer, PathLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
-import { useCallback, useEffect, useMemo, useRef } from 'react';
-import type { MapRef } from 'react-map-gl/maplibre';
+import type { SymbolLayerSpecification } from 'maplibre-gl';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Layer as MapLayer, Source, type MapRef } from 'react-map-gl/maplibre';
 
 import {
   airLayers,
   BaseMap,
+  binScars,
+  describeDistrictTile,
+  describeScar,
+  describeScarTile,
+  districtTiles,
   describePick,
   firesLayer,
   MARK,
+  mercatorMetresPerPixel,
   rgba,
   riskLayers,
   satelliteLayers,
+  SCAR_TILE_STYLE,
   scarsLayers,
+  scarTilesLayer,
   smokeLayers,
   TOOLTIP_STYLE,
   windLayer,
+  type DistrictShape,
   type MapLayerInput,
+  type ScarFeature,
+  type ScarTile,
   type TooltipContent,
 } from '@/components/map';
 import { mapClock } from '@/components/map/clock';
 import { mapLabelFont } from '@/components/map/layers/common';
-import { centroidOf, type AirLatestResponse, type AreaGeometry, type FiresResponse, type RiskResponse, type ScarsResponse, type SmokeBackResponse, type SmokeForwardResponse, type WindFieldResponse } from '@/lib/api';
+import { nextLookParts, placeLookLabel } from '@/components/map/look';
+import { SATELLITE_STYLE } from '@/components/map/palette';
+import { centroidOf, readBoundaries, type AirLatestResponse, type AreaGeometry, type FiresResponse, type RiskResponse, type ScarsResponse, type SmokeBackResponse, type SmokeForwardResponse, type WindFieldResponse } from '@/lib/api';
 import { dateIST, metricText, number, placeName } from '@/lib/format';
-import type { PassWindow, Satellite } from '@/lib/orbits';
+import { useBoundaries } from '@/lib/live';
+import type { LatLon, PassWindow, Satellite } from '@/lib/orbits';
 
 import { BACK_STYLE } from './legend';
 import { useLiveActions, useLiveState } from './live-state';
 import { useMapCommands } from './map-commands';
-import { istDayEndUtc } from './data';
+import { istDayEndUtc, precisionText, useLiveHeadline, useScarsSummaryLive } from './data';
 import type { LiveScarCase, LiveScarsResponse, SmokeBackLive } from './types';
 
 /**
@@ -49,12 +64,38 @@ export type MapData = {
   air?: AirLatestResponse;
   sats: readonly Satellite[];
   passes: readonly PassWindow[];
+  /** The site the next look is computed for (the headline's Punjab point). */
+  site?: LatLon | null;
   now: Date | null;
   /** Scar case files for highlighted or selected scars that are not among the drawn ones. */
   cases: readonly LiveScarCase[];
 };
 
 const HL = rgba(MARK.ink, 255);
+const css = (c: readonly number[]) => `rgba(${c[0]},${c[1]},${c[2]},${(c[3] ?? 255) / 255})`;
+const LOOK_LABEL_LAYOUT: SymbolLayerSpecification['layout'] = {
+  'text-field': ['get', 'label'],
+  'text-rotate': ['get', 'rotate'],
+  'text-font': ['Noto Sans Regular'],
+  'text-size': 12,
+  'text-rotation-alignment': 'map',
+  'text-anchor': 'bottom',
+  'text-offset': [0, -0.25],
+  'text-allow-overlap': true,
+};
+const LOOK_LABEL_PAINT: SymbolLayerSpecification['paint'] = { 'text-color': css(SATELLITE_STYLE.label), 'text-halo-color': MARK.ground, 'text-halo-width': 2 };
+
+/** Tooltips open beside the pointer, and on its left (or above it) near the map's right (or lower)
+ *  edge, where the map's frame would cut them off. deck.gl sets the tooltip's `transform` to the
+ *  pointer; the separate CSS `translate` shifts it from there. */
+function edgeAware(info: PickingInfo, t: TooltipContent): TooltipContent {
+  if (!t || typeof t === 'string') return t;
+  const w = info.viewport?.width ?? 0;
+  const h = info.viewport?.height ?? 0;
+  const left = w > 0 && info.x > w - 300;
+  const up = h > 0 && info.y > h - 175;
+  return { ...t, style: { ...t.style, translate: `${left ? 'calc(-100% - 12px)' : '12px'} ${up ? 'calc(-100% - 12px)' : '12px'}` } as Partial<CSSStyleDeclaration> };
+}
 const HL_FILL = rgba(MARK.ink, 40);
 const PLACE = rgba(MARK.ink, 230);
 
@@ -112,21 +153,76 @@ function clearOf(container: HTMLElement, card: HTMLElement): { top: number; bott
 
 export default function LiveMapCanvas({ data, label }: { data: MapData; label: string }) {
   const s = useLiveState();
-  const { registerMap, camera, mapRef } = useLiveActions();
+  const { registerMap, camera, mapRef, dispatch } = useLiveActions();
   const commands = useMapCommands();
   const on = s.layers;
+
+  // the zoom and view, read when a move ends: zoomed out (live) the season by district, then the
+  // drawn fields binned into tiles below SCAR_TILE_STYLE.fieldsZoom, then the fields
+  const [zoom, setZoom] = useState<number | null>(null);
+  const [view, setView] = useState<[number, number, number, number] | null>(null);
+  const binZoom = zoom == null ? null : Math.round(zoom * 2) / 2;
+  const summary = useScarsSummaryLive();
+  const districtShapes = useBoundaries({ level: 'district' });
+  const shapes = useMemo<DistrictShape[]>(() => {
+    const spec = districtShapes.data ? readBoundaries(districtShapes.data) : null;
+    return spec?.kind === 'geojson' ? (spec.data.features as unknown as DistrictShape[]) : [];
+  }, [districtShapes.data]);
+  const wantDistricts = !s.replayDay && (zoom == null || zoom < SCAR_TILE_STYLE.districtZoom);
+  const districts = useMemo(
+    () => (on.scars && wantDistricts && binZoom != null ? districtTiles(summary.data?.by_district ?? [], shapes, binZoom) : []),
+    [on.scars, wantDistricts, binZoom, summary.data, shapes],
+  );
+  const scarsView = districts.length ? 'districts' : zoom == null || zoom < SCAR_TILE_STYLE.fieldsZoom ? 'tiles' : 'fields';
+  useEffect(() => {
+    dispatch({ type: 'scarsView', view: scarsView });
+  }, [scarsView, dispatch]);
 
   // in the replay, a detection's age is counted from the end of the day shown, not from now
   const fireClock = s.replayDay ? Date.parse(istDayEndUtc(s.replayDay)) : data.now ? data.now.getTime() : 0;
   const fireBucket = Math.floor(fireClock / 600_000);
   const fires = useMemo(() => (on.fires ? firesLayer(data.fires, { now: new Date(fireBucket * 600_000) }) : null), [on.fires, data.fires, fireBucket]);
-  const scars = useMemo(() => (on.scars ? scarsLayers(data.scars as ScarsResponse | undefined, { selectedId: s.selectedScar }) : null), [on.scars, data.scars, s.selectedScar]);
+  // tiles are re-binned per half zoom step, so a pinch does not rebuild them on every frame
+  const scars = useMemo(() => {
+    if (!on.scars) return null;
+    if (scarsView === 'districts') return scarTilesLayer(districts);
+    if (scarsView === 'tiles') {
+      if (binZoom == null) return null;
+      return scarTilesLayer(binScars((data.scars?.features.features ?? []) as unknown as ScarFeature[], binZoom));
+    }
+    return scarsLayers(data.scars as ScarsResponse | undefined, { selectedId: s.selectedScar });
+  }, [on.scars, scarsView, districts, binZoom, data.scars, s.selectedScar]);
   const risk = useMemo(() => (on.risk ? riskLayers(riskForLayer(data.risk)) : null), [on.risk, data.risk]);
   // 2,000 overlapping trails at the shared style's alpha bury the scars; drawn at half strength here
   const smoke = useMemo(() => (on.smoke ? smokeLayers(data.smoke).map((l) => withOpacity(l, 0.45)) : null), [on.smoke, data.smoke]);
   const wind = useMemo(() => (on.wind ? windLayer(data.wind) : null), [on.wind, data.wind]);
   const air = useMemo(() => (on.air ? airLayers(data.air) : null), [on.air, data.air]);
-  const sats = useMemo(() => (on.satellites ? satelliteLayers(data.sats, data.now, { passes: data.passes }) : null), [on.satellites, data.sats, data.now, data.passes]);
+  // the next look at Punjab: the line its scanner sweeps through the site and that pass's track
+  // (its whole-swath footprint would only tint the entire view: VIIRS sees 3,040 km at once)
+  // Its label is a basemap symbol when the basemap has fonts, placed first, so a town name under it
+  // gives way instead of being covered; it sits off the burn belt's marks where the view allows.
+  const [glyphs, setGlyphs] = useState(false);
+  const nextLook = useMemo(() => (data.site && data.passes[0] ? { pass: data.passes[0], site: data.site, label: !glyphs } : null), [data.site, data.passes, glyphs]);
+  const sats = useMemo(() => (on.satellites ? satelliteLayers(data.sats, data.now, { nextLook }) : null), [on.satellites, data.sats, data.now, nextLook]);
+  const look = useMemo(() => (on.satellites && glyphs && nextLook ? nextLookParts(data.sats, nextLook.pass, nextLook.site) : null), [on.satellites, glyphs, nextLook, data.sats]);
+  const marks = useMemo(() => {
+    const out: [number, number][] = [];
+    if (on.scars) {
+      for (const f of data.scars?.features.features ?? []) {
+        const c = centroidOf(f.properties.centroid);
+        if (c) out.push(c);
+      }
+    }
+    if (on.fires) for (const f of data.fires?.features.features ?? []) out.push([f.geometry.coordinates[0], f.geometry.coordinates[1]]);
+    return out;
+  }, [on.scars, on.fires, data.scars, data.fires]);
+  const lookLabel = useMemo(() => {
+    if (!look) return null;
+    // ground km per screen pixel at the view's centre latitude
+    const kmPerPx = zoom != null && view ? (mercatorMetresPerPixel(zoom) * Math.cos((((view[1] + view[3]) / 2) * Math.PI) / 180)) / 1000 : 0;
+    const p = placeLookLabel(look, view, marks, kmPerPx);
+    return { type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: p.at }, properties: { label: look.label, rotate: -p.angle } };
+  }, [look, view, marks, zoom]);
 
   // smoke reaching a city: the two models' centre lines, their cone and the back trajectories
   const back = useMemo<MapLayerInput[] | null>(() => {
@@ -298,35 +394,85 @@ export default function LiveMapCanvas({ data, label }: { data: MapData; label: s
     [risk, scars, smoke, back, wind, air, fires, sats, hlLayers],
   );
 
+  // every candidate unseen burn on the map carries the audit's precision and its interval
+  const head = useLiveHeadline();
+  const precision = precisionText(head.data?.unseen_burns);
+  const precisionLine = precision ? `Candidate unseen burns: ${precision}` : null;
+  const since = summary.data?.season?.since;
+  const summarySince = since ? dateIST(`${since}T12:00:00+05:30`) : null;
+
   const getTooltip = useCallback((info: PickingInfo): TooltipContent => {
     const id = info.layer?.id ?? '';
+    if (id.startsWith('scars') && info.object) {
+      const o = info.object as Record<string, unknown>;
+      let text: string;
+      if (id === 'scars:tiles' && (o as unknown as ScarTile).district) text = describeDistrictTile(o as unknown as ScarTile, summarySince, precisionLine);
+      else if (id === 'scars:tiles') text = describeScarTile(o as unknown as ScarTile, precisionLine);
+      else {
+        const f = ('f' in o ? o.f : o) as ScarFeature;
+        text = describeScar(f);
+        if (precisionLine && f.properties?.unseen === true) text = `${text}\n${precisionLine}`;
+      }
+      return edgeAware(info, { text, className: 'map-tooltip', style: TOOLTIP_STYLE });
+    }
     if (id.startsWith('risk') && info.object) {
       const o = info.object as { f?: { properties: Record<string, unknown> }; properties?: Record<string, unknown> };
       const p = (o.f ?? o).properties as { id: number; area_ha: number; days_since_harvest: number | null; harvested_after?: string; harvested_before?: string; village?: string | null; district?: string | null } | undefined;
       if (!p) return null;
-      const original = data.risk?.features.features.find((f) => f.properties.id === p.id)?.properties.risk_score;
+      const full = data.risk?.features.features.find((f) => f.properties.id === p.id)?.properties;
+      const original = full?.risk_score;
+      // A relative ranking, not a probability: say where the field ranks when the API gives it.
+      const head =
+        full?.risk_rank != null && full.risk_rank_of != null
+          ? `Harvested, not yet burnt: ranked ${number(full.risk_rank)} of ${number(full.risk_rank_of)} by burn risk${full.risk_band ? ` (${full.risk_band})` : ''}`
+          : `Harvested, not yet burnt: risk index ${number(original, { decimals: 1 })} (a ranking, not a probability)`;
       const text = [
-        `Harvested, not yet burnt: risk ${number(original, { decimals: 1 })} of 100`,
+        head,
         `${metricText('area_ha', p.area_ha)}${p.days_since_harvest != null ? `, ${number(p.days_since_harvest)} days since harvest` : ''}`,
         p.harvested_after && p.harvested_before ? `Cut between ${dateIST(p.harvested_after)} and ${dateIST(p.harvested_before)}` : null,
         placeName(p.village ? `near ${p.village}` : null, p.district),
       ]
         .filter(Boolean)
         .join('\n');
-      return { text, className: 'map-tooltip', style: TOOLTIP_STYLE };
+      return edgeAware(info, { text, className: 'map-tooltip', style: TOOLTIP_STYLE });
     }
     const text = describePick(info);
-    return text ? { text, className: 'map-tooltip', style: TOOLTIP_STYLE } : null;
-  }, [data.risk]);
+    return text ? edgeAware(info, { text, className: 'map-tooltip', style: TOOLTIP_STYLE }) : null;
+  }, [data.risk, precisionLine, summarySince]);
 
   const onPick = useCallback(
     (info: PickingInfo) => {
       if (!info.layer?.id.startsWith('scars') || !info.object) return;
+      if (info.layer.id === 'scars:tiles') {
+        const t = info.object as ScarTile;
+        // a district opens onto its own newest scars (loaded for it) at district scale
+        if (t.district) {
+          dispatch({ type: 'scarDistrict', district: t.district.name });
+          camera({ bounds: t.extent, padding: 32 });
+          return;
+        }
+        // a tile opens onto its fields: frame them, with at least ~3 km around so a lone field keeps
+        // its neighbourhood, and never short of the zoom where the fields are drawn
+        const [w, so, e, n] = t.extent;
+        const pad = 0.015;
+        const cx = (w + e) / 2;
+        const cy = (so + n) / 2;
+        const hx = Math.max((e - w) / 2, pad);
+        const hy = Math.max((n - so) / 2, pad);
+        const bounds: [number, number, number, number] = [cx - hx, cy - hy, cx + hx, cy + hy];
+        const map = mapRef.current?.getMap();
+        const cam = map?.cameraForBounds(bounds, { padding: 48 });
+        if (map && cam?.center != null && cam.zoom != null) {
+          const zoomTo = Math.min(13, Math.max(cam.zoom, SCAR_TILE_STYLE.fieldsZoom + 0.1));
+          map.flyTo({ center: cam.center, zoom: zoomTo, duration: mapClock.isReduced ? 0 : 1200 });
+        } else camera({ bounds, padding: 48 });
+        return;
+      }
       const o = info.object as { f?: { properties: { id: number } }; properties?: { id: number } };
       const id = (o.f ?? o).properties?.id;
       if (id != null) commands.openCase(id);
     },
-    [commands],
+    [commands, camera, dispatch, mapRef],
   );
 
   const setRef = useCallback((m: MapRef | null) => registerMap(m), [registerMap]);
@@ -336,7 +482,20 @@ export default function LiveMapCanvas({ data, label }: { data: MapData; label: s
   // remounts the control); keep them behind their (i) button so they do not cover the key and the
   // replay. They stay one click away.
   const onLoad = useCallback(() => {
-    const container = mapRef.current?.getMap().getContainer();
+    const map = mapRef.current?.getMap();
+    if (map) {
+      const read = () => {
+        setZoom(map.getZoom());
+        const b = map.getBounds();
+        setView([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()]);
+      };
+      read();
+      setGlyphs(!!map.getStyle()?.glyphs);
+      zoomOff.current?.();
+      map.on('moveend', read);
+      zoomOff.current = () => map.off('moveend', read);
+    }
+    const container = map?.getContainer();
     if (!container) return;
     const fold = (el: Element | null | undefined) => el?.classList.remove('maplibregl-compact-show');
     fold(container.querySelector('.maplibregl-ctrl-attrib'));
@@ -350,7 +509,22 @@ export default function LiveMapCanvas({ data, label }: { data: MapData; label: s
     observer.current = mo;
   }, [mapRef]);
   const observer = useRef<MutationObserver | null>(null);
-  useEffect(() => () => observer.current?.disconnect(), []);
+  const zoomOff = useRef<(() => void) | null>(null);
+  useEffect(
+    () => () => {
+      observer.current?.disconnect();
+      zoomOff.current?.();
+    },
+    [],
+  );
 
-  return <BaseMap layers={layers} getTooltip={getTooltip} onPick={onPick} onLoad={onLoad} mapRef={setRef} label={label} />;
+  return (
+    <BaseMap layers={layers} getTooltip={getTooltip} onPick={onPick} onLoad={onLoad} mapRef={setRef} label={label} foreignLabels="dim">
+      {lookLabel ? (
+        <Source id="lv-look-label" type="geojson" data={lookLabel}>
+          <MapLayer id="lv-look-label" type="symbol" layout={LOOK_LABEL_LAYOUT} paint={LOOK_LABEL_PAINT} />
+        </Source>
+      ) : null}
+    </BaseMap>
+  );
 }

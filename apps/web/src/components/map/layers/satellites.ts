@@ -2,10 +2,11 @@ import type { Layer } from '@deck.gl/core';
 import { PathLayer, PolygonLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
 
 import { timeIST } from '@/lib/format';
-import { FIRE_INSTRUMENTS, groundTrack, positions, subpoint, swathForPass, swathPolygons, type PassWindow, type Ring, type Satellite } from '@/lib/orbits';
+import { FIRE_INSTRUMENTS, groundTrack, positions, subpoint, swathForPass, swathPolygons, type LatLon, type PassWindow, type Ring, type Satellite } from '@/lib/orbits';
 
+import { nextLookParts } from '../look';
 import { SATELLITE_STYLE } from '../palette';
-import { DATA_ANCHOR, type AnchorProps } from '../types';
+import { DATA_ANCHOR, TOP_ANCHOR, type AnchorProps } from '../types';
 import { mapLabelFont } from './common';
 
 export type SatelliteLayerOptions = {
@@ -21,6 +22,11 @@ export type SatelliteLayerOptions = {
   /** Restrict to these instruments (default: all the API sends). */
   instruments?: readonly string[];
   labels?: boolean;
+  /** The next look at a site, drawn so "who is watching" shows on the map: the line its scanner
+   *  sweeps through the site at closest approach (across the whole swath), the pass's ground track
+   *  either side of that moment, and a label with the time and how far off the track the site lies. */
+  nextLook?: { pass: PassWindow; site: LatLon; /** Draw its label here (default true); false when the
+   *  page writes it as a basemap symbol instead, so town names make way for it. */ label?: boolean } | null;
 };
 
 type TrackDatum = { sat: Satellite; path: [number, number][] };
@@ -55,6 +61,77 @@ export function satelliteLayers(sats: readonly Satellite[], now: Date | null, op
     for (const ring of swathForPass(sat, p, 4)) passRings.push({ sat, ring });
     const at = subpoint(sat, p.tca);
     if (at) passLabels.push({ position: [at.lon, at.lat], text: `${p.satName} ${timeIST(p.tca)}` });
+  }
+
+  const look = opts.nextLook ? nextLookParts(sats, opts.nextLook.pass, opts.nextLook.site) : null;
+  if (look) {
+    out.push(
+      new PathLayer<{ path: [number, number][] }, AnchorProps>({
+        id: `${id}:look-track`,
+        beforeId: DATA_ANCHOR,
+        data: look.track.map((path) => ({ path })),
+        visible,
+        pickable: false,
+        widthUnits: 'pixels',
+        getPath: (d) => d.path,
+        getColor: SATELLITE_STYLE.lookTrack,
+        getWidth: SATELLITE_STYLE.lookTrackPx,
+      }),
+      new PathLayer<{ path: [number, number][] }, AnchorProps>({
+        id: `${id}:look-scan`,
+        beforeId: DATA_ANCHOR,
+        data: look.scan.map((path) => ({ path })),
+        visible,
+        pickable: false,
+        widthUnits: 'pixels',
+        getPath: (d) => d.path,
+        getColor: SATELLITE_STYLE.lookLine,
+        getWidth: SATELLITE_STYLE.lookLinePx,
+      }),
+      new ScatterplotLayer<{ position: [number, number] }, AnchorProps>({
+        id: `${id}:look-points`,
+        beforeId: DATA_ANCHOR,
+        data: [{ position: look.site }, { position: look.overhead }],
+        visible,
+        pickable: false,
+        radiusUnits: 'pixels',
+        lineWidthUnits: 'pixels',
+        filled: true,
+        stroked: true,
+        getPosition: (d) => d.position,
+        getRadius: 3.5,
+        getFillColor: SATELLITE_STYLE.dotStroke,
+        getLineColor: SATELLITE_STYLE.lookLine,
+        getLineWidth: 1.5,
+      }),
+    );
+    if ((opts.labels ?? true) && opts.nextLook?.label !== false) {
+      out.push(
+        new TextLayer<{ position: [number, number]; text: string }, AnchorProps>({
+          // written along the scan line, just above it, and over the basemap's own labels (a town
+          // name must not cover the one label that explains the line)
+          id: `${id}:look-label`,
+          beforeId: TOP_ANCHOR,
+          data: [{ position: look.labelAt, text: look.label }],
+          visible,
+          pickable: false,
+          getPosition: (d) => d.position,
+          getText: (d) => d.text,
+          getAngle: look.labelAngle,
+          getPixelOffset: [-4 * Math.sin((look.labelAngle * Math.PI) / 180), -4 * Math.cos((look.labelAngle * Math.PI) / 180)],
+          getSize: 12,
+          sizeUnits: 'pixels',
+          getColor: SATELLITE_STYLE.label,
+          getTextAnchor: 'middle',
+          getAlignmentBaseline: 'bottom',
+          fontFamily: mapLabelFont(),
+          fontWeight: 500,
+          fontSettings: { sdf: true },
+          outlineWidth: 3,
+          outlineColor: SATELLITE_STYLE.dotStroke,
+        }),
+      );
+    }
   }
 
   if (passRings.length) {

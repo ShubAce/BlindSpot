@@ -3,7 +3,7 @@ import { Suspense, type CSSProperties } from 'react';
 
 import { Skeleton } from '@/components/ui/states';
 import { absoluteApiUrl } from '@/lib/api';
-import { dateIST, metricText, number, percent } from '@/lib/format';
+import { dateIST, metricText, number } from '@/lib/format';
 
 import { getCases, getExamples, getHeadline } from './data';
 import { AOI_CENTRE, boxAround, gibsDay, gibsPicture } from './gibs';
@@ -21,13 +21,14 @@ import { answerParts, order, sentinelName } from './words';
  * verified investigator answer (GET /api/agent/examples).
  */
 
-// The slips' heights and tilts are composition (direction sheet: 26-44svh, two or three tilted).
+// The slips' heights and tilts are composition (direction sheet: 26-44svh, two or three tilted); the
+// shortest still holds its picture and details above the pocket edge on a 900 px screen.
 const SLIP_SHAPE: { h: number; tilt: number }[] = [
   { h: 36, tilt: 0 },
   { h: 43, tilt: -1.4 },
-  { h: 29, tilt: 0 },
+  { h: 34, tilt: 0 },
   { h: 41, tilt: 1.2 },
-  { h: 32, tilt: 0 },
+  { h: 35, tilt: 0 },
   { h: 39, tilt: -1 },
 ];
 
@@ -76,27 +77,18 @@ async function PlainsPicture() {
   );
 }
 
+/** The slips' scope in one line (the headline's share and its audit sit on the first screen). */
 async function UnseenClaim() {
   const r = await getHeadline();
   const u = r.ok ? r.data.unseen_burns : null;
   if (!r.ok) return <p className={s.honestOnDark}>{`The burn scar totals did not load. ${r.error.message}`}</p>;
-  if (!u?.available || u.unseen_share == null) {
-    return <p className={s.honestOnDark}>{u?.reason ?? 'No scar has been checked against the fire alerts yet, so there is no unseen share to show.'}</p>;
+  if (!u?.available || u.unseen_clusters == null) {
+    return <p className={s.honestOnDark}>{u?.reason ?? 'No scar has been checked against the fire alerts yet.'}</p>;
   }
   return (
-    <>
-      <p className={s.claim}>
-        <span className={s.claimFigure}>{percent(u.unseen_share)}</span>
-        <span className={s.claimText}>
-          {`of the burnt area Sentinel-2 mapped${u.first_pass ? ` since ${dateIST(u.first_pass)}` : ''} had no fire alert: ${metricText('area_ha', u.unseen_area_ha)} in ${number(u.unseen_clusters)} fields, the ${u.label ?? 'candidate unseen burns'}.`}
-        </span>
-      </p>
-      <p className={s.claimAudit}>
-        {u.precision != null
-          ? `Audited precision ${percent(u.precision)}${u.precision_ci95 ? ` (95% CI ${percent(u.precision_ci95[0])}–${percent(u.precision_ci95[1])}` : ''}${u.precision_n != null ? `${u.precision_ci95 ? ', ' : ' ('}n = ${number(u.precision_n)})` : u.precision_ci95 ? ')' : ''}: some candidates are tilled or flooded fields, so treat the share as an upper bound.`
-          : 'This share has not been audited yet: treat it as an upper bound.'}
-      </p>
-    </>
+    <p className={s.claimText}>
+      {`The slips below are the largest of the ${number(u.unseen_clusters)} ${u.label ?? 'candidate unseen burns'}${u.districts != null ? ` in ${number(u.districts)} districts` : ''}${u.last_pass ? `, mapped up to the pass of ${dateIST(u.last_pass)}` : ''}, one per village. Each opens its case file.`}
+    </p>
   );
 }
 
@@ -125,15 +117,6 @@ function CaseSlip({ c }: { c: ScarCase }) {
     <Link href={`/case/${p.id}`} className={s.slip}>
       <span className={s.slipHead}>Case {p.id}</span>
       <span className={s.slipLabel}>{p.label ?? 'candidate unseen burn'}</span>
-      <span className={s.slipRule} aria-hidden="true">
-        - - - - - - - - -
-      </span>
-      <span>{p.village ? `Near ${p.village}${p.district ? `, ${p.district}` : ''}` : (p.district ?? 'Place not named')}</span>
-      <span>{`${metricText('area_ha', p.area_ha)} burnt`}</span>
-      <span>{`Between ${dateIST(p.burn_after)} and ${dateIST(p.burn_before)}`}</span>
-      <span>{p.fire_matches === 0 ? `No fire alert near it${nearest ? `; nearest ${nearest}` : ''}` : `${number(p.fire_matches)} fire alerts near it`}</span>
-      {sat ? <span>{`Seen by ${sat}`}</span> : null}
-      {p.confidence != null ? <span>{`Confidence ${number(p.confidence, { decimals: 2 })}`}</span> : null}
       {chip && post ? (
         <Pic
           src={chip}
@@ -145,6 +128,15 @@ function CaseSlip({ c }: { c: ScarCase }) {
           failText="The Sentinel-2 crop did not load."
         />
       ) : null}
+      <span className={s.slipRule} aria-hidden="true">
+        - - - - - - - - -
+      </span>
+      <span>{p.village ? `Near ${p.village}${p.district ? `, ${p.district}` : ''}` : (p.district ?? 'Place not named')}</span>
+      <span>{`${metricText('area_ha', p.area_ha)} burnt`}</span>
+      <span>{`Between ${dateIST(p.burn_after)} and ${dateIST(p.burn_before)}`}</span>
+      <span>{p.fire_matches === 0 ? `No fire alert near it${nearest ? `; nearest ${nearest}` : ''}` : `${number(p.fire_matches)} fire alerts near it`}</span>
+      {sat ? <span>{`Seen by ${sat}`}</span> : null}
+      {p.confidence != null ? <span>{`Confidence ${number(p.confidence, { decimals: 2 })}`}</span> : null}
     </Link>
   );
 }
@@ -153,13 +145,19 @@ async function AnswerSlip() {
   const r = await getExamples();
   if (!r.ok) return null;
   const all = (r.data.examples ?? []).filter((e) => e.ok !== false && e.answer && e.question && e.verification?.passed);
-  // The answer that speaks to what the satellites missed, if one is stored; else Delhi's air; else any.
+  // The answer about one of the case files below, if one is stored; else what the satellites missed;
+  // else Delhi's air; else any.
   const pick: AgentExample | undefined =
-    all.find((e) => /miss|unseen/i.test(e.question ?? '')) ?? all.find((e) => /delhi/i.test(e.question ?? '')) ?? all[0];
+    all.find((e) => /\bcase \d+/i.test(e.question ?? '')) ??
+    all.find((e) => /miss|unseen/i.test(e.question ?? '')) ??
+    all.find((e) => /delhi/i.test(e.question ?? '')) ??
+    all[0];
   if (!pick) return null;
-  // One point, the one about the unobserved hours if the answer has it. (A scar total the investigator
-  // scoped to its own question would sit beside the season total above and read as a contradiction.)
-  const { lead, points } = answerParts(pick.answer, 1, /unobserved|missed/i);
+  // One point. Left out: any point naming an unobserved span (the investigator measures its own gap
+  // between FIRMS detections, which would sit beside the clock's polar-window span as a second,
+  // different figure) and any hectare total (scoped to its own question, it would read against the
+  // season total on the first screen). Preferred: a point about the missing fire alert.
+  const { lead, points } = answerParts(pick.answer, 1, /zero|no (?:active )?fire|not detected|missed/i, /unobserved|\bgap\b|\d\s*ha\b/i);
   const v = pick.verification;
   return (
     <figure className={s.answer}>
@@ -188,9 +186,8 @@ async function AnswerSlip() {
 function ClaimSkeleton() {
   return (
     <div aria-hidden="true" style={{ display: 'grid', gap: 10 }}>
-      <Skeleton height={72} width="40%" />
       <Skeleton height={22} width="100%" />
-      <Skeleton height={22} width="80%" />
+      <Skeleton height={22} width="70%" />
     </div>
   );
 }

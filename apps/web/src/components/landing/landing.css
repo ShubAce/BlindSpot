@@ -107,135 +107,11 @@
 }
 
 /* ------------------------------------------------------------------------------------------------
-   hero: two full-bleed pictures behind a rail on the midline */
-
-.lp-pictures {
-  position: absolute;
-  inset: 0 0 auto;
-  height: 200svh;
-  overflow: hidden;
-  background: var(--surface);
-}
-.lp-pic-fallback {
-  height: 200svh;
-  background: var(--surface);
-}
-.lp-pic-one,
-.lp-pic-two {
-  position: relative;
-  height: 100svh;
-  overflow: hidden;
-}
-.lp-frames {
-  position: absolute;
-  inset: 0;
-}
-.lp-frame {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  opacity: 0;
-  transition: opacity var(--t-crossfade) var(--ease-in-out);
-}
-.lp-frame[data-on="yes"] {
-  opacity: 1;
-}
-.lp-pic-missing {
-  display: flex;
-  align-items: flex-end;
-  height: 100svh;
-  padding: 0 var(--margin) 96px;
-  color: var(--muted);
-  font-size: var(--step-body);
-}
-.lp-pic-missing p {
-  max-width: 48ch;
-  margin: 0;
-}
-
-.lp-frame-caption {
-  position: absolute;
-  left: var(--margin);
-  right: var(--margin);
-  bottom: 24px;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 16px;
-  font-size: var(--step-small);
-}
-.lp-frame-where {
-  margin: 0;
-  padding: 6px 10px;
-  background: var(--scrim);
-}
-.lp-frame-dates {
-  display: flex;
-  gap: 4px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.lp-frame-date {
-  min-height: 32px;
-  padding: 4px 10px;
-  border: 0;
-  background: var(--scrim);
-  color: var(--ink);
-  font: inherit;
-  font-variant-numeric: tabular-nums;
-  cursor: pointer;
-  transition:
-    color var(--t-hover) ease,
-    background-color var(--t-hover) ease;
-}
-.lp-frame-date:hover {
-  background: var(--bg);
-}
-.lp-frame-date[aria-pressed="true"] {
-  background: var(--ink);
-  color: var(--accent-ink);
-}
-
-.lp-pic-two-caption {
-  position: absolute;
-  left: var(--margin);
-  bottom: 24px;
-  max-width: 56ch;
-  margin: 0;
-  padding: 8px 12px;
-  background: var(--scrim);
-  font-size: var(--step-small);
-  line-height: 1.45;
-}
-
-/* an invisible marker at the pictures' end: the rail docks when it passes (not a rule) */
-.lp-hero-end {
-  position: absolute;
-  left: 0;
-  bottom: 0;
-  width: 1px;
-  height: 1px; /* taste-skill-ignore */
-}
-
-.lp-lead {
-  height: calc(50svh - var(--rail-h) / 2);
-}
-.lp-tail {
-  height: calc(150svh - var(--rail-h) / 2);
-}
+   header bar: the h1, the one sentence, two links and the action */
 
 .lp-rail {
-  position: sticky;
-  top: 0;
+  position: relative;
   z-index: 40;
-  height: var(--rail-h);
-  background: rgb(12 10 8 / 0.58);
-  transition: background-color var(--t-ui) ease;
-}
-.lp-rail[data-docked="yes"] {
   background: var(--bg);
 }
 .lp-rail-inner {
@@ -243,8 +119,8 @@
   grid-template-columns: var(--grid);
   column-gap: var(--gutter);
   align-items: center;
-  height: 100%;
-  padding: 0 var(--margin);
+  min-height: var(--rail-h);
+  padding: 12px var(--margin);
 }
 .lp-rail-title {
   grid-column: 1 / span 5;
@@ -261,21 +137,13 @@
   color: inherit;
   text-decoration: none;
 }
-.lp-rail-say {
-  grid-column: 6 / span 4;
-  min-width: 0;
-}
 .lp-rail-sentence {
+  grid-column: 6 / span 4;
+  max-width: 44ch;
   margin: 0;
   font-size: var(--step-body);
   font-weight: 600;
-  line-height: 1.25;
-}
-.lp-rail-pass {
-  margin: 2px 0 0;
-  font-size: var(--step-small);
-  line-height: 1.35;
-  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
 }
 .lp-rail-nav {
   grid-column: 10 / span 3;
@@ -351,7 +219,7 @@
   display: grid;
   min-width: 240px;
   padding: 8px 0;
-  background: var(--bg);
+  background: var(--surface);
 }
 .lp-menu-panel a {
   padding: 12px 20px;
@@ -360,11 +228,315 @@
   text-decoration: none;
 }
 .lp-menu-panel a:hover {
+  background: var(--soft);
+}
+
+/* ------------------------------------------------------------------------------------------------
+   hero: the place on four passes with its scars outlined (left), the blind-spot clock (right), the
+   key figure under the picture. Phone: figure, clock, picture. */
+
+.lp-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  grid-template-areas:
+    "pic clock"
+    "figure clock";
+  grid-template-rows: auto 1fr;
+  column-gap: var(--gutter);
+  row-gap: clamp(20px, 2.4vw, 32px);
+  padding: 4px var(--margin) clamp(48px, 6vw, 96px);
+}
+.lp-hero-pic {
+  grid-area: pic;
+  min-width: 0;
+}
+.lp-hero-clock {
+  grid-area: clock;
+  min-width: 0;
+}
+.lp-hero-figure {
+  grid-area: figure;
+  min-width: 0;
+}
+.lp-hero-figure-skeleton {
+  height: 180px;
+  background: var(--surface);
+}
+.lp-pic-fallback {
+  aspect-ratio: 16 / 10;
+  background: var(--surface);
+}
+.lp-clock-skeleton {
+  aspect-ratio: 1;
+  max-width: min(100%, 68svh);
+  margin-inline: auto;
+  border-radius: 50%;
   background: var(--surface);
 }
 
-.lp-hero-foot {
-  display: none;
+/* the picture: uncropped (its own ratio), the outlines drawn in its pixels */
+.lp-shot {
+  position: relative;
+  overflow: hidden;
+  background: var(--surface);
+}
+.lp-frames {
+  position: absolute;
+  inset: 0;
+}
+.lp-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity var(--t-crossfade) var(--ease-in-out);
+}
+.lp-frame[data-on="yes"] {
+  opacity: 1;
+}
+.lp-marks {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.lp-marks g {
+  opacity: 0;
+  transition: opacity var(--t-crossfade) var(--ease-in-out);
+}
+.lp-marks g[data-on="yes"] {
+  opacity: 1;
+}
+.lp-marks path {
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.lp-mark-unseen {
+  fill: rgb(201 164 90 / 0.28);
+  stroke: var(--accent);
+  stroke-width: 1.6px;
+}
+.lp-mark-seen {
+  fill: rgb(255 255 255 / 0.3);
+  stroke: #ffffff;
+  stroke-width: 1.6px;
+}
+.lp-pic-missing {
+  display: flex;
+  align-items: flex-end;
+  aspect-ratio: 16 / 10;
+  padding: 24px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: var(--step-body);
+}
+.lp-pic-missing p {
+  max-width: 48ch;
+  margin: 0;
+}
+
+.lp-frame-caption {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 8px 20px;
+  margin-top: 12px;
+  font-size: var(--step-small);
+  line-height: 1.45;
+}
+.lp-frame-count {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.lp-frame-where {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--muted);
+}
+.lp-frame-dates {
+  display: flex;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.lp-frame-date {
+  min-height: 36px;
+  padding: 4px 10px;
+  border: 0;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color var(--t-hover) ease,
+    background-color var(--t-hover) ease;
+}
+.lp-frame-date:hover {
+  background: var(--soft);
+}
+.lp-frame-date[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--accent-ink);
+}
+
+/* the key figure: the share, large, with its audit beside it in the full ink */
+.lp-figure {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: end;
+  column-gap: clamp(16px, 2vw, 28px);
+  margin: 0;
+}
+.lp-figure-num {
+  font-family: var(--face-display);
+  font-size: clamp(5.5rem, 3rem + 7vw, 10.5rem);
+  line-height: 0.82;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+.lp-figure-text {
+  max-width: 46ch;
+  padding-bottom: 4px;
+  font-size: var(--step-body);
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+}
+.lp-figure-audit {
+  max-width: 64ch;
+  margin: 14px 0 0;
+  font-size: var(--step-body);
+  font-weight: 600;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+}
+
+/* the blind-spot clock */
+.lp-clock {
+  display: grid;
+  gap: 16px;
+  margin: 0;
+}
+.lp-clock-dial {
+  display: block;
+  width: 100%;
+  max-width: min(100%, 68svh);
+  height: auto;
+  margin-inline: auto;
+  overflow: visible;
+}
+.lp-clock-face {
+  fill: var(--surface);
+}
+.lp-clock-ring {
+  fill: #3a332b;
+}
+.lp-clock-ring-full {
+  fill: none;
+  stroke: #3a332b;
+}
+.lp-clock-bar {
+  fill: var(--mark-fire);
+}
+.lp-clock-look {
+  fill: var(--accent);
+}
+.lp-clock-look[data-done="no"] {
+  fill: rgb(201 164 90 / 0.5);
+}
+.lp-clock-gap {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 2;
+  stroke-dasharray: 2 7;
+  stroke-linecap: round;
+}
+.lp-clock-hour {
+  fill: var(--muted);
+  font-family: var(--face-text);
+  font-size: 19px;
+  font-variant-numeric: tabular-nums;
+}
+.lp-clock-hub-word {
+  fill: var(--ink);
+  font-family: var(--face-display);
+  font-size: 26px;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+}
+.lp-clock-hub-big {
+  fill: var(--ink);
+  font-family: var(--face-display);
+  font-size: 50px;
+  text-transform: uppercase;
+}
+.lp-clock-hub-time {
+  fill: var(--ink);
+  font-family: var(--face-text);
+  font-size: 21px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.lp-clock-hand line {
+  stroke: var(--ink);
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+.lp-clock-hand circle {
+  fill: var(--ink);
+}
+.lp-clock-hand {
+  transform: rotate(var(--a, 0deg));
+  transform-origin: 0 0;
+  animation: lp-sweep 2.2s var(--ease-expo) both;
+}
+@keyframes lp-sweep {
+  from {
+    transform: rotate(0deg);
+  }
+}
+.lp-clock-key {
+  display: grid;
+  gap: 6px;
+  font-size: var(--step-small);
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+}
+.lp-clock-key p {
+  margin: 0;
+  padding-left: 22px;
+  text-indent: -22px;
+}
+.lp-clock-live {
+  font-weight: 600;
+  font-size: var(--step-body);
+}
+.lp-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 10px;
+  vertical-align: -1px;
+  text-indent: 0;
+}
+.lp-swatch-now {
+  background: var(--ink);
+}
+.lp-swatch-look {
+  background: var(--accent);
+}
+.lp-swatch-fire {
+  background: var(--mark-fire);
+}
+.lp-clock-missing {
+  margin: 0;
+  padding: 24px;
+  background: var(--surface);
 }
 
 /* ------------------------------------------------------------------------------------------------
@@ -373,11 +545,12 @@
 .lp-intro {
   display: grid;
   grid-template-columns: var(--grid);
+  grid-template-rows: auto 1fr;
   column-gap: var(--gutter);
   padding: var(--pad-section) var(--margin);
 }
 .lp-intro-text {
-  grid-column: 6 / -1;
+  grid-column: 7 / -1;
   grid-row: 1;
 }
 .lp-statement {
@@ -389,7 +562,7 @@
 }
 .lp-intro-body {
   max-width: 60ch;
-  margin: 28px 0 0;
+  margin: 24px 0 0;
   font-size: var(--step-body);
   line-height: 1.55;
   font-variant-numeric: tabular-nums;
@@ -400,19 +573,53 @@
   font-size: var(--step-statement);
 }
 .lp-intro-photo {
-  grid-column: 1 / span 3;
+  grid-column: 1 / span 5;
   grid-row: 1 / span 2;
-  align-self: end;
+  align-self: start;
   margin: 0;
 }
-.lp-intro-note {
-  grid-column: 6 / span 4;
+.lp-intro-table {
+  grid-column: 7 / -1;
   grid-row: 2;
-  max-width: 52ch;
-  margin: 40px 0 0;
+  margin-top: 48px;
+}
+.lp-pass-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--step-body);
+  font-variant-numeric: tabular-nums;
+}
+.lp-pass-caption {
+  margin-bottom: 14px;
+  text-align: left;
   font-size: var(--step-small);
-  line-height: 1.5;
+  line-height: 1.45;
   color: var(--muted);
+}
+.lp-pass-table th {
+  padding: 0 12px 10px 0;
+  text-align: left;
+  font-size: var(--step-small);
+  font-weight: 600;
+  color: var(--muted);
+}
+.lp-pass-table td {
+  padding: 7px 12px 7px 0;
+}
+.lp-pass-table tbody tr:nth-child(odd) {
+  background: var(--surface);
+}
+.lp-pass-table td:first-child {
+  padding-left: 10px;
+}
+.lp-pass-table th:first-child {
+  padding-left: 10px;
+}
+.lp-pass-table tr[data-done="no"] td {
+  color: var(--muted);
+}
+.lp-pass-num {
+  text-align: right !important;
 }
 
 /* ------------------------------------------------------------------------------------------------
@@ -598,9 +805,14 @@
   color: var(--paper-muted);
   letter-spacing: 0.04em;
 }
+/* The picture sits under the slip's head, so the pocket edge (the section's bottom) cuts the last text
+   lines of a short slip, never the picture. */
 .lp-slip .lp-box {
   flex: none;
-  margin-top: 14px;
+  margin: 10px 0 6px;
+}
+.lp-slip .lp-box-chip {
+  aspect-ratio: 16 / 9;
 }
 .lp-slips-missing {
   margin: auto var(--margin) 64px;
@@ -632,22 +844,16 @@
   column-gap: var(--gutter);
   margin-top: 72px;
 }
-.lp-list-photo {
+.lp-list-side {
   grid-column: 1 / span 4;
   grid-row: 1;
-  align-self: end;
-  width: min(100%, 27vw);
+  min-width: 0;
+}
+.lp-list-photo {
   margin: 0;
 }
-.lp-list-word {
-  grid-column: 6;
-  grid-row: 1;
-  margin: 2px 0 0;
-  font-size: var(--step-small);
-  color: var(--muted);
-}
 .lp-list-table {
-  grid-column: 7 / -1;
+  grid-column: 6 / -1;
   grid-row: 1;
   min-width: 0;
 }
@@ -657,6 +863,20 @@
   font-size: var(--step-body);
   font-variant-numeric: tabular-nums;
 }
+.lp-table-caption {
+  margin-bottom: 20px;
+  text-align: left;
+  font-size: var(--step-small);
+  line-height: 1.45;
+  color: var(--muted);
+}
+.lp-table th {
+  padding: 0 0 16px;
+  text-align: left;
+  font-size: var(--step-small);
+  font-weight: 600;
+  color: var(--muted);
+}
 .lp-table td {
   padding: 0 0 22px;
   vertical-align: baseline;
@@ -665,32 +885,49 @@
   padding-top: 20px;
 }
 .lp-td-kind {
-  width: 26%;
+  width: 24%;
   padding-right: 12px !important;
   color: var(--muted);
 }
 .lp-td-place {
   padding-right: 12px !important;
+  font-weight: 600;
 }
 .lp-td-value {
-  text-align: right;
+  text-align: right !important;
   white-space: nowrap;
 }
-.lp-td-score {
+.lp-td-fields {
+  width: 14%;
   color: var(--muted);
 }
 .lp-list-note {
-  margin: 16px 0 0;
+  margin: 8px 0 0;
   max-width: 52ch;
   font-size: var(--step-body);
   line-height: 1.5;
 }
 .lp-list-method {
-  margin: 20px 0 0;
-  max-width: 60ch;
-  font-size: var(--step-small);
+  margin-top: 32px;
+}
+.lp-quote {
+  margin: 0;
+}
+.lp-quote blockquote {
+  margin: 0;
+  padding: 20px 22px;
+  background: var(--surface);
+}
+.lp-quote blockquote p {
+  margin: 0;
+  font-size: var(--step-lead);
+  line-height: 1.35;
+}
+.lp-list-backtest {
+  margin: 16px 0 0;
+  font-size: var(--step-body);
   line-height: 1.5;
-  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ------------------------------------------------------------------------------------------------
@@ -831,16 +1068,15 @@
 
 .lp-proof {
   position: relative;
-  height: clamp(900px, 52vw + 420px, 1200px);
   padding-top: 120px;
   overflow: hidden;
   background: var(--surface);
 }
+/* the card runs past the section's foot and is cut there; its words always end above the cut */
 .lp-card {
   width: 56vw;
-  aspect-ratio: 5 / 7;
-  margin: 0 auto;
-  padding: 56px;
+  margin: 0 auto -96px;
+  padding: 56px 56px 152px;
   background: var(--paper);
   color: var(--paper-ink);
   text-align: center;
@@ -863,9 +1099,17 @@
   line-height: 1.4;
 }
 .lp-names {
+  display: grid;
+  gap: 18px;
   margin: 0;
   font-size: var(--step-body);
-  line-height: 1.7;
+  line-height: 1.6;
+}
+.lp-name-group dt {
+  font-weight: 600;
+}
+.lp-name-group dd {
+  margin: 2px 0 0;
 }
 .lp-name-link {
   color: inherit;
@@ -1054,9 +1298,12 @@
 .lp-back :focus-visible,
 .lp-card :focus-visible,
 .lp-answer :focus-visible,
-.lp-reply-card :focus-visible,
-.lp-slip:focus-visible {
+.lp-reply-card :focus-visible {
   outline-color: var(--paper-ink);
+}
+/* a slip's ring is drawn outside the paper, on the dark showcase: gold, as everywhere on dark */
+.lp-slip:focus-visible {
+  outline-color: var(--accent);
 }
 .lp-imprint {
   grid-column: 1 / -1;
@@ -1085,45 +1332,43 @@
     grid-column: 1 / span 9;
     white-space: normal;
   }
-  .lp-rail-say,
   .lp-rail-nav {
     display: none;
+  }
+  .lp-rail-sentence {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    max-width: 60ch;
+    margin-top: 6px;
+    font-size: var(--step-small);
   }
   .lp-menu {
     display: block;
     grid-column: 10 / -1;
+    grid-row: 1;
   }
-  .lp-hero-foot {
-    position: absolute;
-    left: var(--margin);
-    right: var(--margin);
-    top: 100svh;
-    z-index: 2;
-    display: grid;
-    gap: 12px;
-    max-width: 560px;
-    padding: 16px;
-    background: var(--scrim);
-    transform: translateY(calc(-100% - 20px));
+  .lp-hero {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "figure"
+      "clock"
+      "pic";
+    grid-template-rows: auto;
   }
-  .lp-foot-sentence {
-    margin: 0;
-    font-size: var(--step-body);
-    font-weight: 600;
-    line-height: 1.35;
+  .lp-clock {
+    grid-template-columns: minmax(0, 11fr) minmax(0, 9fr);
+    align-items: center;
+    gap: var(--gutter);
   }
-  .lp-foot-pass {
-    margin: 0;
-    font-size: var(--step-small);
-    line-height: 1.4;
-    font-variant-numeric: tabular-nums;
-  }
-  .lp-frame-caption {
-    top: 16px;
-    bottom: auto;
+  .lp-clock-dial {
+    max-width: 100%;
   }
   .lp-intro-photo {
-    grid-column: 1 / span 4;
+    grid-column: 1 / span 5;
+  }
+  .lp-intro-text,
+  .lp-intro-table {
+    grid-column: 6 / -1;
   }
   .lp-showcase-text {
     grid-column: 1 / span 7;
@@ -1150,18 +1395,11 @@
   .lp-list {
     padding-top: calc(var(--pad-section) + 72px);
   }
-  .lp-list-photo {
-    grid-column: 1 / span 4;
-    width: 100%;
-  }
-  .lp-list-word {
-    display: none;
+  .lp-list-side {
+    grid-column: 1 / span 5;
   }
   .lp-list-table {
     grid-column: 6 / -1;
-  }
-  .lp-td-score {
-    display: none;
   }
   .lp-day-title {
     grid-column: 1 / span 6;
@@ -1208,12 +1446,21 @@
     font-size: 1.75rem;
     line-height: 1;
   }
-  .lp-hero-foot {
-    left: 0;
-    right: 0;
-    max-width: none;
-    padding: 16px 20px 20px;
-    transform: translateY(-100%);
+  .lp-clock {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .lp-hero {
+    padding-top: 20px;
+  }
+  .lp-figure {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 10px;
+  }
+  .lp-figure-num {
+    font-size: 6.5rem;
+  }
+  .lp-frame-caption {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .lp-intro {
@@ -1226,15 +1473,15 @@
     text-indent: 0;
   }
   .lp-intro-photo {
-    align-self: flex-end;
-    width: 62%;
+    order: 2;
     margin-top: 40px;
   }
-  .lp-box-intro {
-    aspect-ratio: 4 / 5;
+  .lp-intro-table {
+    order: 3;
+    margin-top: 40px;
   }
-  .lp-intro-note {
-    margin-top: 20px;
+  .lp-pass-table {
+    font-size: var(--step-small);
   }
 
   .lp-showcase {
@@ -1283,11 +1530,9 @@
     flex-direction: column;
     margin-top: 48px;
   }
-  .lp-list-photo {
+  .lp-list-side {
     order: 2;
-    align-self: flex-end;
-    width: 60%;
-    margin-top: 40px;
+    margin-top: 48px;
   }
   .lp-table tbody,
   .lp-table tr {
@@ -1320,8 +1565,21 @@
     grid-column: 1 / -1;
     grid-row: 2;
   }
-  .lp-td-score {
-    display: none;
+  .lp-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .lp-td-fields {
+    grid-column: 2;
+    grid-row: 2;
+    width: auto;
+  }
+  .lp-td-fields::after {
+    content: " fields";
   }
 
   .lp-day-head {
@@ -1343,15 +1601,9 @@
     margin-top: calc(var(--gap) * 0.45);
   }
 
-  .lp-proof {
-    height: auto;
-    max-height: 1600px;
-  }
   .lp-card {
     width: 92vw;
-    min-height: 120svh;
-    padding: 28px;
-    aspect-ratio: auto;
+    padding: 28px 28px 128px;
     rotate: -1deg;
   }
   .lp-card-title {
@@ -1426,13 +1678,11 @@
   .lp-showcase-pic img {
     animation: none;
   }
-  .lp-frame {
+  .lp-frame,
+  .lp-marks g {
     transition: none;
   }
-}
-
-/* The docked rail is a sticky header: keep anchors (#main, #sources, #credits) and keyboard focus
-   from landing underneath it. */
-html:has(.lp-page) {
-  scroll-padding-top: 104px;
+  .lp-clock-hand {
+    animation: none;
+  }
 }

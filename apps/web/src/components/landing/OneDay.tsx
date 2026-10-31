@@ -57,8 +57,8 @@ async function Moments() {
   const ws = hours.ok ? hours.data.observed_windows_ist : undefined;
   const day = mainWindow(ws, 'D');
   const night = mainWindow(ws, 'N');
-  const gap = hours.ok ? hours.data.unobserved_span_ist : null;
   const geo = head.ok && head.data.gk2a_evening?.available ? head.data.gk2a_evening : null;
+  const blind = geo?.unobserved_span_ist ?? null;
   const blh = met.ok ? met.data.blh_m : null;
   const c0 = cases.cases[0];
   const c1 = cases.cases[1] ?? cases.cases[0];
@@ -88,7 +88,8 @@ async function Moments() {
     {
       key: 'peak',
       title: 'The evening peak',
-      text: `${geo?.peak_ist ? `GK-2A’s ten-minute scans put the peak of fire activity at ${span(geo.peak_ist)} IST.` : 'Burning goes on after the afternoon pass.'}${gap ? ` From ${gap.start} to ${gap.end} no fire satellite looks.` : ''}`,
+      // the same blind span as the clock on the first screen (the headline's GK-2A block), not FIRMS's own gap
+      text: `${geo?.peak_ist ? `GK-2A’s ten-minute scans put the peak of fire activity at ${span(geo.peak_ist)} IST.` : 'Burning goes on after the afternoon pass.'}${blind ? ` In the last ${geo?.days != null ? `${number(geo.days)} days` : 'days'} no polar fire satellite looked at Punjab and Haryana from ${blind.start} to ${blind.end} IST${blind.pixel_hours != null && geo?.pixel_hours ? `, the span that held ${percent(blind.pixel_hours / geo.pixel_hours)} of that activity` : ''}.` : ''}`,
       pic: photo('strawBurning', 'Farmers turning burning rice straw in a field in Punjab, smoke behind them.', 'Rice straw burning, Punjab. Photograph: CIAT.'),
     },
     {
