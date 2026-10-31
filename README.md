@@ -37,7 +37,8 @@ time farmers burn, not how much they burn.
    Punjab. The predicted pass times match FIRMS acquisition times to within a minute at the median, and all within
    three minutes.
 3. **The evening fires, measured.** GK-2A scans the region every 10 minutes. BlindSpot finds its fire pixels and
-   reports the burning that happens while no polar satellite is overhead, validated against VIIRS and MODIS.
+   reports the burning that happens outside the hours in which a polar satellite reported a fire (16:30-20:41 IST
+   in the last days: none at all), validated against VIIRS and MODIS.
 4. **Where help should go next.** Fields that are harvested but not yet burnt are ranked by burn risk (time since
    harvest, dryness, local burning history, neighbourhood), so that seeders can reach them first.
 5. **Where the smoke goes.** A particle model driven by two weather models runs forward from fires and scars, and
@@ -56,9 +57,10 @@ As of 31 October 2026. The site's `/method` page shows the current values, read 
 
 | Check | Result |
 | --- | --- |
-| Predicted pass times vs FIRMS acquisition times (940 detections, 3 days) | median error 0.7 min; all within 3 min |
+| Predicted pass times vs FIRMS acquisition times (1,003 detections, 3 days) | median error 0.8 min; all within 3 min |
 | Candidate unseen burns that are real burns (visual audit of random Sentinel-2 chip samples) | precision 0.87, 95% CI 0.68–0.95, n = 23 |
-| Smoke index vs measured PM2.5 (22 cities, 25–30 Oct) | r = 0.60 (CAMS 0.63, ventilation alone 0.14); only ~4 independent hours, so not yet robust |
+| Smoke index vs measured PM2.5 (22 cities, 25–30 Oct) | r = 0.60 (CAMS 0.62, ventilation alone 0.14); only ~4 independent hours, so not yet robust |
+| Burn-risk ranking vs the burns that followed (risk-v3, 213 pass pairs) | AUC 0.57 (95% CI 0.50–0.65); 0.5 is chance, so a weak but real ranking |
 | GK-2A fire pixels vs MODIS on Aqua (strong fires) | 84% detected (16 of 19); 7% false alarms |
 
 ## Architecture
