@@ -1,0 +1,1446 @@
+/* Mission control (global, every class prefixed lv-: the app's Turbopack CSS rule compiles
+   .module.css files as plain global CSS, so modules would not scope anyway)
+    (data-terminal style, icon-rail shell), on the app tokens of [data-surface="app"]
+   in app/globals.css. Cards are darker than the ground and separated by a 1px line, never a shadow
+   (only what floats over the map, the case summary, carries one). The accent is used only as the
+   1px selection line. Figures are Work Sans with tabular figures. */
+
+/* ---------------------------------------------------------------------------------------------
+   shell */
+
+.lv-shell {
+  display: grid;
+  grid-template-columns: var(--rail-width) minmax(0, 1fr);
+  min-height: 100svh;
+  background: var(--ground);
+}
+
+.lv-skip {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  z-index: 50;
+  padding: 8px 12px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  transform: translateY(-200%);
+}
+.lv-skip:focus-visible {
+  transform: none;
+}
+
+/* the rail */
+.lv-rail {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  height: 100svh;
+  padding: 14px 0 16px;
+  background: var(--ground);
+  border-right: 1px solid var(--border);
+}
+.lv-railMark {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-control);
+}
+.lv-railList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.lv-railBottom {
+  margin-top: auto;
+}
+.lv-railLink {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  color: var(--faint);
+  border-radius: var(--radius-control);
+  transition: color var(--t-hover) ease;
+}
+.lv-railLink:hover,
+.lv-railLink:focus-visible,
+.lv-railLink[aria-current="page"] {
+  color: var(--text);
+}
+/* the active screen: the one gold line, on the rail's edge, as tall as the icon */
+.lv-railLink[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  right: -5px;
+  top: 11px;
+  width: 1px;
+  height: 18px;
+  background: var(--accent);
+}
+/* tooltip: the name, beside the icon (it floats, so it may have an edge) */
+.lv-railLink::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 46px;
+  top: 50%;
+  padding: 4px 8px;
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-4px, -50%);
+  transition:
+    opacity var(--t-hover) ease,
+    transform var(--t-hover) var(--ease-out);
+}
+.lv-railLink:hover::after,
+.lv-railLink:focus-visible::after {
+  opacity: 1;
+  transform: translate(0, -50%);
+}
+.lv-railText {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------------------------------------
+   the screen grid */
+
+.lv-screen {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  grid-template-rows: auto minmax(380px, 1fr) auto;
+  grid-template-areas:
+    "title title"
+    "map side"
+    "strip side";
+  gap: 16px;
+  /* one screen where it is tall enough; on a short laptop (1440 x 900) the screen grows instead of
+     squeezing the map, and the pass strip sits just under the fold */
+  height: max(100svh, 1000px);
+  padding: 16px;
+  min-width: 0;
+}
+/* the investigator console takes a column only once it renders */
+.lv-screen:has(> .lv-console > *) {
+  grid-template-columns: minmax(0, 1fr) 360px auto;
+  /* the title row keeps the full width (the finding stays on two lines); the console starts level
+     with the map (investigator build log) */
+  grid-template-areas:
+    "title title title"
+    "map side console"
+    "strip side console";
+}
+.lv-console {
+  grid-area: console;
+  min-width: 0;
+  min-height: 0;
+}
+.lv-console:empty {
+  display: none;
+}
+
+.lv-titleRow {
+  grid-area: title;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 32px;
+  padding: 2px 4px 0;
+}
+.lv-titleText {
+  min-width: 0;
+}
+.lv-title {
+  margin: 0;
+  font-size: 20px !important;
+  line-height: 28px !important;
+  font-weight: 600;
+}
+.lv-scope {
+  margin-left: 10px;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.lv-finding {
+  margin: 6px 0 0;
+  max-width: 100ch;
+  font-size: 16px;
+  line-height: 24px;
+  color: var(--text);
+}
+.lv-finding strong {
+  font-weight: 600;
+}
+.lv-findingFigure {
+  font-size: 30px;
+  line-height: 32px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.lv-findingQual {
+  color: var(--muted);
+}
+
+.lv-nextLook {
+  flex: none;
+  min-width: 230px;
+  text-align: right;
+}
+.lv-nextValue {
+  margin: 2px 0 0;
+  font-size: 22px;
+  line-height: 28px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.lv-figLabel {
+  margin: 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted);
+}
+.lv-figSub {
+  margin: 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--faint);
+}
+.lv-fig {
+  margin: 2px 0 0;
+  font-size: 24px;
+  line-height: 30px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.lv-figModel {
+  margin: 2px 0 0;
+  font-size: 18px;
+  line-height: 30px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.lv-unit {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.lv-faint {
+  color: var(--faint);
+}
+.lv-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--muted);
+}
+
+/* ---------------------------------------------------------------------------------------------
+   cards */
+
+.lv-card,
+.lv-listCard {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
+.lv-cardHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px 8px;
+}
+.lv-cardTitle {
+  margin: 0;
+  font-size: 15px !important;
+  line-height: 20px !important;
+  font-weight: 600 !important;
+  color: var(--text) !important;
+}
+.lv-headNote {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.lv-cardPad {
+  padding: 0 16px 12px;
+}
+.lv-listFoot {
+  padding: 4px 16px 12px;
+  font-size: 12px;
+}
+.lv-iconButton {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-control);
+  cursor: pointer;
+  transition: color var(--t-hover) ease;
+}
+.lv-iconButton:hover {
+  color: var(--text);
+}
+.lv-linkish {
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 3px;
+  transition: text-decoration-color var(--t-hover) ease;
+}
+.lv-linkish:hover {
+  text-decoration-color: currentColor;
+}
+.lv-pill {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--pill-neutral-ink);
+  background: var(--pill-neutral-bg);
+  border-radius: 999px;
+}
+.lv-pill[data-tone="warning"] {
+  color: var(--pill-warning-ink);
+  background: var(--pill-warning-bg);
+}
+.lv-pill[data-tone="negative"] {
+  color: var(--pill-negative-ink);
+  background: var(--pill-negative-bg);
+}
+.lv-ctrl {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--control);
+  border-radius: var(--radius-control);
+  cursor: pointer;
+  transition: border-color var(--t-hover) ease;
+}
+.lv-ctrl:hover {
+  border-color: var(--muted);
+}
+.lv-ctrl:active {
+  transform: translateY(1px);
+}
+.lv-ctrl:disabled {
+  color: var(--faint);
+  cursor: default;
+}
+
+/* ---------------------------------------------------------------------------------------------
+   the map */
+
+.lv-mapArea {
+  grid-area: map;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+.lv-mapCard {
+  flex: 1;
+  overflow: hidden;
+}
+.lv-mapHead {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 4px 12px 4px 16px;
+  border-bottom: 1px solid var(--rule);
+}
+.lv-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 16px;
+  min-width: 0;
+}
+.lv-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 1px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--faint);
+  white-space: nowrap;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  transition: color var(--t-hover) ease;
+}
+.lv-toggle:hover,
+.lv-toggle[aria-pressed="true"] {
+  color: var(--text);
+}
+.lv-toggleSwatch {
+  display: inline-flex;
+  transition: opacity var(--t-hover) ease;
+}
+.lv-toggle[aria-pressed="false"] .lv-toggleSwatch {
+  opacity: 0.4;
+}
+.lv-toggleLabel {
+  position: relative;
+}
+.lv-mapBody {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+.lv-mapWaiting {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  color: var(--faint);
+  background: var(--bg);
+}
+
+.lv-replayChip {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  max-width: min(560px, calc(100% - 70px));
+  margin: 0;
+  padding: 6px 10px;
+  font-size: 13px;
+  line-height: 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+}
+
+/* the key, over the map's lower left */
+.lv-key {
+  position: absolute;
+  left: 10px;
+  bottom: 30px;
+  display: flex;
+  flex-direction: column;
+  width: 272px;
+  max-height: min(52%, 360px);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+}
+.lv-keyButton {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 30px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.lv-keyButton::after {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+  transition: transform var(--t-ui) var(--ease-out);
+}
+.lv-key[data-state="closed"] .lv-keyButton::after {
+  transform: translateY(1px) rotate(-135deg);
+}
+.lv-keyBody {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 12px 10px;
+  overflow: auto;
+}
+.lv-key[data-state="closed"] .lv-keyBody {
+  display: none;
+}
+.lv-keyGroup + .lv-keyGroup {
+  padding-top: 10px;
+  border-top: 1px solid var(--rule);
+}
+.lv-keyTitle {
+  margin: 0;
+  font-size: 12px !important;
+  line-height: 16px !important;
+  font-weight: 600 !important;
+  color: var(--text);
+}
+.lv-keyStatus {
+  margin: 2px 0 6px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.lv-keyList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted);
+  list-style: none;
+}
+.lv-keyList li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* the case summary floats over the map's right edge, left of the zoom buttons */
+.lv-caseCard {
+  position: absolute;
+  top: 10px;
+  right: 50px;
+  z-index: 5;
+  width: 312px;
+  max-height: calc(100% - 20px);
+  overflow: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: 0 12px 28px rgb(0 0 0 / 0.35); /* taste-skill-ignore: floats over the map or the page */
+}
+.lv-caseHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 8px 4px 14px;
+}
+.lv-caseTitle {
+  margin: 0;
+  font-size: 14px !important;
+  line-height: 20px !important;
+  font-weight: 600 !important;
+}
+.lv-caseBody {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 14px 14px;
+}
+.lv-casePlace {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--muted);
+}
+.lv-chips {
+  display: flex;
+  gap: 8px;
+}
+.lv-chip {
+  width: 132px;
+  margin: 0;
+}
+.lv-chip img,
+.lv-chipMissing {
+  display: block;
+  width: 132px;
+  height: 132px;
+  background: var(--raised);
+  border-radius: 2px;
+}
+.lv-chipMissing {
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  color: var(--faint);
+}
+.lv-chip figcaption {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted);
+}
+.lv-facts {
+  margin: 0;
+}
+.lv-facts div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 0;
+  font-size: 13px;
+  line-height: 18px;
+  border-top: 1px solid var(--rule);
+}
+.lv-facts dt {
+  color: var(--muted);
+}
+.lv-facts dd {
+  margin: 0;
+  text-align: right;
+}
+.lv-caseLink {
+  align-self: flex-start;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  text-decoration: underline;
+  text-decoration-color: var(--control);
+  text-underline-offset: 3px;
+  transition: text-decoration-color var(--t-hover) ease;
+}
+.lv-caseLink:hover {
+  text-decoration-color: currentColor;
+}
+
+/* the season replay, the map card's foot: what is shown on the left, the track, the controls */
+.lv-replay {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr) auto;
+  grid-template-areas:
+    "title track controls"
+    "readout track controls"
+    "key track controls";
+  column-gap: 20px;
+  align-items: start;
+  padding: 8px 16px 8px;
+  border-top: 1px solid var(--rule);
+}
+.lv-replayHead {
+  display: contents;
+}
+.lv-replayTitle {
+  grid-area: title;
+  margin: 0;
+  font-size: 13px !important;
+  line-height: 18px !important;
+  font-weight: 600 !important;
+}
+.lv-replayReadout {
+  grid-area: readout;
+  min-width: 0;
+  margin: 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.lv-replayControls {
+  grid-area: controls;
+  display: flex;
+  gap: 6px;
+  align-self: center;
+}
+.lv-replayTrack {
+  grid-area: track;
+  position: relative;
+  border-radius: 2px;
+}
+.lv-replayTrack:has(.lv-replayRange:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+.lv-replayRange {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: calc(100% - 14px);
+  margin: 0;
+  opacity: 0;
+  cursor: ew-resize;
+  touch-action: none;
+}
+.lv-replayKey {
+  grid-area: key;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  margin: 4px 0 0;
+  padding: 0;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--muted);
+  list-style: none;
+}
+.lv-replayKey li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* the title row's right side: the next look and the sources line */
+.lv-titleSide {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+.lv-sourcesBox {
+  position: relative;
+}
+.lv-sourcesButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--control);
+  border-radius: var(--radius-control);
+  cursor: pointer;
+  transition:
+    color var(--t-hover) ease,
+    border-color var(--t-hover) ease;
+}
+.lv-sourcesButton:hover,
+.lv-sourcesButton[aria-expanded="true"] {
+  color: var(--text);
+  border-color: var(--muted);
+}
+.lv-sourcesPanel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 40;
+  width: 360px;
+  max-height: 70svh;
+  overflow: auto;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: 0 12px 28px rgb(0 0 0 / 0.35); /* taste-skill-ignore: floats over the map or the page */
+}
+.lv-sourcesPanelHead {
+  margin: 0;
+  padding: 12px 16px 6px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted);
+}
+
+/* ---------------------------------------------------------------------------------------------
+   the side column */
+
+.lv-side {
+  grid-area: side;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+.lv-listCard {
+  flex: 1 1 auto;
+  min-height: 300px;
+  overflow: hidden;
+}
+.lv-listInner {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+.lv-sheetHandle {
+  display: none;
+}
+.lv-listMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 16px 10px;
+  font-size: 13px;
+  line-height: 18px;
+}
+.lv-listMeta p {
+  margin: 0;
+}
+.lv-listMeta strong {
+  font-weight: 600;
+}
+.lv-rows {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0 8px 4px;
+  overflow: auto;
+  list-style: none;
+}
+.lv-row {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 4px 8px;
+  font: inherit;
+  color: var(--text);
+  text-align: left;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-control);
+  cursor: pointer;
+  transition: box-shadow var(--t-hover) ease;
+}
+.lv-row:hover {
+  box-shadow: inset 0 0 0 1px var(--control); /* taste-skill-ignore: the hover outline, not a shadow */
+}
+.lv-row[aria-current="true"] {
+  background: var(--active);
+}
+.lv-rank {
+  font-size: 12px;
+  color: var(--faint);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.lv-rowMain {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.lv-rowName,
+.lv-rowSub {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.lv-rowName {
+  font-size: 13px;
+  line-height: 18px;
+}
+.lv-rowSub {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+.lv-rowValue {
+  font-size: 13px;
+  font-weight: 500;
+  text-align: right;
+  white-space: nowrap;
+}
+.lv-rowSkeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 8px 8px 40px;
+}
+
+/* air */
+.lv-delhi {
+  padding: 0 16px 10px;
+  border-bottom: 1px solid var(--rule);
+}
+.lv-delhiTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.lv-delhiName {
+  margin: 0;
+  font-size: 15px !important;
+  line-height: 20px !important;
+  font-weight: 600 !important;
+}
+.lv-delhiFigures {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 4px;
+}
+.lv-delhiFigures > div {
+  min-width: 0;
+}
+.lv-delhiNote {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--muted);
+}
+.lv-airTable {
+  width: 100%;
+  font-size: 13px;
+  line-height: 18px;
+  border-collapse: collapse;
+}
+.lv-airTable th,
+.lv-airTable td {
+  padding: 5px 8px;
+  text-align: left;
+  vertical-align: top;
+  font-weight: 400;
+}
+.lv-airTable th:first-child {
+  padding-left: 16px;
+}
+.lv-airTable th:last-child,
+.lv-airTable td:last-child {
+  padding-right: 16px;
+}
+.lv-airTable thead th {
+  padding-top: 10px;
+  padding-bottom: 4px;
+  font-size: 12px;
+  color: var(--faint);
+}
+.lv-airTable tbody tr th,
+.lv-airTable tbody tr td {
+  border-top: 1px solid var(--rule);
+}
+.lv-airTable .num {
+  text-align: right;
+}
+.lv-cityName {
+  display: block;
+}
+.lv-citySub {
+  display: block;
+  font-size: 11px;
+  line-height: 15px;
+  color: var(--faint);
+}
+.lv-footNote {
+  margin: 0;
+  padding: 8px 16px 12px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--faint);
+}
+
+/* sources */
+.lv-sources {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0 16px 6px;
+  list-style: none;
+}
+.lv-sources li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  font-size: 12px;
+  line-height: 16px;
+}
+.lv-sources li + li {
+  border-top: 1px solid var(--rule);
+}
+.lv-sourceName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.lv-sourceAge {
+  flex: none;
+  color: var(--faint);
+}
+
+/* ---------------------------------------------------------------------------------------------
+   the pass strip */
+
+.lv-stripArea {
+  grid-area: strip;
+  min-width: 0;
+}
+.lv-stripHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 24px;
+  flex-wrap: wrap;
+  padding: 12px 16px 2px;
+}
+.lv-stripLead {
+  min-width: 0;
+}
+.lv-stripSentence {
+  margin: 4px 0 0;
+  font-size: 15px;
+  line-height: 22px;
+}
+.lv-stripSentence strong {
+  font-weight: 600;
+}
+.lv-stripKey {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px 14px;
+  margin: 0;
+  padding: 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted);
+  list-style: none;
+}
+.lv-stripKey li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.lv-keyWindow,
+.lv-keyBlind,
+.lv-keyTick,
+.lv-keyGeo {
+  display: inline-block;
+  flex: none;
+}
+.lv-keyWindow {
+  width: 14px;
+  height: 10px;
+  background: rgb(244 239 232 / 0.55);
+}
+.lv-keyBlind {
+  width: 14px;
+  height: 10px;
+  background: var(--raised);
+  box-shadow: inset 0 0 0 1px var(--border); /* taste-skill-ignore: the swatch of the strip's dark span, drawn with its edge */
+}
+.lv-keyTick {
+  width: 2px;
+  height: 12px;
+  background: var(--mark-fire);
+}
+.lv-keyGeo {
+  width: 8px;
+  height: 10px;
+  background: var(--mark-fire);
+  opacity: 0.85;
+}
+.lv-stripBody {
+  padding: 2px 16px 0;
+}
+.lv-stripNote {
+  margin: 0;
+  padding: 4px 16px 10px;
+  font-size: 13px;
+  line-height: 19px;
+  color: var(--muted);
+}
+.lv-stripNote strong {
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* ---------------------------------------------------------------------------------------------
+   tablet: one column, the side panels two up under the strip */
+
+@media (max-width: 1100px) {
+  .lv-screen,
+  .lv-screen:has(> .lv-console > *) {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto;
+    /* the investigator sits right under the map it drives (investigator build log) */
+    grid-template-areas:
+      "title"
+      "map"
+      "console"
+      "strip"
+      "side";
+    height: auto;
+    min-height: 0;
+  }
+  .lv-mapArea {
+    height: min(68svh, 640px);
+    min-height: 440px;
+  }
+  .lv-side {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: start;
+    overflow: visible;
+  }
+  /* the list takes the air card's height (contain: size keeps it from setting the row's height)
+     and scrolls inside it, so the two cards end level */
+  .lv-side {
+    align-items: stretch;
+  }
+  .lv-listCard {
+    min-height: 0;
+    contain: size;
+  }
+}
+
+/* ---------------------------------------------------------------------------------------------
+   phone: the rail is a bottom bar, the ranked list a sheet above it, the map first */
+
+@media (max-width: 700px) {
+  .lv-shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .lv-rail {
+    position: fixed;
+    inset: auto 0 0 0;
+    flex-direction: row;
+    justify-content: space-around;
+    gap: 0;
+    height: 56px;
+    padding: 0 8px env(safe-area-inset-bottom);
+    border-right: 0;
+    border-top: 1px solid var(--border);
+  }
+  .lv-railMark {
+    display: none;
+  }
+  .lv-railList,
+  .lv-railBottom {
+    flex-direction: row;
+    flex: 3;
+    justify-content: space-around;
+    gap: 0;
+    margin: 0;
+  }
+  .lv-railBottom {
+    flex: 1;
+  }
+  .lv-railLink {
+    width: auto;
+    height: 56px;
+    padding: 0 10px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+  }
+  .lv-railLink::after {
+    display: none;
+  }
+  .lv-railLink[aria-current="page"]::before {
+    top: 0;
+    left: 25%;
+    right: 25%;
+    width: auto;
+    height: 1px;
+  }
+  .lv-railText {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip-path: none;
+    font-size: 11px;
+    line-height: 14px;
+  }
+  .lv-screen,
+  .lv-screen:has(> .lv-console > *) {
+    gap: 12px;
+    padding: 12px 12px calc(56px + 52px + 16px);
+  }
+  .lv-titleRow {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .lv-scope {
+    display: block;
+    margin: 0;
+  }
+  .lv-finding {
+    font-size: 15px;
+    line-height: 22px;
+  }
+  .lv-findingFigure {
+    font-size: 24px;
+    line-height: 28px;
+  }
+  .lv-nextLook {
+    text-align: left;
+  }
+  .lv-titleSide {
+    align-items: flex-start;
+  }
+  .lv-sourcesPanel {
+    left: 0;
+    right: auto;
+    width: min(360px, calc(100vw - 24px));
+  }
+  .lv-mapArea {
+    height: 66svh;
+    min-height: 380px;
+  }
+  .lv-mapHead {
+    padding: 0 0 0 12px;
+    gap: 12px;
+  }
+  .lv-toggles {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding-right: 12px;
+  }
+  .lv-toggle {
+    height: 44px;
+  }
+  .lv-key {
+    width: auto;
+    right: 10px;
+    bottom: 26px;
+    max-height: 60%;
+  }
+  .lv-caseCard {
+    left: 8px;
+    right: 8px;
+    top: 8px;
+    width: auto;
+  }
+  .lv-chip,
+  .lv-chip img,
+  .lv-chipMissing {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1;
+  }
+  .lv-chips > * {
+    flex: 1;
+  }
+  .lv-replay {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "title controls"
+      "readout readout"
+      "track track"
+      "key key";
+    row-gap: 6px;
+  }
+  .lv-ctrl {
+    height: 36px;
+  }
+  .lv-stripHead {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .lv-stripKey {
+    justify-content: flex-start;
+  }
+  .lv-side {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  /* the ranked list as a sheet over the bottom bar */
+  .lv-listCard {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 56px;
+    z-index: 25;
+    max-height: 52px;
+    contain: none;
+    border-radius: var(--radius-card) var(--radius-card) 0 0;
+    border-bottom: 0;
+    box-shadow: 0 -8px 24px rgb(0 0 0 / 0.35); /* taste-skill-ignore: the sheet floats over the page */
+    transition: max-height var(--t-ui) var(--ease-out);
+  }
+  .lv-listCard[data-open] {
+    max-height: 74svh;
+  }
+  .lv-sheetHandle {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    height: 52px;
+    padding: 0 16px;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    background: none;
+    border: 0;
+    cursor: pointer;
+  }
+  .lv-listInner {
+    display: none;
+    overflow: auto;
+  }
+  .lv-listCard[data-open] .lv-listInner {
+    display: flex;
+  }
+  .lv-listInner .lv-cardHead {
+    display: none;
+  }
+  .lv-row {
+    min-height: 52px;
+  }
+  .lv-mapHeadEnd {
+    top: 8px;
+    right: 48px;
+    bottom: auto;
+  }
+  /* on a phone, labels and sublines read at 13px (axis ticks and pills stay 11-12px) */
+  .lv-figLabel,
+  .lv-figSub,
+  .lv-rowSub,
+  .lv-keyStatus,
+  .lv-keyList,
+  .lv-replayReadout,
+  .lv-replayKey,
+  .lv-stripKey,
+  .lv-citySub,
+  .lv-delhiNote,
+  .lv-sourcesButton,
+  .lv-airTable thead th {
+    font-size: 13px;
+    line-height: 18px;
+  }
+}
+
+/* MapLibre's own controls on this map: flat, on the card surface (maplibre-gl.css loads after the
+   globals, so these need the extra class to win) */
+.lv-mapBody .maplibregl-ctrl.maplibregl-ctrl-attrib,
+.lv-mapBody .maplibregl-ctrl-attrib.maplibregl-compact-show {
+  background: var(--surface);
+  color: var(--faint);
+  font-size: 11px;
+  line-height: 15px;
+}
+.lv-mapBody .maplibregl-ctrl-attrib a {
+  color: var(--faint);
+}
+.lv-airTable abbr {
+  text-decoration: none;
+  cursor: help;
+}
+
+/* pause motion: over the map's lower right, left of the credits button */
+.lv-mapHeadEnd {
+  position: absolute;
+  right: 40px;
+  bottom: 8px;
+}
+.lv-mapHeadEnd .lv-ctrl {
+  background: var(--surface);
+}
+.lv-mapHeadEnd .lv-motionNote {
+  padding: 4px 8px;
+  background: var(--surface);
+  border-radius: var(--radius-control);
+}
+.lv-motionNote {
+  font-size: 12px;
+  color: var(--faint);
+  white-space: nowrap;
+}
+.lv-toggle,
+.lv-row,
+.lv-ctrl,
+.lv-sheetHandle,
+.lv-sourcesButton {
+  touch-action: manipulation;
+}
+.lv-caseCard,
+.lv-sourcesPanel,
+.lv-rows,
+.lv-listInner,
+.lv-keyBody {
+  overscroll-behavior: contain;
+}
+
+/* MapLibre's stylesheet takes the outline off its canvas and controls; give the keyboard its focus
+   ring back on this map (the canvas pans with the arrow keys once focused) */
+.lv-mapBody .maplibregl-canvas:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.lv-mapBody .maplibregl-ctrl button:focus-visible,
+.lv-mapBody .maplibregl-ctrl summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  box-shadow: none; /* taste-skill-ignore: removes MapLibre's focus glow */
+}
+
+/* a short wide screen (1440 x 900): the screen grows past the fold so the map keeps its height, and
+   the console takes its column from the top and stays in view while the page scrolls, so its
+   question box is always on screen */
+@media (min-width: 1101px) and (max-height: 999px) {
+  .lv-screen:has(> .lv-console > *) {
+    grid-template-areas:
+      "title title console"
+      "map side console"
+      "strip side console";
+  }
+  .lv-console {
+    position: sticky;
+    top: 16px;
+    align-self: start;
+    height: calc(100svh - 32px);
+  }
+}
+
+/* the strip's key goes under its title, left-aligned, wherever it cannot sit beside it on one line
+   (a right-aligned key that wraps leaves a ragged orphan) */
+.lv-stripArea {
+  container-type: inline-size;
+}
+@container (max-width: 940px) {
+  .lv-stripHead {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .lv-stripKey {
+    justify-content: flex-start;
+  }
+}

@@ -1,0 +1,738 @@
+/* The investigator console (global, every class prefixed iv-, as live.css does with lv-).
+   Data-terminal style on the app tokens: a card darker than the ground, 1px lines, the gold accent
+   only as the 1px selection/hover line, colour only on status (live, checked, failed). Code is the
+   one place for monospace: the exact tool call. */
+
+.iv {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* wide screens: a column of its own, full height, the transcript scrolling inside it */
+@media (min-width: 1101px) {
+  .iv {
+    width: 360px;
+    height: 100%;
+  }
+  .iv-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--control) transparent;
+  }
+}
+@media (min-width: 1600px) {
+  .iv {
+    width: 400px;
+  }
+}
+@media (min-width: 1900px) {
+  .iv {
+    width: 440px;
+  }
+}
+
+/* ------------------------------------------------------------------------------------------
+   collapsed: a slim column with one button */
+
+.iv[data-collapsed] {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
+@media (min-width: 1101px) {
+  .iv[data-collapsed] {
+    width: 44px;
+  }
+}
+.iv-open {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 100%;
+  padding: 14px 0;
+  font: inherit;
+  font-size: 13px;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-card);
+  cursor: pointer;
+  transition: color var(--t-hover) ease;
+}
+.iv-open:hover,
+.iv-open:focus-visible {
+  color: var(--text);
+}
+.iv-openText {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font-weight: 500;
+}
+@media (max-width: 1100px) {
+  .iv-open {
+    flex-direction: row;
+    justify-content: center;
+    height: 48px;
+    padding: 0 16px;
+  }
+  .iv-open svg {
+    transform: rotate(-90deg);
+  }
+  .iv-openText {
+    writing-mode: horizontal-tb;
+    transform: none;
+  }
+}
+
+/* ------------------------------------------------------------------------------------------
+   head */
+
+.iv-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 8px 10px 16px;
+  border-bottom: 1px solid var(--rule);
+}
+.iv-pill {
+  margin-left: auto;
+}
+.iv-collapse {
+  margin-left: 0;
+}
+@media (max-width: 1100px) {
+  .iv-collapse {
+    display: none;
+  }
+}
+
+.iv-body {
+  padding: 14px 16px 18px;
+}
+
+.iv-intro {
+  margin: 0 0 18px;
+  font-size: 14px;
+  line-height: 21px;
+  color: var(--muted);
+  max-width: 68ch;
+}
+
+.iv-group + .iv-group {
+  margin-top: 22px;
+}
+
+.iv-subhead {
+  margin: 0 0 6px;
+  font-size: 13px !important;
+  line-height: 18px !important;
+  font-weight: 600 !important;
+  color: var(--text) !important;
+}
+.iv-headNote {
+  font-weight: 400;
+  color: var(--faint);
+}
+.iv-subNote {
+  margin: -4px 0 6px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--faint);
+}
+
+/* the question lists: rows on 1px rules, the whole row is the button */
+.iv-examples {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.iv-examples > li {
+  border-top: 1px solid var(--rule);
+}
+.iv-examples > li:last-child {
+  border-bottom: 1px solid var(--rule);
+}
+.iv-ex {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: calc(100% + 16px);
+  margin: 0 -8px;
+  padding: 10px 8px 11px;
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-control);
+  cursor: pointer;
+  transition: background-color var(--t-hover) ease;
+}
+.iv-ex:hover {
+  background: var(--raised);
+}
+/* the selection mark: a 1px gold line as wide as the words, on the row's foot */
+.iv-ex:hover .iv-exQ,
+.iv-ex:focus-visible .iv-exQ {
+  text-decoration: underline;
+  text-decoration-color: var(--accent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+}
+.iv-ex:active {
+  transform: translateY(1px);
+}
+.iv-exQ {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+}
+.iv-exAnswer {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 19px;
+  color: var(--muted);
+}
+.iv-exMeta {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+.iv-examples[data-size="small"] .iv-exQ {
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 400;
+}
+.iv-exSkeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 11px 0 12px;
+}
+
+/* ------------------------------------------------------------------------------------------
+   one question */
+
+.iv-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.iv-back:hover {
+  color: var(--text);
+}
+.iv-question {
+  margin: 8px 0 4px;
+  text-wrap: balance;
+  font-size: 17px !important;
+  line-height: 24px !important;
+  font-weight: 600 !important;
+  color: var(--text) !important;
+}
+/* focus lands here when a question starts; it is not a control, so it shows no ring */
+.iv-question:focus {
+  outline: none;
+}
+.iv-mode {
+  margin: 0;
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--muted);
+}
+.iv-nums {
+  font-variant-numeric: tabular-nums;
+}
+.iv-liveDot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 7px;
+  vertical-align: 1px;
+  border-radius: 50%;
+  background: var(--faint);
+}
+.iv-mode[data-running] .iv-liveDot {
+  background: var(--positive);
+}
+.iv-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.iv-actions:empty {
+  display: none;
+}
+
+/* the steps */
+.iv-steps {
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.iv-step {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: 10px;
+  padding: 7px 0;
+}
+.iv-mark {
+  display: grid;
+  place-items: center;
+  height: 19px;
+  color: var(--muted);
+}
+.iv-mark[data-state="ok"] {
+  color: var(--text);
+}
+.iv-mark[data-state="fail"] {
+  color: var(--negative);
+}
+.iv-mark[data-state="map"] {
+  color: var(--accent);
+}
+.iv-mark[data-state="think"] {
+  color: var(--faint);
+}
+.iv-spin {
+  animation: iv-spin 0.9s linear infinite;
+}
+@keyframes iv-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.iv-stepMain {
+  min-width: 0;
+}
+.iv-stepTop {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.iv-stepText {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 19px;
+  color: var(--text);
+}
+.iv-time {
+  flex: none;
+  font-size: 12px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+.iv-code {
+  display: inline-block;
+  max-width: 100%;
+  margin-top: 4px;
+  padding: 2px 6px;
+  font-family: ui-monospace, "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 11.5px;
+  line-height: 16px;
+  color: var(--muted);
+  background: var(--raised);
+  border-radius: 3px;
+  overflow-wrap: anywhere;
+}
+.iv-result {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  line-height: 18px;
+  color: var(--muted);
+}
+.iv-result[data-ok="false"] {
+  color: var(--negative);
+}
+.iv-faint {
+  color: var(--faint);
+}
+.iv-again {
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.iv-again:hover {
+  color: var(--text);
+}
+.iv-thought {
+  min-width: 0;
+  font-size: 12.5px;
+  line-height: 18px;
+  color: var(--faint);
+}
+.iv-thought summary {
+  cursor: pointer;
+  list-style: none;
+  padding-top: 1px;
+}
+.iv-thought summary::-webkit-details-marker {
+  display: none;
+}
+.iv-thought summary:hover {
+  color: var(--muted);
+}
+.iv-thoughtLabel {
+  color: var(--muted);
+}
+.iv-thought p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  white-space: pre-line;
+}
+
+/* the answer */
+.iv-answer {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--rule);
+}
+.iv-answer[data-empty] {
+  display: none;
+}
+.iv-answerText {
+  max-width: 70ch;
+}
+.iv-lead {
+  margin: 0 0 10px;
+  font-size: 15.5px;
+  line-height: 23px;
+  font-weight: 500;
+  color: var(--text);
+}
+.iv-para {
+  margin: 0 0 10px;
+  font-size: 14px;
+  line-height: 21px;
+  color: var(--text);
+}
+.iv-list {
+  margin: 0 0 10px;
+  padding-left: 18px;
+  font-size: 14px;
+  line-height: 21px;
+  color: var(--text);
+}
+.iv-list li + li {
+  margin-top: 6px;
+}
+.iv-list li::marker {
+  color: var(--faint);
+}
+.iv-caveat {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 19px;
+  color: var(--muted);
+}
+.iv-cites {
+  white-space: nowrap;
+}
+.iv-cite {
+  display: inline-block;
+  min-width: 17px;
+  margin-left: 3px;
+  padding: 0 4px;
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 500;
+  text-align: center;
+  vertical-align: 1px;
+  color: var(--muted);
+  background: var(--raised);
+  border-radius: 3px;
+  text-decoration: none;
+  font-variant-numeric: tabular-nums;
+  transition: color var(--t-hover) ease, box-shadow var(--t-hover) ease;
+}
+a.iv-cite:hover,
+a.iv-cite:focus-visible {
+  color: var(--text);
+  /* the 1px gold selection line under the marker, not a shadow: taste-skill-ignore */
+  box-shadow: inset 0 -1px 0 var(--accent); /* taste-skill-ignore */
+}
+.iv-cite[data-pending] {
+  color: var(--faint);
+}
+
+.iv-check {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: var(--raised);
+  border-radius: var(--radius-card);
+}
+.iv-checkMark {
+  margin-top: 2px;
+  color: var(--positive);
+}
+.iv-check[data-tone="warning"] .iv-checkMark {
+  color: var(--warning);
+}
+.iv-checkText {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--text);
+}
+.iv-checkSub {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  line-height: 18px;
+  color: var(--muted);
+}
+.iv-more {
+  margin-top: 4px;
+  font-size: 12.5px;
+  line-height: 18px;
+  color: var(--muted);
+}
+.iv-more summary {
+  cursor: pointer;
+}
+.iv-more summary:hover {
+  color: var(--text);
+}
+.iv-more ul {
+  margin: 6px 0 0;
+  padding-left: 16px;
+  color: var(--faint);
+}
+
+.iv-note {
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  line-height: 18px;
+  color: var(--muted);
+}
+
+.iv-fields,
+.iv-sources {
+  margin-top: 18px;
+}
+.iv-fields ul,
+.iv-sources ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.iv-field {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: calc(100% + 16px);
+  margin: 0 -8px;
+  padding: 6px 8px;
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-control);
+  cursor: pointer;
+  transition: background-color var(--t-hover) ease;
+}
+.iv-field:hover {
+  background: var(--raised);
+}
+.iv-field:hover .iv-fieldName,
+.iv-field:focus-visible .iv-fieldName {
+  text-decoration: underline;
+  text-decoration-color: var(--accent);
+  text-underline-offset: 4px;
+}
+.iv-fieldName {
+  font-size: 13.5px;
+  line-height: 19px;
+}
+.iv-fieldMeta {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.iv-sources li {
+  scroll-margin-top: 8px;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 6px;
+  padding: 4px 4px;
+  margin: 0 -4px;
+  border-radius: var(--radius-control);
+  font-size: 12.5px;
+  line-height: 18px;
+}
+.iv-sources li:target,
+.iv-sources li:focus {
+  outline: none;
+  background: var(--active);
+}
+.iv-srcMarker {
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.iv-srcBody {
+  min-width: 0;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.iv-srcLink {
+  color: var(--text);
+  text-decoration: underline;
+  text-decoration-color: var(--control);
+  text-underline-offset: 3px;
+  transition: text-decoration-color var(--t-hover) ease;
+}
+.iv-srcLink:hover {
+  text-decoration-color: var(--accent);
+}
+.iv-srcTime {
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.iv-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: var(--pill-negative-bg);
+  border-radius: var(--radius-card);
+}
+.iv-error p {
+  margin: 0;
+  flex: 1 1 220px;
+  font-size: 13px;
+  line-height: 19px;
+  color: var(--text);
+}
+
+/* ------------------------------------------------------------------------------------------
+   the question box */
+
+.iv-composer {
+  padding: 12px 16px 12px;
+  border-top: 1px solid var(--rule);
+  background: var(--surface);
+  border-radius: 0 0 var(--radius-card) var(--radius-card);
+}
+.iv-askRow {
+  display: flex;
+  gap: 8px;
+}
+.iv-input {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--ground);
+  border: 1px solid var(--control);
+  border-radius: var(--radius-control);
+  transition: border-color var(--t-hover) ease;
+}
+.iv-input::placeholder {
+  color: var(--faint);
+}
+.iv-input:hover {
+  border-color: var(--muted);
+}
+.iv-input:focus-visible {
+  /* the gold border plus a 1px ring outside it: 2px of contrast, not a 1px colour change */
+  outline: 1px solid var(--accent);
+  outline-offset: 0;
+  border-color: var(--accent);
+}
+.iv-button {
+  flex: none;
+  height: 40px;
+  padding: 0 16px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--primary-ink);
+  background: var(--primary);
+  border: 0;
+  border-radius: var(--radius-control);
+  cursor: pointer;
+  transition: opacity var(--t-hover) ease;
+}
+.iv-button:hover {
+  opacity: 0.88;
+}
+.iv-button:active {
+  transform: translateY(1px);
+}
+.iv-button[data-variant="stop"] {
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--control);
+}
+.iv-budget {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--faint);
+}
+.iv-budget[data-tone="warning"] {
+  color: var(--warning);
+}
+
+/* phone: thumb-sized targets, 16px text in the field (no zoom on focus) */
+@media (max-width: 700px) {
+  .iv-input {
+    height: 44px;
+    font-size: 16px;
+    /* the ranked-list sheet and the nav bar (108px) stay over the page's foot */
+    scroll-margin-bottom: 124px;
+  }
+  .iv-button {
+    height: 44px;
+  }
+  .iv-ex {
+    padding: 12px 8px 13px;
+  }
+  .iv-step {
+    padding: 8px 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .iv-spin {
+    animation: none;
+  }
+  .iv-ex:active,
+  .iv-button:active {
+    transform: none;
+  }
+}
+
+.iv button,
+.iv a {
+  touch-action: manipulation;
+}

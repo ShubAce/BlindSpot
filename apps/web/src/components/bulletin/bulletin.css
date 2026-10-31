@@ -1,0 +1,356 @@
+/* ==============================================================================================
+   The bulletin (report screen). Shares the app frame and cards with app-screen.css; this file adds
+   the reading column, the language switch and the print sheet.
+
+   Grid arithmetic (1440 wide): canvas max 1240 - 2 x 32 = 1176; reading column 1176 - 48 - 360 = 768
+   (about 68 characters of 17px Work Sans), rail 360.
+   ============================================================================================== */
+
+.bulletin-canvas {
+  max-width: 1240px;
+}
+
+/* the language switch: underline tabs on one 1px rule, the selected one marked by the gold line */
+.lang-tabs {
+  display: flex;
+  gap: 28px;
+  margin-bottom: 32px;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.lang-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-family: var(--face-text), var(--font-devanagari, sans-serif), var(--font-gurmukhi, sans-serif);
+  font-size: 16px;
+  line-height: 44px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--t-hover) var(--ease-out);
+}
+.lang-tab:hover,
+.lang-tab[aria-selected="true"] {
+  color: var(--text);
+}
+.lang-tab.selected-line::after {
+  bottom: 0;
+}
+.lang-tab__flag {
+  color: var(--warning);
+  font-family: var(--face-text);
+  font-size: 12px;
+}
+
+.bulletin-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 48px;
+  align-items: start;
+}
+
+.bulletin {
+  max-width: 768px;
+  font-size: 17px;
+  line-height: 28px;
+  color: var(--text);
+}
+.bulletin.script-deva {
+  font-family: var(--face-text), var(--font-devanagari), sans-serif;
+  line-height: 32px;
+}
+.bulletin.script-guru {
+  font-family: var(--face-text), var(--font-gurmukhi), sans-serif;
+  line-height: 32px;
+}
+.bulletin__title {
+  margin: 0;
+  font-size: 30px;
+  line-height: 38px;
+  font-weight: 600;
+  text-wrap: balance;
+}
+.script-deva .bulletin__title,
+.script-guru .bulletin__title {
+  line-height: 46px;
+}
+.bulletin__summary {
+  margin: 16px 0 0;
+  font-size: 19px;
+  line-height: 30px;
+}
+.bulletin__section {
+  margin-top: 36px;
+}
+.bulletin__section h2 {
+  margin: 0 0 8px;
+  font-family: inherit !important;
+  color: var(--text) !important;
+  font-size: 20px !important;
+  line-height: 30px !important;
+  font-weight: 600 !important;
+}
+.bulletin__section p {
+  margin: 0;
+}
+.bulletin__held {
+  margin: 0;
+  max-width: 60ch;
+  padding: 16px 18px;
+  border-left: 2px solid var(--warning);
+  background: var(--raised);
+  font-size: 16px;
+  line-height: 26px;
+}
+
+/* citation markers: the run's own source numbers, linked to the list */
+.cite {
+  font-size: 0.68em;
+  line-height: 0;
+  vertical-align: super;
+  font-family: var(--face-text);
+  font-variant-numeric: tabular-nums;
+}
+.cite a {
+  padding: 0 2px;
+  color: var(--accent);
+  text-decoration: none;
+}
+.cite a:hover {
+  text-decoration: underline;
+}
+.cite-num {
+  display: inline-block;
+  min-width: 22px;
+  color: var(--accent);
+  font-weight: 600;
+}
+.prov__item:target {
+  background: var(--raised);
+  outline: 1px solid var(--accent);
+  outline-offset: 4px;
+}
+
+.bulletin-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 0;
+}
+
+.verdict {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  font-weight: 600;
+}
+.verdict__mark {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.verdict.is-pass .verdict__mark {
+  background: var(--positive);
+}
+.verdict.is-fail .verdict__mark {
+  background: var(--negative);
+}
+.removed {
+  margin-top: 12px;
+}
+.removed summary {
+  min-height: 32px;
+  color: var(--text);
+  cursor: pointer;
+}
+.removed ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+  line-height: 22px;
+}
+.removed li + li {
+  margin-top: 6px;
+}
+.reading {
+  margin: 0;
+}
+/* the article's close: how to read its figures, one tone step up from the ground */
+.bulletin__foot {
+  margin-top: 40px;
+  padding: 18px 20px;
+  background: var(--raised);
+  font-family: var(--face-text);
+  font-size: 15px;
+  line-height: 24px;
+}
+.bulletin__foot p {
+  color: var(--text);
+  font-size: 15px;
+  line-height: 24px;
+}
+.bulletin__foot h2 {
+  margin: 0 0 6px;
+  font-size: 15px;
+  line-height: 24px;
+  font-weight: 600;
+}
+
+.button-secondary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--control);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color var(--t-hover) var(--ease-out), background-color var(--t-hover) var(--ease-out);
+}
+.button-secondary:hover {
+  border-color: var(--muted);
+  background: var(--raised);
+}
+
+@media (max-width: 1000px) {
+  .bulletin-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 32px;
+  }
+}
+
+@media (max-width: 640px) {
+  .bulletin {
+    font-size: 16px;
+    line-height: 26px;
+  }
+  .bulletin__title {
+    font-size: 20px;
+    line-height: 28px;
+  }
+  .script-deva .bulletin__title,
+  .script-guru .bulletin__title {
+    line-height: 34px;
+  }
+  .bulletin__summary {
+    font-size: 17px;
+    line-height: 27px;
+  }
+  .lang-tabs {
+    gap: 22px;
+    margin-bottom: 24px;
+  }
+  /* on a phone a flag sits under its language, so three flagged tabs still fit without scrolling */
+  .lang-tab.is-held {
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 0;
+    padding: 6px 0;
+    line-height: 24px;
+  }
+  .lang-tab.is-held .lang-tab__flag {
+    line-height: 16px;
+  }
+}
+
+/* ---- print: the bulletin on paper, black on white, its sources with their full addresses ---- */
+@media print {
+  @page {
+    margin: 16mm 14mm;
+  }
+  html,
+  body,
+  .app-screen {
+    background: #fff !important;
+    color: #000 !important;
+  }
+  .app-bar,
+  .lang-tabs,
+  [data-print="hide"],
+  .removed summary {
+    display: none !important;
+  }
+  .app-canvas {
+    padding: 0 !important;
+    max-width: none !important;
+  }
+  .title-row h1,
+  .finding,
+  .bulletin,
+  .bulletin__section h2,
+  .card__title,
+  .prov__label,
+  .figs__row dt,
+  .figs__row dd,
+  .card__note,
+  .prov__meta {
+    color: #000 !important;
+  }
+  .bulletin-grid {
+    display: block;
+  }
+  .bulletin {
+    max-width: none;
+    font-size: 11.5pt;
+    line-height: 1.55;
+  }
+  .bulletin__title {
+    font-size: 18pt;
+    line-height: 1.25;
+  }
+  .bulletin__summary {
+    font-size: 12.5pt;
+  }
+  .bulletin__section {
+    break-inside: avoid;
+    margin-top: 14pt;
+  }
+  .cite a,
+  .cite-num {
+    color: #000 !important;
+  }
+  .bulletin-rail {
+    display: block;
+    margin-top: 18pt;
+  }
+  .bulletin-rail .card {
+    margin-top: 12pt;
+    padding: 0 !important;
+    border: 0 !important;
+    break-inside: avoid;
+  }
+  .removed[open] ul,
+  .removed ul {
+    display: block;
+  }
+  .prov__url {
+    color: #000 !important;
+  }
+  .prov__url::after {
+    content: " " attr(title);
+    font-size: 8pt;
+    word-break: break-all;
+  }
+  .figs__row {
+    border-color: #ccc !important;
+  }
+}
+
+.figs__list {
+  display: block;
+  color: var(--faint);
+  font-size: 12px;
+}

@@ -28,6 +28,10 @@ export type PassStripProps = {
   windows: readonly StripWindow[];
   detections?: readonly StripDetection[];
   geostationary?: readonly StripHourly[] | null;
+  /** Caption of the geostationary row (default "Geostationary GK-2A, fire pixels per hour"). */
+  geoLabel?: string;
+  /** How a geostationary value is read in its tooltip (default "fire pixels"). */
+  geoUnit?: string;
   /** Now: marked with a line. Null (server render, before mount) leaves it out. */
   now?: Date | null;
   /** Any instant in the IST day to show (default: the day of `now`). */
@@ -109,7 +113,7 @@ function cluster(windows: readonly StripWindow[], from: number, to: number): Clu
   return out;
 }
 
-export function PassStrip({ windows, detections = [], geostationary = null, now = null, day, startHour = 0, className, style }: PassStripProps) {
+export function PassStrip({ windows, detections = [], geostationary = null, geoLabel, geoUnit = 'fire pixels', now = null, day, startHour = 0, className, style }: PassStripProps) {
   const box = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
   useEffect(() => {
@@ -173,7 +177,7 @@ export function PassStrip({ windows, detections = [], geostationary = null, now 
           </text>
           {hasGeo ? (
             <text x={0} y={rowTop + STRIP_H + 6 + 12} fontSize={12} style={fillOf('--axis-ink')}>
-              Geostationary GK-2A, fire pixels per hour
+              {geoLabel ?? 'Geostationary GK-2A, fire pixels per hour'}
             </text>
           ) : null}
 
@@ -187,11 +191,28 @@ export function PassStrip({ windows, detections = [], geostationary = null, now 
           {model.gaps.map((g) => {
             const gw = x(g.end) - x(g.start);
             const span = duration(g.end - g.start);
-            return gw > charW(span, 11) + 16 && g.end - g.start >= 2 * 3_600_000 ? (
-              <text key={`gap${g.start}`} x={x(g.start) + gw / 2} y={rowTop + STRIP_H / 2 + 4} fontSize={11} textAnchor="middle" style={fillOf('--axis-ink')}>
+            if (!(gw > charW(span, 11) + 16 && g.end - g.start >= 2 * 3_600_000)) return null;
+            // a gap that holds the now line puts its length in the wider part beside the line (the
+            // line and its "Now" label would cross it), or leaves it out when neither part fits
+            const nowT = now?.getTime();
+            let cx = x(g.start) + gw / 2;
+            if (nowT != null && nowT > g.start && nowT < g.end) {
+              const nx = x(nowT);
+              const room = charW(span, 11) + 16;
+              const halfW = room / 2;
+              if (Math.abs(cx - nx) < halfW + charW(`Now ${timeIST(now)}`, 11) + 8) {
+                const leftW = nx - x(g.start);
+                const rightW = x(g.end) - nx - charW(`Now ${timeIST(now)}`, 11) - 8;
+                if (leftW >= rightW && leftW >= room) cx = x(g.start) + leftW / 2;
+                else if (rightW >= room) cx = x(g.end) - rightW / 2;
+                else return null;
+              }
+            }
+            return (
+              <text key={`gap${g.start}`} x={cx} y={rowTop + STRIP_H / 2 + 4} fontSize={11} textAnchor="middle" style={fillOf('--axis-ink')}>
                 {span}
               </text>
-            ) : null;
+            );
           })}
           {model.clusters.map((c) => {
             const x0 = x(Math.max(model.from, c.start));
@@ -231,10 +252,18 @@ export function PassStrip({ windows, detections = [], geostationary = null, now 
                 return (
                   <g key={`geo${g.hour_ist}`}>
                     <rect x={i * bw + 1} y={geoTop + GEO_H - h} width={Math.max(1, bw - 2)} height={h} opacity={0.85} style={fillOf('--chart-2')}>
-                      <title>{`${String(g.hour_ist).padStart(2, '0')}:00 IST: ${number(g.value)} fire pixels`}</title>
+                      <title>{`${String(g.hour_ist).padStart(2, '0')}:00 IST: ${number(g.value, { decimals: g.value < 10 && g.value % 1 ? 1 : 0 })} ${geoUnit}`}</title>
                     </rect>
-                    {peak ? (
-                      <text x={i * bw + bw / 2} y={geoTop + GEO_H - h - 3} fontSize={11} textAnchor="middle" style={fillOf('--axis-ink')}>
+                    {/* the peak's value: inside a tall, wide bar; above a short one; left out when it fits
+                        neither (it would run into the row caption), the tooltip still has it */}
+                    {peak && ((h >= 14 && bw >= 18) || h <= GEO_H - 14) ? (
+                      <text
+                        x={i * bw + bw / 2}
+                        y={h >= 14 && bw >= 18 ? geoTop + GEO_H - h + 11 : geoTop + GEO_H - h - 3}
+                        fontSize={11}
+                        textAnchor="middle"
+                        style={h >= 14 && bw >= 18 ? { fill: 'var(--surface, var(--bg))', fontWeight: 600 } : fillOf('--axis-ink')}
+                      >
                         {number(g.value)}
                       </text>
                     ) : null}

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Any
@@ -71,6 +72,15 @@ class Settings(BaseSettings):
     @field_validator("database_url")
     @classmethod
     def _use_psycopg3(cls, value: str) -> str:
+        # Accept the URL as people paste it into a secret store: Neon's console offers it wrapped in
+        # `psql '...'`, and .env files often quote it.
+        value = value.strip()
+        if value.startswith("psql "):
+            value = value[len("psql ") :].strip()
+        value = value.strip("'\"").strip()
+        # Jobs hold session-level advisory locks, which a transaction pooler does not keep, so always
+        # use Neon's direct endpoint (the same host without '-pooler').
+        value = re.sub(r"-pooler(\.)", r"\1", value, count=1)
         # Hosted Postgres providers hand out postgres:// URLs; SQLAlchemy must be told the driver.
         for prefix in ("postgres://", "postgresql://"):
             if value.startswith(prefix):

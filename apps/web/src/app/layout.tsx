@@ -21,11 +21,21 @@ const workSans = Work_Sans({
   variable: '--font-work-sans',
 });
 
+// Shared links need an absolute base for the share card. On Vercel Next falls back to the production
+// (or preview) URL by itself; elsewhere set NEXT_PUBLIC_SITE_URL before `next build`.
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, '');
+
+const DESCRIPTION =
+  'BlindSpot maps the Punjab and Haryana crop fires that fire satellites miss, from the burn scars Sentinel-2 photographs, and traces their smoke to Delhi.';
+
 export const metadata: Metadata = {
+  ...(SITE_URL ? { metadataBase: new URL(SITE_URL) } : {}),
   title: { default: 'BlindSpot', template: '%s · BlindSpot' },
-  description:
-    'Satellites look at 1:30. Fires start at 5. BlindSpot maps the Punjab crop fires that fire satellites miss, from the burn scars Sentinel-2 photographs, and traces their smoke to Delhi.',
+  description: DESCRIPTION,
   applicationName: 'BlindSpot',
+  openGraph: { type: 'website', siteName: 'BlindSpot', locale: 'en_IN' },
+  twitter: { card: 'summary_large_image' },
+  robots: { index: true, follow: true },
 };
 
 export const viewport: Viewport = {

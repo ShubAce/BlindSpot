@@ -59,7 +59,10 @@ const hasAnimated = (inputs: readonly MapLayerInput[]): boolean =>
  * list every frame without touching React.
  */
 export function DeckOverlay({ layers, getTooltip, onClick, onHover }: DeckOverlayProps) {
-  const overlay = useControl<MapboxOverlay>(() => new MapboxOverlay({ interleaved: true }));
+  // `_reuseDevices`: React's development double-mount (and a map reused by `reuseMaps`) can attach a
+  // second overlay to the map's WebGL context while the first one's device is still attached; reuse
+  // that device instead of throwing "WebGL context already attached".
+  const overlay = useControl<MapboxOverlay>(() => new MapboxOverlay({ interleaved: true, deviceProps: { _reuseDevices: true } }));
   const { current: map } = useMap();
 
   useEffect(() => {

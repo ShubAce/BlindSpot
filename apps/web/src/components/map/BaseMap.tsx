@@ -14,6 +14,7 @@ import { useBoundaries } from '@/lib/live';
 
 import { fallbackStyle, indiaCompliantStyle, OFM_DARK_STYLE_URL } from './basemap-style';
 import { mapClock, usePrefersReducedMotion } from './clock';
+import { ensureMapWorker, patchMapForDeck } from './compat';
 import { DeckOverlay, type TooltipContent } from './DeckOverlay';
 import { BOUNDARY_STYLE } from './palette';
 import { BASE_ATTRIBUTION, describePick, LAYERS, registryIdOf } from './registry';
@@ -48,6 +49,9 @@ export type BaseMapProps = {
   /** react-map-gl children: Marker, Popup, extra Source/Layer. */
   children?: ReactNode;
 };
+
+// MapLibre 6 needs its worker URL set before the first map exists (./compat.ts).
+ensureMapWorker();
 
 async function fetchStyle(url: string): Promise<StyleSpecification> {
   const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
@@ -171,7 +175,8 @@ export function BaseMap({
   }, [reduced]);
 
   const [loaded, setLoaded] = useState(false);
-  const handleLoad = useCallback(() => {
+  const handleLoad = useCallback((e: { target: Parameters<typeof patchMapForDeck>[0] }) => {
+    patchMapForDeck(e.target);
     setLoaded(true);
     onLoad?.();
   }, [onLoad]);
