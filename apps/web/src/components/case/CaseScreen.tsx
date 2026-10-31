@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { Suspense, type ReactNode } from 'react';
 
+import { loadFailed } from '@/components/pwa/LoadFailed';
 import { Freshness, Skeleton } from '@/components/ui/states';
 import { PATHS } from '@/lib/api';
 import { serverGet } from '@/lib/api-server';
@@ -86,7 +87,7 @@ function fireVerdict(f: CaseFire): string {
 /** The audit precision of candidate unseen burns, read live from /api/stats/headline. */
 async function AuditLine() {
   const r = await serverGet<HeadlineAudit>(PATHS.headline);
-  if (!r.ok) return <p className="card__note">The audit figures could not be loaded: {r.error.message}</p>;
+  if (!r.ok) return <p className="card__note" data-load-failed="">The audit figures could not be loaded: {r.error.message}</p>;
   const phrase = auditPhrase(r.data.unseen_burns, 'was');
   if (!phrase) return <p className="card__note">The API states no audit for candidate unseen burns yet{r.data.unseen_burns?.reason ? `: ${r.data.unseen_burns.reason}` : '.'}</p>;
   return (
@@ -100,7 +101,7 @@ async function AuditLine() {
 async function AuditFinding() {
   const r = await serverGet<HeadlineAudit>(PATHS.headline);
   const phrase = r.ok ? auditPhrase(r.data.unseen_burns) : null;
-  if (!phrase) return <p className="finding-audit">{r.ok ? 'The API states no audit of candidate unseen burns yet.' : 'The audit of candidate unseen burns could not be loaded.'}</p>;
+  if (!phrase) return <p className="finding-audit" {...loadFailed(!r.ok)}>{r.ok ? 'The API states no audit of candidate unseen burns yet.' : 'The audit of candidate unseen burns could not be loaded.'}</p>;
   return <p className="finding-audit">{`Candidate unseen burns as a whole: ${phrase}, checked by eye.`}</p>;
 }
 

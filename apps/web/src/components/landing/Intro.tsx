@@ -54,7 +54,7 @@ export function Intro() {
 
 async function IntroWords() {
   const r = await getHeadline();
-  if (!r.ok) return <p className={s.honest}>{`Today’s counts did not load. ${r.error.message}`}</p>;
+  if (!r.ok) return <p className={s.honest} data-load-failed="">{`Today’s counts did not load. ${r.error.message}`}</p>;
   const geo = r.data.gk2a_evening?.available ? r.data.gk2a_evening : null;
   const fires = r.data.fires_24h?.available ? r.data.fires_24h : null;
   const region = fires?.region ? fires.region.replace(/\s*\(.*\)\s*$/, '').replace(/, ([^,]+)$/, ' and $1') : null;
@@ -80,7 +80,7 @@ async function IntroWords() {
 
 async function Timetable() {
   const r = await getPasses();
-  if (!r.ok) return <p className={s.honest}>{`Today’s pass list did not load. ${r.error.message}`}</p>;
+  if (!r.ok) return <p className={s.honest} data-load-failed="">{`Today’s pass list did not load. ${r.error.message}`}</p>;
   const at = r.data.generated_at;
   const day = dateIST(at);
   const today = (r.data.passes ?? []).filter((p) => dateIST(p.start_utc) === day || dateIST(p.end_utc) === day);

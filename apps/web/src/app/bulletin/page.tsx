@@ -7,6 +7,7 @@ import type { HeadlineAudit } from '@/components/case/types';
 import { BulletinReader } from '@/components/bulletin/BulletinReader';
 import { BulletinSkeleton } from '@/components/bulletin/BulletinSkeleton';
 import type { Bulletin, BulletinLangCode, BulletinSet } from '@/components/bulletin/types';
+import { LoadFailed, loadFailed } from '@/components/pwa/LoadFailed';
 import { PATHS } from '@/lib/api';
 import { serverGet } from '@/lib/api-server';
 
@@ -30,7 +31,7 @@ async function AuditNote() {
   const r = await serverGet<HeadlineAudit>(PATHS.headline);
   const phrase = r.ok ? auditPhrase(r.data.unseen_burns, 'was') : null;
   return (
-    <p className="card__note reading">
+    <p className="card__note reading" {...loadFailed(!r.ok)}>
       Candidate unseen burns are Sentinel-2 burn scars with no FIRMS fire alert near them.
       {phrase ? ` When people checked a random sample by eye, the ${phrase}.` : r.ok ? ' The API states no audit for them yet.' : ` Their audit figures could not be loaded: ${r.error.message}`} Times are India Standard Time.
     </p>
@@ -43,16 +44,21 @@ async function BulletinBody({ searchParams }: { searchParams: Promise<{ lang?: s
   const initial: BulletinLangCode = CODES.includes(asked as BulletinLangCode) ? (asked as BulletinLangCode) : 'en';
   const results = await Promise.all(CODES.map((lang) => serverGet<Bulletin>(PATHS.bulletinLatest, { lang })));
   const set = Object.fromEntries(CODES.map((c, i) => [c, results[i]])) as BulletinSet;
+  // a language the API failed to serve (a 404 is an answer: no bulletin today); the reader says so
+  const failed = results.some((r) => !r.ok && r.error.status !== 404);
   return (
-    <BulletinReader
-      set={set}
-      initial={initial}
-      auditNote={
-        <Suspense fallback={<span className="skeleton" style={{ height: 60 }} />}>
-          <AuditNote />
-        </Suspense>
-      }
-    />
+    <>
+      <BulletinReader
+        set={set}
+        initial={initial}
+        auditNote={
+          <Suspense fallback={<span className="skeleton" style={{ height: 60 }} />}>
+            <AuditNote />
+          </Suspense>
+        }
+      />
+      {failed ? <LoadFailed /> : null}
+    </>
   );
 }
 

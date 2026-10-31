@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 
 import { auditPhrase } from '@/components/case/audit';
 import type { StateBoundaries } from '@/components/case/types';
+import { loadFailed } from '@/components/pwa/LoadFailed';
 import { PATHS } from '@/lib/api';
 import { serverGet, type ApiResult } from '@/lib/api-server';
 import { dateIST, dateTimeIST, metric, number, percent } from '@/lib/format';
@@ -33,10 +34,11 @@ const prose = (t: string | null | undefined): string =>
 const headline = () => serverGet<Headline>(PATHS.headline);
 const scarsSummary = () => serverGet<ScarsSummary>(PATHS.scarsSummary);
 
+// data-load-failed: the offline worker never lets a page with this note replace a good copy it saved
 function Failed({ what, r }: { what: string; r: ApiResult<unknown> }) {
   if (r.ok) return null;
   return (
-    <p className="m-failed" role="status">
+    <p className="m-failed" role="status" data-load-failed="">
       {`Couldn't load ${what}. ${r.error.message} `}
       <a href="" className="m-link">
         Retry
@@ -313,7 +315,7 @@ export async function Accuracy() {
           </Figure>
         </div>
       ) : (
-        <p className="m-failed">{u?.reason ?? (h.ok ? 'The API states no share of candidate unseen burns yet.' : `Couldn't load the headline: ${h.ok ? '' : h.error.message}`)}</p>
+        <p className="m-failed" {...loadFailed(!h.ok)}>{u?.reason ?? (h.ok ? 'The API states no share of candidate unseen burns yet.' : `Couldn't load the headline: ${h.ok ? '' : h.error.message}`)}</p>
       )}
       {rows.length ? (
         <div className="m-chart">

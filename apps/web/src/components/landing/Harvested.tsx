@@ -59,7 +59,7 @@ export function Harvested() {
 
 async function RiskTable() {
   const r = await getRisk();
-  if (!r.ok) return <p className={s.honest}>{`The ranking did not load. ${r.error.message}`}</p>;
+  if (!r.ok) return <p className={s.honest} data-load-failed="">{`The ranking did not load. ${r.error.message}`}</p>;
   const rows = (r.data.ranking ?? []).slice(0, ROWS);
   if (!rows.length) return <p className={s.honest}>{r.data.reason ?? 'No harvested, unburnt fields are ranked yet.'}</p>;
   return (

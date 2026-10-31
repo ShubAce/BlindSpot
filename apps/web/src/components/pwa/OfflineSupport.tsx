@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 
-import { CACHE_PREFIX, markSwitchedOff, startConnectivity } from './connectivity';
+import { CACHE_PREFIX, markSwitchedOff, onceIn, startConnectivity } from './connectivity';
 import { OfflineNotice } from './OfflineNotice';
 import './pwa.css';
 
@@ -17,12 +17,13 @@ import './pwa.css';
  * - On a page loaded before the worker controlled it (a first visit, a hard reload), hands the worker
  *   the list of what the page loaded, so those answers are saved too (the boundaries, for one, are
  *   read once and never polled again).
- * - Kill switch: ?sw=off unregisters the worker, deletes its saved copies and keeps it off in this
- *   browser; ?sw=on allows it again.
+ * - Kill switch: ?sw=off unregisters the worker, deletes its saved copies, reloads the page once so
+ *   that no worker controls it, and keeps it off in this browser; ?sw=on allows it again.
  * - Renders the offline notice (OfflineNotice).
  */
 
 const OFF_KEY = 'blindspot:offline-copies';
+const OFF_RELOAD_KEY = 'blindspot:offline-off-reloaded-at';
 
 export function OfflineSupport() {
   const router = useRouter();
@@ -42,6 +43,16 @@ async function setUpWorker() {
       // the worker still controlling this page stops answering and saving at once
       navigator.serviceWorker.controller?.postMessage({ source: 'blindspot', type: 'off' });
       await removeWorkers();
+      // Unregistered, the worker still controls this page, and it keeps "off" in memory only: Chrome
+      // stops an idle worker after about 30 s and starts it afresh for the page's next request, which
+      // it would then save again. One reload leaves the page with no worker (an unregistered one
+      // takes no new page), so the reloaded page does not reload again; should a worker still claim
+      // it, the 30 s guard ends the switch-off there instead of looping (and with storage blocked,
+      // this tab cannot tell, so it does not reload).
+      if (navigator.serviceWorker.controller && onceIn(OFF_RELOAD_KEY, 30_000, false)) {
+        window.location.reload();
+        return;
+      }
       markSwitchedOff();
       // a save already under way when it stopped can land after the first sweep
       window.setTimeout(() => void removeWorkers().catch(() => undefined), 5_000);

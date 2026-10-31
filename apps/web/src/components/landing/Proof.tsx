@@ -68,7 +68,7 @@ const GROUPS: { title: string; kinds: string[] }[] = [
 
 async function Names() {
   const r = await serverGet<SourcesResponse>(PATHS.sources);
-  if (!r.ok) return <p className={s.cardHonest}>{`The list of sources did not load. ${r.error.message}`}</p>;
+  if (!r.ok) return <p className={s.cardHonest} data-load-failed="">{`The list of sources did not load. ${r.error.message}`}</p>;
   // A source whose label is only its key is internal plumbing (a cache, a mirror), not a name.
   const named = r.data.sources.filter((x) => x.label && x.label !== x.key);
   const known = new Set(GROUPS.flatMap((g) => g.kinds));

@@ -12,7 +12,7 @@
  *   pages    page loads (HTML)                           network first; the saved copy after 5 s or
  *                                                        with no network; else the /offline screen
  *   rsc      App Router payloads (RSC: 1 or ?_rsc=)      network first, 5 s; the saved copy for the
- *                                                        same request (Vary respected); else a 503,
+ *            of a click or a refresh (not prefetches)    same request (Vary respected); else a 503,
  *                                                        on which the router loads the page in full
  *   static   /_next/static/ (content-hashed names)       cache first
  *   assets   same-origin pictures, icons, the manifest   the saved copy at once, refreshed behind it
@@ -22,13 +22,16 @@
  *   basemap  OpenFreeMap and EOX: styles, tiles, fonts,  cache first, aged out (a style after a day)
  *            sprites
  *
- * Only good answers are saved: status 200, not redirected, never an error. A picture the page asks
- * for without CORS (a plain <img>) is fetched again with CORS so its status can be read; if the host
- * refuses, the original request goes through and nothing is saved (an opaque answer could be an
- * error, and Chrome counts each one as megabytes of quota). Every store has a cap, trimmed oldest
- * first. Never touched: any method but GET, the investigator's live questions (/api/agent/ask and
- * anything asking for text/event-stream) and its budget (/api/agent/status), /api/health, range
- * requests, and every origin not named here.
+ * Only good answers are saved: status 200, not redirected, never an error. A page whose server read
+ * failed is an error too, though Next streams it with status 200 (the failed section says "Couldn't
+ * load ..."): every such note carries data-load-failed, found in the HTML and in the payload, and such
+ * an answer never replaces a good copy (keepRendered). A picture the page asks for without CORS (a
+ * plain <img>) is fetched again with CORS so its status can be read; if the host refuses, the
+ * original request goes through and nothing is saved (an opaque answer could be an error, and Chrome
+ * counts each one as megabytes of quota). Every store has a cap, trimmed oldest first. Never touched:
+ * any method but GET, the investigator's live questions (/api/agent/ask and anything asking for
+ * text/event-stream) and its budget (/api/agent/status), /api/health, range requests, and every
+ * origin not named here.
  *
  * Telling the page: a page served from a saved copy carries a Server-Timing entry
  * `blindspot-saved;desc="<offline|slow|missing>";dur=<saved at, epoch ms>`; an API answer or a
@@ -36,14 +39,16 @@
  * ({source: 'blindspot-sw', type: 'saved', ...}), and the next fresh one ({type: 'live'}).
  *
  * Kill switch: open any page with ?sw=off. This worker deletes its caches and unregisters, and the
- * page does the same and keeps it off in that browser until a page is opened with ?sw=on.
+ * page does the same, reloads once so that no worker controls it, and keeps it off in that browser
+ * until a page is opened with ?sw=on.
  */
 
 // Bump SHELL with a deploy whose pages or code must not be served from older saved copies, and
 // whenever this file changes what or how it saves: the next visit installs this worker, which
 // deletes every store of another version. DATA covers the API's answers, pictures and map tiles,
 // which do not change with the site's code; bump it only when old answers would mislead a newer page.
-const SHELL = '2026-11-01.1';
+// .2: failed renders and prefetches are no longer saved (the .1 stores may hold both).
+const SHELL = '2026-11-01.2';
 const DATA = '2026-11-01.1';
 
 const PREFIX = 'blindspot-';
@@ -66,6 +71,12 @@ const API_WAIT = 8000;
 const OFFLINE_PATH = '/offline';
 /** When a copy was saved (epoch ms), on every saved response. OfflineScreen.tsx reads it too. */
 const STAMP = 'x-blindspot-saved';
+/** The attribute on every server-rendered note of a failed read (components/pwa/LoadFailed.tsx), with
+ *  its empty value as the HTML, the payload, and the payload inlined in the HTML write it. The value
+ *  counts: a payload keeps the name of a prop left undefined ("data-load-failed":"$undefined"). */
+const FAILED_MARK = /data-load-failed(?:=""|":""|\\":\\"\\")/;
+/** Set on a saved page that carried FAILED_MARK, so a good answer replaces it and a failed one may. */
+const FAILED = 'x-blindspot-failed';
 
 const API_ORIGINS = new Set(['https://blindspot-api-azure.vercel.app']);
 try {
@@ -220,7 +231,7 @@ function basemapAge(href) {
 /** A page load: network first (with the navigation preload, when the browser started one). */
 async function page(event) {
   const url = event.request.url;
-  const answer = saving(event, fromNetwork(event), STORE.pages, (res) => isHtml(res) && isSaveablePage(url), url);
+  const answer = saving(event, fromNetwork(event), (res) => isHtml(res) && isSaveablePage(url), (copy) => keepRendered(STORE.pages, url, copy, 'page'));
   const saved = await savedPage(url);
   if (!saved) {
     try {
@@ -237,12 +248,14 @@ async function page(event) {
 
 /** An App Router payload (a soft navigation, a refresh, a prefetch): network first. A saved payload
  *  is used only for the very same request: the response varies on the router-state headers, which
- *  cache.match compares, and ?_rsc= is a hash of them. */
+ *  cache.match compares, and ?_rsc= is a hash of them. So a prefetch's payload could only ever answer
+ *  another prefetch, never a click: only a click's or a refresh's is saved. A prefetch with no
+ *  network gets the quiet 503 below, which the router ignores. */
 async function payload(event) {
   const request = event.request;
   const prefetch = request.headers.has('next-router-prefetch') || request.headers.has('next-router-segment-prefetch');
-  const answer = saving(event, fetch(request), STORE.rsc, isFlight, request);
-  const saved = await lookup(STORE.rsc, request);
+  const answer = saving(event, fetch(request), (res) => !prefetch && isFlight(res), (copy) => keepRendered(STORE.rsc, request, copy, 'payload'));
+  const saved = prefetch ? undefined : await lookup(STORE.rsc, request);
   if (!saved) {
     try {
       const res = await answer;
@@ -266,7 +279,7 @@ async function payload(event) {
 /** An API answer: network first; the saved copy when the network fails or is slower than `wait`. */
 async function networkFirst(event, store, wait) {
   const request = event.request;
-  const answer = saving(event, fetch(request), store, isOk, request);
+  const answer = saving(event, fetch(request), isOk, (copy) => put(store, request, copy));
   const saved = await lookup(store, request, { ignoreVary: true });
   if (!saved) {
     try {
@@ -308,7 +321,7 @@ async function cacheFirst(event, store, opts) {
 /** Pictures and icons of the site itself: the saved copy at once, the network refreshing it. */
 async function savedThenRefresh(event, store) {
   const request = event.request;
-  const answer = saving(event, fetch(request), store, isOk, request);
+  const answer = saving(event, fetch(request), isOk, (copy) => put(store, request, copy));
   const saved = await lookup(store, request, { ignoreVary: true });
   if (saved) return saved;
   try {
@@ -364,16 +377,45 @@ async function fetchReadable(request) {
   }
 }
 
-/** Pass a network answer through, saving a copy of a good one. The copy is cloned before anyone
- *  reads the body, and the save runs on after the answer is handed back. */
-function saving(event, answer, store, good, key) {
+/** Pass a network answer through, handing a copy of a good one to `save` (put, or keepRendered for a
+ *  page or a payload). The copy is cloned before anyone reads the body, and the save runs on after
+ *  the answer is handed back. `save` never throws. */
+function saving(event, answer, good, save) {
   let copying = null;
   const out = answer.then((res) => {
-    if (good(res)) copying = put(store, key, res.clone());
+    if (good(res)) copying = save(res.clone());
     return res;
   });
   event.waitUntil(out.then(() => copying, () => null));
   return out;
+}
+
+/**
+ * Save a page or a payload (`kind`), unless a server read behind it failed. Its body is read here,
+ * or handed over as `text` by a caller that has read it already.
+ * Next streams a page with status 200 before its sections have read the API, so a section whose read
+ * failed (a cold API past its timeout, an outage) says "Couldn't load ..." inside a 200 answer. Its
+ * note carries FAILED_MARK, in the HTML and in the payload alike. Such an answer never replaces a
+ * good copy, which is the one worth having offline:
+ * - a failed payload is not saved at all (without a saved payload, the router loads the saved page);
+ * - a failed page is saved only over nothing or over another failed copy: with nothing better, a page
+ *   with one failed section still beats the offline screen, and the next good answer replaces it.
+ */
+async function keepRendered(store, key, res, kind, text) {
+  try {
+    text ??= await res.text();
+  } catch {
+    return; // the stream broke off: a cut page is not kept
+  }
+  const failed = FAILED_MARK.test(text);
+  if (failed) {
+    if (kind !== 'page') return;
+    const saved = await lookup(store, key, { ignoreVary: true }).catch(() => undefined);
+    if (saved && !saved.headers.has(FAILED)) return;
+  }
+  const headers = new Headers(res.headers);
+  if (failed) headers.set(FAILED, '1');
+  await put(store, key, new Response(text, { status: res.status, statusText: res.statusText, headers }));
 }
 
 /** Settles with {res} (the network answered), {failed} (it threw) or {late} (no answer in `ms`). */
@@ -463,8 +505,9 @@ async function saveDocument(href, pagesStore, filesStore) {
   if (!isSaveablePage(href)) return false;
   const res = await fetch(href, { credentials: 'same-origin', headers: { Accept: 'text/html' } });
   if (!isHtml(res)) return false;
-  const html = await res.clone().text();
-  await put(pagesStore, new URL(href, self.location.origin).href, res);
+  const html = await res.text();
+  await keepRendered(pagesStore, new URL(href, self.location.origin).href, res, 'page', html);
+  // its files are saved either way: a later good copy of the page names the same ones
   await runLimited(staticRefs(html).map((u) => () => saveIfMissing(filesStore, u)), 6);
   return true;
 }
@@ -537,12 +580,14 @@ async function runLimited(jobs, lanes) {
 }
 
 // Trimming reads every key, so it runs on every tenth save to a store (and on activate): a cap can
-// be passed by up to nine entries between trims.
+// be passed by up to nine entries between trims. The count lives in memory, which Chrome clears
+// whenever it stops an idle worker (about 30 s after its last event), so the first save of each
+// run of the worker trims too: someone opening a page a minute would otherwise never reach ten.
 const savesSinceTrim = new Map();
 async function trimNow(cache, store) {
   const n = (savesSinceTrim.get(store.name) || 0) + 1;
   savesSinceTrim.set(store.name, n % 10);
-  if (n % 10 === 0) await trim(cache, store.max);
+  if (n % 10 === 1) await trim(cache, store.max);
 }
 
 /** Keep the newest `max` entries (keys() lists them oldest written first). */

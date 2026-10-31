@@ -1,3 +1,4 @@
+import { LoadFailed } from '@/components/pwa/LoadFailed';
 import { absoluteApiUrl } from '@/lib/api';
 import { dateIST, istDayKey } from '@/lib/format';
 
@@ -19,7 +20,7 @@ export async function HeroPictures() {
   if (!r.ok) {
     return (
       <div className={s.picMissing}>
-        <p>{`The Sentinel-2 pictures of the featured fields did not load. ${r.error.message}`}</p>
+        <p data-load-failed="">{`The Sentinel-2 pictures of the featured fields did not load. ${r.error.message}`}</p>
       </div>
     );
   }
@@ -55,7 +56,13 @@ export async function HeroPictures() {
       ? `The burn scars for this frame did not load. ${scars.error.message}`
       : null;
 
-  return <Crossfade frames={frames} place={`${place}. Sentinel-2, true colour.`} marks={marks} marksNote={marksNote} />;
+  return (
+    <>
+      <Crossfade frames={frames} place={`${place}. Sentinel-2, true colour.`} marks={marks} marksNote={marksNote} />
+      {/* the pictures (a client component) say the outlines failed; the mark is for the offline worker */}
+      {scars && !scars.ok ? <LoadFailed /> : null}
+    </>
+  );
 }
 
 /** Each frame's new outlines (gold and white paths in the picture's pixels) and its running counts. */

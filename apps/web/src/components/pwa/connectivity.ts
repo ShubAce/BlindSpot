@@ -118,18 +118,21 @@ async function refreshWhenReachable() {
   probing = false;
   if (!answers || state.doc?.kind !== 'page') return;
   set({ doc: null });
-  if (claimRefresh()) refreshPage?.();
+  // with storage blocked it refreshes anyway: the site answered just now, which is the main guard
+  if (onceIn(REFRESHED_KEY, 60_000, true)) refreshPage?.();
 }
 
-function claimRefresh(): boolean {
+/** True at most once in `ms` for `key` in this tab (sessionStorage), so a step that refreshes or
+ *  reloads the page cannot loop; `ifBlocked` is the answer when storage is refused. */
+export function onceIn(key: string, ms: number, ifBlocked: boolean): boolean {
   try {
-    const last = Number(window.sessionStorage.getItem(REFRESHED_KEY)) || 0;
-    if (Date.now() - last < 60_000) return false;
-    window.sessionStorage.setItem(REFRESHED_KEY, String(Date.now()));
+    const last = Number(window.sessionStorage.getItem(key)) || 0;
+    if (Date.now() - last < ms) return false;
+    window.sessionStorage.setItem(key, String(Date.now()));
+    return true;
   } catch {
-    // storage blocked: the site answered just now, which is the main guard
+    return ifBlocked;
   }
-  return true;
 }
 
 /** Fresh answers again. A payload from the network means the page on screen is fresh too; an API

@@ -81,7 +81,7 @@ async function PlainsPicture() {
 async function UnseenClaim() {
   const r = await getHeadline();
   const u = r.ok ? r.data.unseen_burns : null;
-  if (!r.ok) return <p className={s.honestOnDark}>{`The burn scar totals did not load. ${r.error.message}`}</p>;
+  if (!r.ok) return <p className={s.honestOnDark} data-load-failed="">{`The burn scar totals did not load. ${r.error.message}`}</p>;
   if (!u?.available || u.unseen_clusters == null) {
     return <p className={s.honestOnDark}>{u?.reason ?? 'No scar has been checked against the fire alerts yet.'}</p>;
   }
@@ -94,7 +94,7 @@ async function UnseenClaim() {
 
 async function Slips() {
   const { list, cases } = await getCases();
-  if (!list.ok) return <p className={`${s.slipsMissing} ${s.honestOnDark}`}>{`The case files did not load. ${list.error.message}`}</p>;
+  if (!list.ok) return <p className={`${s.slipsMissing} ${s.honestOnDark}`} data-load-failed="">{`The case files did not load. ${list.error.message}`}</p>;
   if (!cases.length) return <p className={`${s.slipsMissing} ${s.honestOnDark}`}>No candidate unseen burn has been confirmed against the fire alerts yet.</p>;
   return (
     <ol className={s.slips} aria-label="Case files of candidate unseen burns">

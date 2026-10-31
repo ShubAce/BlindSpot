@@ -1,3 +1,4 @@
+import { LoadFailed } from '@/components/pwa/LoadFailed';
 import { REFERENCE_SITE } from '@/lib/aoi';
 import { dateIST, metricText, number, percent } from '@/lib/format';
 
@@ -17,32 +18,36 @@ export async function HeroClock() {
   const d = diurnal.ok ? diurnal.data : null;
   // the dial needs either the API's polar windows (diurnal) or today's passes; the live line needs the passes
   if (!passes.ok && !d?.polar_windows_ist?.length) {
-    return <p className={`${s.clockMissing} ${s.honest}`}>{`The satellites’ pass times did not load, so the clock cannot be drawn. ${passes.error.message}`}</p>;
+    return <p className={`${s.clockMissing} ${s.honest}`} data-load-failed="">{`The satellites’ pass times did not load, so the clock cannot be drawn. ${passes.error.message}`}</p>;
   }
   const stamp = passes.ok ? passes.data.generated_at : d?.generated_at;
   const at = Date.parse(stamp ?? '');
   const model = Number.isFinite(at) ? clockModel(passes.ok ? passes.data.passes : undefined, d, at) : null;
   if (!model) return <p className={`${s.clockMissing} ${s.honest}`}>The pass list came back without a usable time, so the clock cannot be drawn.</p>;
   return (
-    <BlindClock
-      model={model}
-      live={passes.ok ? livePasses(passes.data.passes) : []}
-      meta={{
-        site: REFERENCE_SITE.name,
-        at,
-        days: diurnal.ok ? (diurnal.data.days ?? null) : null,
-        share: diurnal.ok ? (diurnal.data.share_outside_polar_windows ?? null) : null,
-        peak: diurnal.ok ? (diurnal.data.peak_ist ?? null) : null,
-        diurnalError: diurnal.ok ? null : diurnal.error.message,
-        passesError: passes.ok ? null : passes.error.message,
-      }}
-    />
+    <>
+      <BlindClock
+        model={model}
+        live={passes.ok ? livePasses(passes.data.passes) : []}
+        meta={{
+          site: REFERENCE_SITE.name,
+          at,
+          days: diurnal.ok ? (diurnal.data.days ?? null) : null,
+          share: diurnal.ok ? (diurnal.data.share_outside_polar_windows ?? null) : null,
+          peak: diurnal.ok ? (diurnal.data.peak_ist ?? null) : null,
+          diurnalError: diurnal.ok ? null : diurnal.error.message,
+          passesError: passes.ok ? null : passes.error.message,
+        }}
+      />
+      {/* the clock (a client component) says which read failed; the mark is for the offline worker */}
+      {passes.ok && diurnal.ok ? null : <LoadFailed />}
+    </>
   );
 }
 
 export async function HeroFigure() {
   const r = await getHeadline();
-  if (!r.ok) return <p className={s.honest}>{`The burn scar totals did not load. ${r.error.message}`}</p>;
+  if (!r.ok) return <p className={s.honest} data-load-failed="">{`The burn scar totals did not load. ${r.error.message}`}</p>;
   const u = r.data.unseen_burns;
   if (!u?.available || u.unseen_share == null) {
     return <p className={s.honest}>{u?.reason ?? 'No burn scar has been checked against the fire alerts yet, so there is no unseen share to show.'}</p>;
