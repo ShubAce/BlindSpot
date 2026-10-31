@@ -51,6 +51,9 @@ class Settings(BaseSettings):
     # every cold start would otherwise run create_all, and the tables already exist there.
     init_db_on_startup: bool = True
     cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:3000"]
+    # Origins allowed by pattern as well (full match), for preview deployments whose host changes:
+    # CORS_ORIGIN_REGEX=^https://blindspot[a-z0-9-]*\.vercel\.app$
+    cors_origin_regex: str | None = None
     cache_dir: Path = REPO_ROOT / "data" / "cache"  # downloads and rendered imagery (gitignored)
     aoi_bbox: Annotated[BBox, NoDecode] = (73.8, 27.6, 77.7, 32.6)  # Punjab + Haryana + Delhi
     met_bbox: Annotated[BBox, NoDecode] = (70.0, 26.0, 80.0, 34.0)  # wider box for wind fields

@@ -22,8 +22,10 @@ The two catalogues name things differently; PC ids embed the processing time
 (S2B_T43REQ_20261028T054808_L2A). Earth Search's `s2:product_uri` holds the PC id, which is how a
 scene's "twin" in the other catalogue is found.
 
-No database writes here (sources/ contract). Every upstream call is logged in source_fetch through
-http.fetch, or provenance.track_fetch for the rasterio reads.
+Every upstream call is logged in source_fetch through http.fetch, or provenance.track_fetch for the
+rasterio reads. The only table this module touches is rendered_asset (blindspot.models.assets):
+render() reads the disk cache, then that table, then renders, and stores a picture there only when
+the caller asks (`persist=`): the featured frames and the case-file chips, never map tiles.
 """
 
 from __future__ import annotations
@@ -935,16 +937,26 @@ def _single_flight(key: str) -> Iterator[None]:
             _flights.pop(key, None)
 
 
-def render(req: RenderRequest, *, min_valid_fraction: float = 0.0) -> Rendered:
-    """The picture for `req`: from the disk cache, else rendered, checked and cached.
+def render(req: RenderRequest, *, min_valid_fraction: float = 0.0, persist: str | None = None) -> Rendered:
+    """The picture for `req`: from the disk cache, else the database (rendered_asset), else
+    rendered, checked and cached on disk.
 
+    `persist` ("frame" or "chip") also keeps the picture in the database, so every serverless
+    instance can serve it without rendering; map tiles are never looked up or stored there.
     Raises RenderError when every renderer failed (the message lists each attempt), or
     SourceUnavailable when the only upstream that could serve it is paused.
     """
     cache = image_cache()
     key = req.cache_key()
     hit = cache.get(key)
+    if hit is None and req.tile is None:
+        hit = load_stored(key)
+        if hit is not None:
+            cache.put(key, hit)
+            return hit  # already in the database: nothing to persist
     if hit is not None:
+        if persist and not stored_keys([key]):
+            store(key, hit, persist)
         return hit
     if not _admitted.acquire(blocking=False):
         raise RenderBusy("too many pictures are being drawn right now; try again in a few seconds")
@@ -960,9 +972,59 @@ def render(req: RenderRequest, *, min_valid_fraction: float = 0.0) -> Rendered:
             finally:
                 _upstream_slots.release()
             cache.put(key, rendered)
+            if persist:
+                store(key, rendered, persist)
             return rendered
     finally:
         _admitted.release()
+
+
+# --- the database copy (rendered_asset) -------------------------------------------------------------
+# Never fatal: when the database or the table is unavailable the picture is still served (from disk
+# or a fresh render) and only the shared copy is missing.
+
+
+def load_stored(key: str) -> Rendered | None:
+    """The picture stored under `key` in rendered_asset, or None."""
+    from blindspot.models.assets import load_asset
+
+    try:
+        row = load_asset(key)
+    except Exception as exc:  # SQLAlchemyError: no database, no table yet
+        log.warning("rendered_asset read of %s failed: %s", key, get_settings().redact(str(exc))[:200])
+        return None
+    if row is None or row["role"] == "manifest":
+        return None
+    return Rendered(
+        data=row["data"], media_type=row["media_type"], source_key=row["source_key"],
+        collection=row["collection"], item=row["item"], url=row["url"], fetch_id=row["fetch_id"],
+        rendered_at=row["rendered_at"], note=row["note"], cached=True,
+    )
+
+
+def store(key: str, out: Rendered, role: str) -> bool:
+    """Keep `out` in rendered_asset under `key` (role "frame" or "chip"). False if that failed."""
+    from blindspot.models.assets import save_asset
+
+    try:
+        save_asset(key, role, out.media_type, out.data, source_key=out.source_key,
+                   collection=out.collection, item=out.item, url=out.url, fetch_id=out.fetch_id,
+                   rendered_at=out.rendered_at, note=out.note)
+    except Exception as exc:
+        log.warning("rendered_asset write of %s failed: %s", key, get_settings().redact(str(exc))[:200])
+        return False
+    return True
+
+
+def stored_keys(keys: Sequence[str]) -> set[str]:
+    """Which of `keys` are in rendered_asset (and mark them used). Empty when the table is not there."""
+    from blindspot.models import assets
+
+    try:
+        return assets.stored_keys(keys)
+    except Exception as exc:
+        log.warning("rendered_asset lookup failed: %s", get_settings().redact(str(exc))[:200])
+        return set()
 
 
 def _render_uncached(req: RenderRequest, min_valid_fraction: float) -> Rendered:

@@ -1,7 +1,7 @@
 """The FastAPI application.
 
-create_app() builds it: CORS, gzip, orjson responses, JSON errors (sent from inside CORS, so the
-browser can read them), the core routes /api/health and /api/sources, and every router module in
+create_app() builds it: CORS, gzip, CDN cache headers, orjson responses, JSON errors (sent from
+inside CORS, so the browser can read them), the core routes /api/health and /api/sources, and every router module in
 blindspot/api/routers/. The lifespan creates missing tables (retrying in the background if the
 database is not up yet; INIT_DB_ON_STARTUP=false skips this on serverless) and, when
 ENABLE_SCHEDULER=1, starts the job scheduler inside this process (run exactly one such process).
@@ -30,6 +30,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from blindspot import __version__
 from blindspot.api import SessionDep
+from blindspot.api.cache import CDNCacheHeaders
 from blindspot.api.responses import ORJSONResponse, respond
 from blindspot.api.routers import discover_routers
 from blindspot.config import get_settings, setup_logging
@@ -247,14 +248,17 @@ def create_app() -> FastAPI:
     app.add_exception_handler(FetchError, _upstream_error)
     app.add_exception_handler(OperationalError, _database_error)
     app.add_exception_handler(ImportError, _missing_dependency)
-    # The middleware added last runs first: CORS -> gzip -> JSON 500s -> routes.
+    # The middleware added last runs first: CORS -> gzip -> CDN headers -> JSON 500s -> routes.
     app.add_middleware(_JSONServerErrors)
+    app.add_middleware(CDNCacheHeaders)  # s-maxage for Vercel's CDN on 200 GETs (api/cache.py)
     # Level 6, not Starlette's default 9: on the 1.4 MB boundaries GeoJSON it is 5x faster
     # (52 vs 251 ms) for a body 0.3 % larger.
     app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
+        # e.g. every Vercel deployment of the website: ^https://blindspot[a-z0-9-]*\.vercel\.app$
+        allow_origin_regex=settings.cors_origin_regex,
         allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["*"],
         expose_headers=["Retry-After"],

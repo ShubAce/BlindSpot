@@ -9,10 +9,17 @@ How it is written (the bulletin job calls write_bulletin() at 07:30 IST):
    source it came from. A sentence that fails is removed before publishing, and the removal is
    recorded.
 4. One Gemini call per language translates the checked English into Hindi and into Punjabi (in
-   parallel), keeping numbers and markers. Each is checked the same way, plus a script check
-   (Punjabi must not contain Devanagari letters, Hindi no Gurmukhi).
+   parallel), keeping numbers and markers, at low temperature, under an explicit script rule
+   (prompts.SCRIPT_RULES: Gurmukhi U+0A00-U+0A7F only for Punjabi). Each is checked the same way,
+   plus a script check (no letter of another script; Gemini's free models have put Sinhala,
+   Bengali and Cyrillic letters inside Punjabi words). A translation that fails the script check
+   is asked once more, of the other model of the bulletin chain; if that fails too, the better of
+   the two is stored flagged (verification.script_ok = false) and the API reports the language as
+   unavailable.
 5. One bulletin row per language (rewriting a day replaces it) and one agent_run row for audit.
-So a bulletin costs three Gemini calls: at most one per language.
+So a bulletin costs three Gemini calls, four or five when a script check fails. A later run of the
+day whose English is already written only translates the missing or flagged languages, from the
+stored English (one or two calls), so the hourly retries do not rewrite what is already good.
 """
 
 from __future__ import annotations
@@ -100,9 +107,10 @@ async def gather_facts(
 
 
 async def _generate(
-    gateway: Gateway, user_turn: str, *, system: str, thinking: str
-) -> tuple[str, str]:
-    """One structured-output call. Returns (model, JSON text).
+    gateway: Gateway, user_turn: str, *, system: str, thinking: str, prefer: str | None = None,
+    temperature: float | None = None,
+) -> tuple[str, str]:  # fmt: skip
+    """One structured-output call, on `prefer` when it is available. Returns (model, JSON text).
 
     Gemini can send 503 "high demand" in the middle of a stream; the whole reply is read before
     it is used, so a broken stream is simply retried on the next model of the chain."""
@@ -111,11 +119,12 @@ async def _generate(
         response_mime_type="application/json",
         response_json_schema=prompts.BULLETIN_SCHEMA,  # not response_schema: see research s3
         thinking_config=types.ThinkingConfig(thinking_level=thinking),
+        temperature=temperature,
     )
     contents = [types.Content(role="user", parts=[types.Part.from_text(text=user_turn)])]
     last: BaseException | None = None
     for _ in range(3):
-        model, chunks, _sent = await gateway.stream(contents, config, prefer=None, priority=True)
+        model, chunks, _sent = await gateway.stream(contents, config, prefer=prefer, priority=True)
         texts: list[str] = []
         try:
             async for chunk in chunks:
@@ -217,7 +226,8 @@ def publish(
     if not first.passed:
         doc, removed = checker.scrub(doc)
     final = checker.check(full_text(doc))
-    mixed = foreign_script(full_text(doc), lang)
+    # Letters of another script, or U+FFFD where the model sent bytes that are not valid UTF-8.
+    mixed = foreign_script(full_text(doc), lang) + [w for w in full_text(doc).split() if "\ufffd" in w]
     citations = [c for m in cited_markers(full_text(doc)) if (c := book.citation(m))]
     return {
         **doc,
@@ -228,6 +238,35 @@ def publish(
         "data_as_of": ist(now),
         "model": model,
     }
+
+
+async def translate(
+    lang: str, english: dict[str, Any], checker: Checker, book: CitationBook, gateway: Gateway,
+    now: datetime,
+) -> dict[str, Any]:  # fmt: skip
+    """The checked English in `lang`: one call; if its script check fails, one more call on the
+    other model of the chain. Returns the better of the two (flagged when neither is clean)."""
+    turn = prompts.translation_turn(lang, english)
+    system = prompts.TRANSLATE_SYSTEMS.get(lang, prompts.TRANSLATE_SYSTEM)
+    used, text = await _generate(gateway, turn, system=system, thinking="LOW",
+                                 temperature=prompts.TRANSLATE_TEMPERATURE)  # fmt: skip
+    best = publish(lang, parse(text), checker, book, used, now)
+    if best["verification"]["script_ok"]:
+        return best
+    other = next((m for m in gateway.chain if m != used), None)
+    log.warning("bulletin %s: other-script letters from %s (%s); asking %s", lang, used,
+                best["verification"]["foreign_script_words"][:5], other or "it again")  # fmt: skip
+    used, text = await _generate(gateway, turn, system=system, thinking="LOW", prefer=other,
+                                 temperature=prompts.TRANSLATE_TEMPERATURE)  # fmt: skip
+    again = publish(lang, parse(text), checker, book, used, now)
+    if len(again["verification"]["foreign_script_words"]) <= len(
+        best["verification"]["foreign_script_words"]
+    ):
+        best = again
+    if not best["verification"]["script_ok"]:
+        log.warning("bulletin %s: still other-script letters (%s); stored flagged", lang,
+                    best["verification"]["foreign_script_words"][:5])  # fmt: skip
+    return best
 
 
 def _written(day: Any) -> set[str]:
@@ -269,8 +308,12 @@ async def write_bulletin(
     job_run; raises when there is no data at all or Gemini cannot write it (the job retries)."""
     now = now or utcnow()
     day = now.astimezone(IST).date()
-    if not force and await asyncio.to_thread(_written, day) >= set(prompts.LANGUAGES):
+    written = set() if force else await asyncio.to_thread(_written, day)
+    if written >= set(prompts.LANGUAGES):
         return {"skipped": f"the bulletin for {day} is already written", "date": str(day)}
+    if "en" in written:  # only translations are missing (or flagged): translate the stored English
+        missing = [lang for lang in prompts.LANGUAGES if lang not in written]
+        return await translate_stored(day, missing, now=now, client_factory=client_factory)
     t0 = time.perf_counter()
     run = Run(id=str(uuid.uuid4()), kind="bulletin", question=f"Daily bulletin for {day}",
               lang="en")  # fmt: skip
@@ -289,29 +332,11 @@ async def write_bulletin(
         english = publish("en", parse(raw), Checker.for_facts(facts, book, now), book, model, now)
         published = {"en": english}
         same_numbers = Checker.for_translation(english, book, now)
-
-        async def translate(lang: str) -> dict[str, Any]:
-            """One translation; asked once more if it mixes in letters of another script."""
-            turn = prompts.translation_turn(lang, english)
-            best: dict[str, Any] | None = None
-            for _ in range(2):
-                used, text = await _generate(gateway, turn, system=prompts.TRANSLATE_SYSTEM,
-                                             thinking="LOW")  # fmt: skip
-                done = publish(lang, parse(text), same_numbers, book, used, now)
-                if best is None or len(done["verification"]["foreign_script_words"]) < len(
-                    best["verification"]["foreign_script_words"]
-                ):
-                    best = done
-                if best["verification"]["script_ok"]:
-                    break
-                log.warning("bulletin %s: other-script letters in %s; asking again", lang,
-                            best["verification"]["foreign_script_words"][:5])  # fmt: skip
-            assert best is not None
-            return best
-
         langs = [lang for lang in prompts.LANGUAGES if lang != "en"]
-        outcomes = await asyncio.gather(*(translate(lang) for lang in langs),
-                                        return_exceptions=True)  # fmt: skip
+        outcomes = await asyncio.gather(
+            *(translate(lang, english, same_numbers, book, gateway, now) for lang in langs),
+            return_exceptions=True,
+        )
         failures = {}
         for lang, outcome in zip(langs, outcomes, strict=True):
             if isinstance(outcome, BaseException):
@@ -352,3 +377,81 @@ async def write_bulletin(
         await asyncio.to_thread(save_run, run)
         await gateway.aclose()
         await api.aclose()
+
+
+def _stored_english(day: Any) -> dict[str, Any] | None:
+    from blindspot.db import SessionLocal
+    from blindspot.models.agent import Bulletin
+
+    with SessionLocal() as session:
+        return session.execute(
+            select(Bulletin.content).where(Bulletin.date == day, Bulletin.lang == "en")
+        ).scalar_one_or_none()
+
+
+async def translate_stored(
+    day: Any, langs: list[str], *, now: datetime | None = None,
+    client_factory: ClientFactory | None = None,
+) -> dict[str, Any]:  # fmt: skip
+    """Translate the stored, already verified English bulletin of `day` into `langs` (the ones
+    missing or flagged), checked against that English exactly as on the first run."""
+    from blindspot.provenance import SourceRef
+
+    now = now or utcnow()
+    english = await asyncio.to_thread(_stored_english, day)
+    if not english or not english.get("sections"):
+        raise RuntimeError(f"no stored English bulletin for {day} to translate")
+    book = CitationBook()  # the English's own markers, so citations keep their numbers
+    for citation in english.get("citations") or []:
+        book.refs[int(citation["marker"])] = SourceRef.model_validate(citation["source"])
+    t0 = time.perf_counter()
+    run = Run(id=str(uuid.uuid4()), kind="bulletin", lang="en",
+              question=f"Daily bulletin for {day}: {', '.join(langs)} from the stored English")  # fmt: skip
+    run.emit("run", run_id=run.id, model=None, lang="en")
+    gateway = Gateway("bulletin", run.id, client_factory)
+    try:
+        checker = Checker.for_translation(english, book, now)
+        outcomes = await asyncio.gather(
+            *(translate(lang, english, checker, book, gateway, now) for lang in langs),
+            return_exceptions=True,
+        )
+        published, failures = {}, {}
+        for lang, outcome in zip(langs, outcomes, strict=True):
+            if isinstance(outcome, BaseException):
+                failures[lang] = f"{type(outcome).__name__}: {outcome}"[:300]
+            else:  # the facts are the English's: keep its "as of"
+                published[lang] = {**outcome, "data_as_of": english.get("data_as_of", outcome["data_as_of"])}
+        run.model = next((c["model"] for c in published.values()), None)
+        run.ok = bool(published) and not failures
+        run.answer = "\n\n".join(full_text(c) for c in published.values()) or None
+        first = next(iter(published.values()), None)  # usually the one language that was missing
+        run.citations = first["citations"] if first else []
+        run.verification = first["verification"] if first else None
+        run.usage = [vars(c) for c in gateway.calls]
+        await asyncio.to_thread(save_run, run)  # first: each bulletin row points at this run
+        if published:
+            await asyncio.to_thread(_store, day, published, run.id)
+        summary = {
+            "date": str(day),
+            "translated_from": "stored English",
+            "languages": {lang: {"model": c["model"], "verified": c["verification"]["passed"],
+                                 "removed_sentences": len(c["verification"]["removed_sentences"]),
+                                 "script_ok": c["verification"]["script_ok"]}
+                          for lang, c in published.items()},
+            "gemini_calls": len(gateway.calls),
+        }
+        if failures:
+            run.error = f"translations failed: {failures}"
+            raise RuntimeError(f"bulletin {day}: {run.error}; stored {sorted(published)}")
+        return summary
+    except Exception as exc:
+        run.error = run.error or str(exc)[:500]
+        run.emit("error", message=run.error, retryable=True)
+        raise
+    finally:
+        run.usage = [vars(c) for c in gateway.calls]
+        run.duration_ms = round((time.perf_counter() - t0) * 1000)
+        run.emit("done", run_id=run.id, duration_ms=run.duration_ms, ok=run.ok)
+        run.finish()
+        await asyncio.to_thread(save_run, run)
+        await gateway.aclose()

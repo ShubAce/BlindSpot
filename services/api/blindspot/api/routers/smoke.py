@@ -8,7 +8,9 @@
 - GET /api/smoke/validation: the modelled smoke index against observed PM2.5.
 
 The forward and back payloads run to megabytes, so each is rendered once per stored run, gzipped
-once, and kept in a small in-process cache: repeat requests cost a primary-key lookup.
+once, and kept in a small in-process cache: repeat requests cost a primary-key lookup. Two optional
+parameters make them smaller (a serverless response is capped at 4.5 MB): `max_trails` keeps the
+heaviest trails of each ensemble member in turn, `stride` keeps every n-th point of each trail.
 """
 
 from __future__ import annotations
@@ -16,7 +18,8 @@ from __future__ import annotations
 import gzip
 import threading
 from collections.abc import Callable
-from typing import Any
+from itertools import zip_longest
+from typing import Annotated, Any
 
 import orjson
 from cachetools import LRUCache
@@ -57,12 +60,58 @@ def _cached(request: Request, key: tuple[Any, ...], build: Callable[[], Response
     return Response(body, media_type="application/json", headers={**headers, "Vary": "Accept-Encoding"})
 
 
-def _trim_back_trails(trails_json: str | None, run_at_s: float, hours: int) -> Any:
+MaxTrails = Annotated[int | None, Query(ge=1, le=10_000, description=(
+    "keep at most this many trails: the heaviest of each ensemble member in turn (deterministic)"))]
+Stride = Annotated[int, Query(ge=1, le=100, description=(
+    "keep every n-th point of each trail path and its times (the last point is always kept)"))]
+
+
+def _select_trails(trails: str | list[Any], max_trails: int | None, stride: int) -> tuple[Any, dict[str, Any] | None]:
+    """Trails (stored JSON text, or a list) thinned for a smaller payload, and a note saying how
+    (None when nothing was asked: then stored text passes through without decoding).
+
+    `max_trails` takes the heaviest trail of each member (`model`) in turn, ties broken by id, so
+    the same run always gives the same trails and both models stay represented; they come back in
+    their stored order. `stride` keeps points 0, n, 2n, ... and the last one, so a trail still ends
+    where the model put it."""
+    if max_trails is None and stride == 1:
+        return (orjson.Fragment(trails) if isinstance(trails, str) else trails), None
+    if isinstance(trails, str):
+        trails = orjson.loads(trails)
+    total = len(trails)
+    if max_trails is not None and total > max_trails:
+        by_model: dict[Any, list[int]] = {}
+        for i, trail in enumerate(trails):
+            by_model.setdefault(trail.get("model"), []).append(i)
+        ranked = [sorted(ids, key=lambda i: (-(trails[i].get("weight") or 0.0), str(trails[i].get("id"))))
+                  for _, ids in sorted(by_model.items(), key=lambda kv: str(kv[0]))]
+        order = [i for group in zip_longest(*ranked) for i in group if i is not None]
+        trails = [trails[i] for i in sorted(order[:max_trails])]
+    if stride > 1:
+        trails = [_thin(trail, stride) for trail in trails]
+    note = {"max_trails": max_trails, "stride": stride, "trails_total": total, "trails_returned": len(trails),
+            "rule": "heaviest trails of each ensemble member in turn; every stride-th point plus the last"}
+    return trails, note
+
+
+def _thin(trail: dict[str, Any], stride: int) -> dict[str, Any]:
+    n = len(trail.get("times") or trail.get("path") or [])
+    keep = list(range(0, n, stride))
+    if n and keep[-1] != n - 1:
+        keep.append(n - 1)
+    out = dict(trail)
+    for name in ("path", "times"):
+        if isinstance(trail.get(name), list):
+            out[name] = [trail[name][k] for k in keep]
+    return out
+
+
+def _trim_back_trails(trails_json: str | None, run_at_s: float, hours: int) -> str | list[Any]:
     """Back trails shortened to the last `hours` before the run (contract parameter `hours`)."""
     if not trails_json:
         return []
     if hours >= 72:
-        return orjson.Fragment(trails_json)  # passed through without decoding
+        return trails_json  # the stored text, passed through without decoding
     cutoff = run_at_s - hours * 3600.0
     out = []
     for trail in orjson.loads(trails_json):
@@ -74,7 +123,7 @@ def _trim_back_trails(trails_json: str | None, run_at_s: float, hours: int) -> A
 
 
 @router.get("/forward")
-def forward(request: Request, session: SessionDep):
+def forward(request: Request, session: SessionDep, max_trails: MaxTrails = None, stride: Stride = 1):
     """Newest forward run: trails, receptor series, inputs and per-member details."""
     run_id = latest_id(session, "forward")
     if run_id is None:
@@ -85,6 +134,7 @@ def forward(request: Request, session: SessionDep):
     def build() -> Response:
         run = load_run(session, run_id)
         params = run["params"] or {}
+        trails, selection = _select_trails(run["trails_json"] or [], max_trails, stride)
         payload = {
             "run_at": run["run_at"],
             "t0": run["t0"],
@@ -92,7 +142,7 @@ def forward(request: Request, session: SessionDep):
             "t_end": params.get("t_end"),
             "step_minutes": int(RECORD_S // 60),
             "inputs": params.get("inputs"),
-            "trails": orjson.Fragment(run["trails_json"]) if run["trails_json"] else [],
+            "trails": trails,
             "receptors": run["receptors"] or [],
             "members": params.get("members"),
             "method": params.get("method"),
@@ -100,13 +150,15 @@ def forward(request: Request, session: SessionDep):
             "payload": params.get("payload"),
             "run_id": run["id"],
         }
+        if selection is not None:
+            payload["trails_selection"] = selection
         if not run["trails_json"]:
             payload["reason"] = "trails of this run were pruned"
         if (params.get("inputs") or {}).get("reason"):
             payload["reason"] = params["inputs"]["reason"]
         return respond(payload, _sources(run), max_age=60)
 
-    return _cached(request, ("forward", run_id), build)
+    return _cached(request, ("forward", run_id, max_trails, stride), build)
 
 
 @router.get("/back")
@@ -115,6 +167,8 @@ def back(
     session: SessionDep,
     city: str = "Delhi",
     hours: int = Query(72, ge=1, le=168),
+    max_trails: MaxTrails = None,
+    stride: Stride = 1,
 ):
     """Newest back run of a city: where its air came from over the last `hours`. Runs cover 72 h,
     so a longer request is answered with 72 h and says so (never an error for the agent)."""
@@ -134,7 +188,8 @@ def back(
         summary = dict(run["summary"] or {})
         verdict = summary.pop("verdict_hint", None)
         notes = summary.pop("notes", None)
-        trails = _trim_back_trails(run["trails_json"], run["run_at"].timestamp(), hours)
+        trails, selection = _select_trails(
+            _trim_back_trails(run["trails_json"], run["run_at"].timestamp(), hours), max_trails, stride)
         payload = {
             "run_at": run["run_at"],
             "city": run["city"],
@@ -147,13 +202,15 @@ def back(
             "notes": notes,
             "run_id": run["id"],
         }
+        if selection is not None:
+            payload["trails_selection"] = selection
         if not run["trails_json"]:
             payload["reason"] = "trails of this run were pruned"
         if asked > hours:
             payload["hours_note"] = f"asked for {asked} h; back runs cover the last {hours} h"
         return respond(payload, _sources(run), max_age=60)
 
-    return _cached(request, ("back", run_id, hours, asked if asked > hours else None), build)
+    return _cached(request, ("back", run_id, hours, asked if asked > hours else None, max_trails, stride), build)
 
 
 @router.get("/receptors")

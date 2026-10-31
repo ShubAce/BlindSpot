@@ -2,7 +2,8 @@
 villages with the most hectares at risk.
 
 The scores are computed by the `risk` job (blindspot/jobs/risk.py, explained in
-blindspot/analytics/risk.py) and stored on harvest_cluster; this route only reads them. A field's
+blindspot/analytics/risk.py) and stored on harvest_cluster (each field's own numbers) and risk_run
+(what a run shares); this route only reads them and puts each field's factors back together. A field's
 village is the one the sentinel module stored, or else the nearest village or town within ~5 km
 (marked `village_inferred`), never a guess beyond that.
 """
@@ -21,6 +22,7 @@ from blindspot.api import BBoxDep, SessionDep, respond
 from blindspot.api.cache import cached_route
 from blindspot.api.responses import ORJSONResponse
 from blindspot.config import get_settings
+from blindspot.models.risk import latest_backtest, latest_run
 from blindspot.provenance import latest_refs, ref_for_fetch, utcnow
 
 router = APIRouter(prefix="/api/risk", tags=["risk"])
@@ -69,7 +71,9 @@ _FIELDS_SQL = """
 
 
 @router.get("")
-@cached_route(ttl=60)
+# Scores change only when the risk job runs (every 3 h), and a 500-field answer pulls ~0.55 MB of rows
+# from the hosted database (5,000 fields: 3.3 MB): keep each answer for 10 minutes per instance.
+@cached_route(ttl=600)
 def risk(
     session: SessionDep,
     bbox: BBoxDep,
@@ -81,29 +85,34 @@ def risk(
     sources = latest_refs(session, SOURCE_KEYS)
     exists = session.execute(text("SELECT to_regclass('public.harvest_cluster') IS NOT NULL")).scalar_one()
     if not exists:
-        return respond(_empty("harvest_cluster does not exist yet (the sentinel module creates it)"), sources)
+        return respond(_empty("harvest_cluster does not exist yet (the sentinel module creates it)", session), sources)
     params: dict[str, Any] = {"w": bbox[0], "s": bbox[1], "e": bbox[2], "n": bbox[3],
                               "district": district.strip() if district else None, "min_score": min_score}
     totals = session.execute(text(_FIELDS_SQL + """
         SELECT count(*), coalesce(sum(area_ha), 0), count(risk_score),
                coalesce(sum(area_ha) FILTER (WHERE risk_score IS NOT NULL), 0),
-               max(risk_factors ->> 'as_of')
+               max(risk_factors ->> 'as_of'), bool_or(risk_factors -> 'v' IS NOT NULL)
         FROM h
     """), params).one()
     if totals[0] == 0:
         any_rows = session.execute(text("SELECT EXISTS (SELECT 1 FROM harvest_cluster)")).scalar_one()
         reason = "no harvested-but-unburnt fields match these filters (bbox/district/min_score)" if any_rows \
             else "no harvested-but-unburnt fields have been mapped yet"
-        return respond(_empty(reason), sources, max_age=60)
+        return respond(_empty(reason, session), sources, max_age=60)
     rows = session.execute(text(_FIELDS_SQL + """
         SELECT id, ST_AsGeoJSON(geom, 6)::json, area_ha, harvested_after, harvested_before, last_seen_unburnt,
                risk_score, risk_factors, district_name, village_name, village_inferred,
                ST_X(centroid), ST_Y(centroid), mgrs_tile, state
         FROM h ORDER BY risk_score DESC NULLS LAST, area_ha DESC, id LIMIT :limit
     """), {**params, "limit": limit}).all()
+    # Rows the job stored compactly are re-hydrated with the newest run's shared values (see
+    # analytics/risk.py); rows scored before risk_run existed carry their full factors.
+    run = latest_run(session) if totals[5] else None
+    shared = run["factors"] if run else None
+    as_of = max(filter(None, [totals[4], shared and shared.get("as_of")]), default=None)
     now = utcnow()
-    features = [_feature(r, now) for r in rows]
-    sources = _cite_scoring_fetches(session, rows, sources)
+    features = [_feature(r, now, shared) for r in rows]
+    sources = _cite_scoring_fetches(session, [f["properties"]["risk_factors"] for f in features], sources)
     ranking = session.execute(text(_FIELDS_SQL + """
         SELECT village_name, district_name, count(*), sum(area_ha),
                sum(risk_score * area_ha) / nullif(sum(area_ha), 0), max(risk_score),
@@ -118,7 +127,7 @@ def risk(
         SELECT count(*), coalesce(sum(area_ha), 0) FROM h WHERE village_name IS NULL
     """), params).one()
     payload = {
-        "as_of": _parse_time(totals[4]),
+        "as_of": _parse_time(as_of),
         "totals": {"clusters": totals[0], "area_ha": round(float(totals[1]), 2), "scored": totals[2],
                    "scored_area_ha": round(float(totals[3]), 2)},
         "features": {"type": "FeatureCollection", "features": features},
@@ -133,14 +142,14 @@ def risk(
                     "why": "no village or town within ~5 km in the place table (or places not loaded yet)"},
         "ranking_order": "risk_weighted_ha = sum over a village's fields of risk_score/100 x area_ha",
         "method": METHOD,
-        "backtest": _backtest_summary(),
+        "backtest": _backtest_summary(session),
         "reason": None if totals[2] else "fields are mapped but not scored yet (the risk job has not run)",
     }
     return respond(payload, sources, max_age=60)
 
 
-def _feature(r: Any, now: datetime) -> dict[str, Any]:
-    factors = r[7] or None
+def _feature(r: Any, now: datetime, shared: dict[str, Any] | None) -> dict[str, Any]:
+    factors = model.expand_factors(r[7], shared, r[3], r[4])
     days = None
     if factors:
         days = (factors.get("timing") or {}).get("days_since_harvest")
@@ -159,10 +168,10 @@ def _feature(r: Any, now: datetime) -> dict[str, Any]:
     }
 
 
-def _cite_scoring_fetches(session: Any, rows: list[Any], sources: list[Any]) -> list[Any]:
+def _cite_scoring_fetches(session: Any, factors_list: list[Any], sources: list[Any]) -> list[Any]:
     """Add the exact upstream calls the scores used (the rain forecast and the FIRMS archive
     pages, recorded by the risk job in risk_factors.fetch_ids) to the response's sources."""
-    factors = next((r[7] for r in rows if r[7]), None) or {}
+    factors = next((f for f in factors_list if f), None) or {}
     ids = [i for group in (factors.get("fetch_ids") or {}).values() for i in (group or [])]
     seen = {s.fetch_id for s in sources}
     for fid in dict.fromkeys(ids):
@@ -174,18 +183,21 @@ def _cite_scoring_fetches(session: Any, rows: list[Any], sources: list[Any]) -> 
     return sources
 
 
-def _empty(reason: str) -> dict[str, Any]:
+def _empty(reason: str, session: Any) -> dict[str, Any]:
     return {"as_of": None, "totals": {"clusters": 0, "area_ha": 0.0, "scored": 0, "scored_area_ha": 0.0},
             "features": {"type": "FeatureCollection", "features": []}, "ranking": [],
-            "method": METHOD, "backtest": _backtest_summary(), "reason": reason}
+            "method": METHOD, "backtest": _backtest_summary(session), "reason": reason}
 
 
-def _backtest_summary() -> dict[str, Any] | None:
-    """The headline of the last backtest the `risk` job wrote (a small JSON file), or None."""
-    try:
-        report = orjson.loads(get_settings().cache_path(*model.BACKTEST_FILE).read_bytes())
-    except (OSError, ValueError):
-        return None
+def _backtest_summary(session: Any) -> dict[str, Any] | None:
+    """The headline of the last backtest the `risk` job wrote (on its risk_run row; before that
+    table existed, a small JSON file), or None."""
+    report = latest_backtest(session)
+    if report is None:
+        try:
+            report = orjson.loads(get_settings().cache_path(*model.BACKTEST_FILE).read_bytes())
+        except (OSError, ValueError):
+            return None
     return {"computed_at": report.get("computed_at"), "headline": report.get("headline"),
             "all_pairs": report.get("all_pairs"), "timing_tested": report.get("timing_tested"),
             "timing_note": report.get("timing_note"), "reason": report.get("reason"),

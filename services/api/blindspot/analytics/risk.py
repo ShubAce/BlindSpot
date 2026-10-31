@@ -48,6 +48,8 @@ from datetime import datetime
 from statistics import median
 from typing import Any
 
+import orjson
+
 MODEL_VERSION = "risk-v2"
 # Where the `risk` job leaves its backtest report, under settings.cache_dir (GET /api/risk reads it).
 BACKTEST_FILE = ("risk", "backtest.json")
@@ -216,6 +218,110 @@ def score_fields(fields: Sequence[FieldFeatures], as_of: datetime, weights: Weig
 
 def _r(value: float | None, digits: int = 3) -> float | None:
     return None if value is None else round(float(value), digits)
+
+
+# --- storage: what one run shares is stored once, each field keeps only its own numbers -------------
+#
+# The factors above repeat the same run-level values on every field (model, weights, the season,
+# today's typical counts, the upstream fetch ids...): about 1.3 kB per field, 220 MB for 172k fields.
+# So the `risk` job stores those once per run (table risk_run, column `factors`) and each field's
+# harvest_cluster.risk_factors holds {"run": <risk_run.id>, "v": "[the numbers below, in order]"}.
+# `v` is the JSON array as text in a jsonb string: jsonb keeps a string at a byte per character
+# (~70 bytes here) but spends ~12 bytes on every number of an array (~200 bytes); on 172k fields that
+# is 19 MB. expand_factors() puts the two parts back together into exactly the dict score_fields()
+# made. Timing is not stored at all: it follows from the field's harvest dates and the run's as_of.
+
+ROW_VALUES = (
+    "score",
+    "points.timing", "points.neighbourhood", "points.history",  # null: that factor was left out
+    "neighbourhood.value", "neighbourhood.fires_7d", "neighbourhood.candidate_unseen_burns_7d",
+    "neighbourhood.burned_ha_7d",
+    "history.value", "history.fires_last_season",
+    "dryness.value", "dryness.rain_next_72h_mm", "dryness.rain_past_24h_mm",
+)
+POINT_KEYS = ("timing", "neighbourhood", "history")
+# Derived on read (from ROW_VALUES, the harvest dates and the run): left out of both stored parts.
+DERIVED = ("timing.value", "timing.days_since_harvest", "timing.days_range", "history.missing", "dryness.missing")
+
+
+def is_compact(factors: Any) -> bool:
+    """True for the stored {"run", "v"} form, False for a full factors dict (rows scored before
+    risk_run existed, which stay readable until the job rewrites them)."""
+    return isinstance(factors, dict) and "v" in factors and "run" in factors
+
+
+def _get(d: dict[str, Any], path: str) -> Any:
+    head, _, tail = path.partition(".")
+    return d.get(head) if not tail else (d.get(head) or {}).get(tail)
+
+
+def run_constants(factors: dict[str, Any]) -> dict[str, Any]:
+    """The part of one field's factors that every field of the same run shares (stored once)."""
+    per_row = {*ROW_VALUES, *DERIVED}
+    out: dict[str, Any] = {}
+    for key, value in factors.items():
+        if key in ("score", "points"):
+            continue
+        if isinstance(value, dict) and key in ("timing", "neighbourhood", "history", "dryness"):
+            out[key] = {k: v for k, v in value.items() if f"{key}.{k}" not in per_row}
+        else:
+            out[key] = value
+    return out
+
+
+def row_values(factors: dict[str, Any]) -> list[Any]:
+    """The field's own numbers, in ROW_VALUES order."""
+    return [_get(factors, path) for path in ROW_VALUES]
+
+
+def pack_values(values: Sequence[Any]) -> str:
+    """The numbers as JSON text, for the `v` string (shortest exact form of every float)."""
+    return orjson.dumps(list(values)).decode()
+
+
+def expand_factors(stored: Any, run: dict[str, Any] | None, harvested_after: datetime | None,
+                   harvested_before: datetime | None) -> dict[str, Any] | None:
+    """The full factors dict of one field, whichever way it was stored.
+
+    `run` is the risk_run's `factors` (run_constants() of the newest run). After every run, each
+    field's stored numbers are the ones that run computed (the job rewrites only the rows whose
+    numbers changed; the others already held them), so the newest run's shared values belong with
+    every compact row; `run` inside the row only says which run last changed it. Keys come out in
+    the order Postgres keeps jsonb keys, so a re-hydrated row serialises exactly like a full one.
+    Returns a full (legacy) dict unchanged, and None when there is nothing to expand."""
+    if not stored:
+        return None
+    if not is_compact(stored):
+        return stored
+    if not run:
+        return None
+    out: dict[str, Any] = {k: (dict(v) if isinstance(v, dict) else v) for k, v in run.items()}
+    packed = stored["v"]
+    values = dict(zip(ROW_VALUES, orjson.loads(packed) if isinstance(packed, str) else packed, strict=True))
+    out["score"] = values["score"]
+    out["points"] = {k: values[f"points.{k}"] for k in POINT_KEYS if values[f"points.{k}"] is not None}
+    for path in ROW_VALUES[4:]:
+        head, _, tail = path.partition(".")
+        out.setdefault(head, {})[tail] = values[path]
+    out["history"]["missing"] = values["history.fires_last_season"] is None
+    out["dryness"]["missing"] = values["dryness.value"] is None
+    days = rng = None
+    if harvested_after and harvested_before:
+        as_of = datetime.fromisoformat(str(run["as_of"]))
+        days, fewest, most = days_since_harvest(as_of, harvested_after, harvested_before)
+        rng = [_r(fewest, 1), _r(most, 1)]
+    timing = out.setdefault("timing", {})
+    timing.update(value=_r(timing_factor(days)), days_since_harvest=_r(days, 1), days_range=rng)
+    return _jsonb_order(out)
+
+
+def _jsonb_order(value: Any) -> Any:
+    """Dict keys sorted as jsonb stores them: shorter keys first, then byte order."""
+    if isinstance(value, dict):
+        return {k: _jsonb_order(value[k]) for k in sorted(value, key=lambda k: (len(k.encode()), k.encode()))}
+    if isinstance(value, list):
+        return [_jsonb_order(v) for v in value]
+    return value
 
 
 # --- backtest metrics ---------------------------------------------------------------------------------

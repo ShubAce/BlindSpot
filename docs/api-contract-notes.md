@@ -38,7 +38,8 @@ in-process cache) and "cold" is the first call. "Wire" is the gzip size.
 - **Caching.** Responses carry `Cache-Control: public, max-age=N`. The server also keeps hot
   responses in memory for 30-300 s (`blindspot/api/cache.py`), so polling faster than the TTL
   in the table below gains nothing. A cached body keeps the `generated_at` of the moment it was
-  built.
+  built. Successful GETs also carry `s-maxage` for the CDN in front of the serverless API (see
+  "Serverless deployment" at the end).
 - **Freshness.** `GET /api/sources` gives per-source status (`ok|stale|error|never`) with
   `last_success_at`. Use it for the "data as of" badges.
 
@@ -456,6 +457,8 @@ Params: `district`, `limit` (default 500), `min_score`, `bbox`.
   receptors: [{city, lat, lon, state, district, series: [{t, smoke_index}], peak: {t, value},
   arrival_t, by_state, unattributed_share}], run_id}`.
   - 2000 trails, 12.4 MB raw and 2.5 MB gzip: load it only when the smoke layer is shown.
+  - Optional (addition): `max_trails` (1..10000) and `stride` (1..100) make it smaller; then the
+    body also has `trails_selection`. See "Serverless deployment".
   - Colour or filter trails by `model` (`best_match` | `gfs_seamless`).
   - Fires in Pakistan are modelled and labelled "outside India".
 - **GET /api/smoke/back** (`city=Delhi`, `hours=72`) returns `{run_at, city, t0, hours,
@@ -465,6 +468,7 @@ Params: `district`, `limit` (default 500), `min_score`, `bbox`.
   left_grid_share, cone (GeoJSON Polygon), members: [{model, centerline, ...}],
   verdict_reason, wind_basis}, verdict_hint: "stubble_likely"|"mixed"|"stubble_unlikely",
   receptor, notes, run_id}`.
+  - Takes the same optional `max_trails` and `stride` as `/forward` (addition).
   - Draw `summary.cone` and both `members[].centerline`. Show `fire_exposure_range` as the
     uncertainty.
   - An unknown city returns 404 with the list of valid cities.
@@ -491,11 +495,13 @@ Params: `district`, `limit` (default 500), `min_score`, `bbox`.
     10 Oct, frames on 13-28 Oct.
 - **GET /api/imagery/render** (`collection`, `item`, `bbox`, `kind=truecolor|swir|nbr`, `w`,
   `h`, `format`) returns image/jpeg (or png for nbr).
-  - Cached on disk and immutable.
+  - Cached on disk and immutable. The featured frames and the case-file chips are also kept in
+    the database, so every serverless instance serves them at once (see "Serverless
+    deployment").
   - Errors are JSON: 400 for a bbox outside the AOI, 422 for a bad collection or size, 404 for a
     missing item.
-  - On a serverless deployment without rasterio/pillow, it returns 503 with `missing_module`
-    unless the picture is already on disk.
+  - On a deployment without rasterio/pillow, it returns 503 with `missing_module` unless the
+    picture is already stored. The Vercel build now ships both.
 - **GET /api/imagery/scenes** (`lon`, `lat`, required; `days=30`, `limit=10`) returns
   `{scenes: [{date, datetime, item_id, collection, mgrs_tile, platform, tile_cloud_pct,
   nodata_pct, status, note, usable, tiles: {truecolor, swir, nbr}, tilejson: {...}}]}`.
@@ -583,11 +589,17 @@ done         {"type":"done","run_id":"97c49cde-...","duration_ms":8228,"ok":true
   model, run_id, title, summary, sections: [{heading, body}], citations: [{marker, source}],
   verification: {passed, checked, verified, unverified, uncited, bad_markers,
   removed_sentences, script_ok, foreign_script_words, first_pass_unverified}, data_as_of,
-  available_langs}`.
+  available_langs, available, reason}`.
   - The date is the IST day. Before 07:30 IST it is the previous day's bulletin.
-  - **Hide or warn on a language with `verification.script_ok: false`.** On 2026-10-31 the
-    Punjabi bulletin is flagged: the model mixed in Bengali and Cyrillic letters. The hourly
-    retries (07:30-12:30 IST) try again.
+  - `available` and `reason` are additions. `available` is false when the text failed the
+    script check (`verification.script_ok: false`). Then `reason` says why, for example "The
+    Punjabi bulletin is unavailable: the translation mixes letters of another script into the
+    text (...)". Otherwise `reason` is null. The text is still returned, for audit only.
+  - **Hide or warn on a language with `available: false`.** The Punjabi translation is now
+    asked for in Gurmukhi only (U+0A00-U+0A7F, digits 0-9), at low temperature. If it fails the
+    script check, it is asked once more on the other model. A later run of the day translates
+    only the missing or flagged language, from the stored English. The 2026-10-31 Punjabi
+    bulletin passed after a re-run at 05:37 IST (gemini-3.6-flash, 30/30 numbers verified).
   - Hindi uses Devanagari digits; Punjabi uses 0-9.
 
 ## Core
@@ -595,3 +607,119 @@ done         {"type":"done","run_id":"97c49cde-...","duration_ms":8228,"ok":true
 - **GET /api/health** returns `{ok, time, db, version, scheduler}`.
 - **GET /api/sources** returns `{sources: [{key, label, kind, status, last_success_at,
   last_attempt_at, last_error, records_last, latency_ms_last, cadence_minutes, docs_url}]}`.
+
+---
+
+## Serverless deployment (Vercel function in front of Neon)
+
+The same code runs as one Vercel Python function (`infra/deploy_vercel_api.py`) that reads Neon
+Postgres. The jobs run elsewhere (GitHub Actions) and write to Neon. Response shapes are the ones
+above. The only differences are the additions listed here.
+
+### Caching headers
+
+A CDN sits in front of the function. It keeps a response only when `Cache-Control` has
+`s-maxage`. Every successful (200) GET gets:
+
+`public, max-age=<route's own max-age, at most the CDN lifetime>, s-maxage=<ttl>, stale-while-revalidate=<swr>`
+
+| Paths | `s-maxage` | `stale-while-revalidate` |
+| --- | --- | --- |
+| `/api/fires*`, `/api/stats/headline`, `/api/sources`, `/api/scars*`, `/api/risk`, `/api/air/latest`, `/api/air/series`, `/api/met/*`, `/api/smoke/forward`, `/api/smoke/back`, `/api/smoke/receptors`, `/api/geostationary/*`, `/api/orbits/passes`, `/api/agent/examples`, `/api/agent/runs/{id}` (finished runs only) | 60 | 600 |
+| `/api/orbits/tle`, `/api/orbits/clock`, `/api/orbits/validation`, `/api/air/stubble-share`, `/api/smoke/validation`, `/api/bulletin/latest`, `/api/imagery/featured`, `/api/imagery/scenes` | 300 | 3600 |
+| `/api/geo/*`, `/api/imagery/tilejson/*` | 3600 | 86400 |
+| `/api/imagery/render`, `/api/imagery/tiles/*` (pictures) | `public, max-age=31536000, s-maxage=31536000, immutable` | |
+
+- **Never cached by the CDN:**
+  - errors (any status other than 200);
+  - `/api/health`;
+  - `POST /api/agent/ask` (the SSE stream);
+  - `/api/agent/status`;
+  - an agent run that is still in progress. `GET /api/agent/runs/{id}` with `finished_at: null`
+    is sent with `no-store`.
+- Every CDN-cached answer has `Vary: Origin`, because the CORS headers differ per origin.
+- Lifetimes add up. A response can be up to `s-maxage` old at the CDN, then up to `max-age` in
+  the browser. With `stale-while-revalidate`, the first request after expiry may get the old
+  copy while the CDN refreshes it. `generated_at` always says when the body was built.
+- The in-process cache (30-300 s per warm instance) is unchanged.
+
+### CORS
+
+- Allowed origins: `http://localhost:3000`, any origin in `CORS_ORIGINS`, and any origin that
+  fully matches `CORS_ORIGIN_REGEX`.
+- The deploy script sets `CORS_ORIGIN_REGEX` to `^https://blindspot[a-z0-9-]*\.vercel\.app$`.
+  This covers `https://blindspot.vercel.app` and its preview URLs.
+
+### New optional parameters and fields
+
+| Endpoint | Parameter | Effect |
+| --- | --- | --- |
+| GET /api/smoke/forward, GET /api/smoke/back | `max_trails` (int, 1..10000) | Keeps at most this many trails. It takes the heaviest trail of each ensemble member in turn (ties broken by id), so both models stay represented and the same run always gives the same trails. They come back in their stored order. |
+| same | `stride` (int, 1..100, default 1) | Keeps points 0, n, 2n, ... of each trail's `path` and `times`, plus the last point, so a trail still ends where the model put it. |
+
+- With either parameter, the body gains `trails_selection: {max_trails, stride, trails_total,
+  trails_returned, rule}`. Without them, the body is exactly as before.
+- `GET /api/bulletin/latest` gains `available` and `reason` (see "Agent and bulletin").
+
+### Limits
+
+Vercel caps a function response at 4.5 MB. Every default response was measured on 2026-10-31,
+05:30 IST, on live data, with the new code:
+
+| Endpoint (default parameters) | raw bytes | gzip bytes |
+| --- | --- | --- |
+| GET /api/smoke/forward | 12,444,189 | 2,480,371 |
+| GET /api/scars (no filters: 5000 features) | 4,546,077 | 616,368 |
+| GET /api/geo/boundaries | 1,370,856 | 380,987 |
+| GET /api/smoke/back | 1,364,849 | 265,300 |
+| GET /api/risk | 956,324 | 79,551 |
+| GET /api/smoke/validation | 430,653 | 60,588 |
+| GET /api/imagery/render (featured frame, JPEG) | 283,975 | (jpeg) |
+| GET /api/geo/tiles/6/45/26.pbf | 142,441 | 81,699 |
+| every other endpoint | < 130,000 | < 14,000 |
+
+- Every default response is under 4 MB after gzip. The largest is 2.5 MB.
+- The API gzips every body over 1 KB when the request sends `Accept-Encoding: gzip`. Browsers
+  always do.
+- Two default bodies are larger than 4.5 MB uncompressed: `/api/smoke/forward` and `/api/scars`
+  with no filters. A client that does not accept gzip must ask for less:
+  - `/api/smoke/forward?max_trails=500&stride=2` is 1.6 MB raw (335 KB gzip).
+  - `/api/smoke/back?max_trails=100&stride=2` is 327 KB raw.
+  - `/api/scars?limit=500&min_confidence=0.5` is 558 KB raw.
+- A request runs for at most 60 s. A picture that is not stored and has to be rendered live
+  takes 1-20 s.
+
+### Pictures on serverless
+
+- Each function instance starts with an empty `/tmp`. Pictures are therefore looked up in three
+  places, in order: the instance's disk, the `rendered_asset` table, then a live render.
+- The `featured` job (every 6 h, after `sentinel`) stores three things in `rendered_asset`:
+  - the featured frames (8 JPEGs);
+  - the before/after chips of the 24 largest candidate unseen burns (144 pictures);
+  - the `/api/imagery/featured` payload itself.
+- The job deletes stored pictures that nothing references and nobody used for 7 days.
+  Live: 153 assets, 7.8 MB.
+- A picture served from the database has the same bytes and the same headers as a fresh render:
+  `ETag`, `X-Imagery-Source`, `X-Imagery-Collection`, `X-Imagery-Item`, `X-Fetch-Id`,
+  `X-Rendered-At`, `X-Imagery-Note`. 14/14 frames and chips served by an instance with an empty
+  disk matched the original disk copies byte for byte, in 7-10 ms each.
+- A live render through `/api/imagery/render` is written to the database only if it is a frame of
+  the current featured window or a chip of a burn scar's case file. Other crops and map tiles
+  stay on the instance's disk.
+- Picture URLs (`/api/imagery/featured` frames, case-file chips, tilejson) always start with the
+  serving deployment's own address (`PUBLIC_BASE_URL`), even when the job that stored the featured
+  manifest ran on another host.
+- The bundle includes pillow and rasterio, imported only when used. A picture whose Planetary
+  Computer pixels fail the plausibility gate can still be drawn from Earth Search.
+
+### Cold start
+
+Measured on the dev machine, Python 3.12:
+
+- Importing `blindspot.api.main` takes 1.5-1.6 s. It was 1.59 s (`-X importtime`) / 1.70 s before
+  this change. The biggest parts are fastapi (0.37 s), google-genai types (0.23 s), sqlalchemy +
+  geoalchemy2 (~0.35 s) and shapely + numpy (0.11 s).
+- With `INIT_DB_ON_STARTUP=false`, it took 2.2 s from process start until `/api/health`
+  answered.
+- First requests after that: `/api/stats/headline` 590 ms (cold database connection), then
+  `/api/fires` 48 ms.

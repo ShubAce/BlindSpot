@@ -1,0 +1,865 @@
+{
+ "note": "harvest_cluster rows as the risk job (risk-v2) stored them on the dev database, 2026-10-30 23:13 UTC run: real scores, recorded for the compaction round-trip test",
+ "rows": [
+  {
+   "id": 31870,
+   "harvested_after": "2026-10-03T05:50:38.158000Z",
+   "harvested_before": "2026-10-13T05:50:38.023000Z",
+   "risk_score": 33.38,
+   "risk_factors": {
+    "as_of": "2026-10-30T23:13:02.192298Z",
+    "model": "risk-v2",
+    "score": 33.38,
+    "points": {
+     "timing": 14.55,
+     "history": 18.82,
+     "neighbourhood": 0.0
+    },
+    "timing": {
+     "value": 0.364,
+     "days_range": [
+      17.7,
+      27.7
+     ],
+     "window_days": [
+      10.0,
+      30.0
+     ],
+     "days_since_harvest": 22.7
+    },
+    "dryness": {
+     "value": 1.0,
+     "reason": null,
+     "source": "Open-Meteo best_match",
+     "missing": false,
+     "rain_next_72h_mm": 0.0,
+     "rain_past_24h_mm": 0.1
+    },
+    "history": {
+     "value": 0.941,
+     "reason": null,
+     "season": "2025-09-15/2025-11-30",
+     "source": "NASA FIRMS VIIRS_SNPP_SP",
+     "missing": false,
+     "radius_km": 5.0,
+     "typical_fires": 6.0,
+     "clipped_to_india": true,
+     "fires_last_season": 17
+    },
+    "weights": {
+     "timing": 0.4,
+     "history": 0.2,
+     "neighbourhood": 0.4
+    },
+    "fetch_ids": {
+     "rain": [
+      4516
+     ],
+     "history": [
+      2910,
+      2911,
+      2912,
+      2913,
+      2914,
+      2915,
+      2916,
+      2917,
+      2918,
+      2919,
+      2920,
+      2921,
+      2922,
+      2923,
+      2924,
+      2925
+     ]
+    },
+    "neighbourhood": {
+     "days": 7,
+     "value": 0.0,
+     "combined": "noisy-or of events and burnt hectares",
+     "fires_7d": 0,
+     "radius_km": 5.0,
+     "burned_ha_7d": 0.0,
+     "typical_events": 30.0,
+     "typical_burned_ha": 81.2,
+     "candidate_unseen_burns_7d": 0
+    }
+   }
+  },
+  {
+   "id": 32127,
+   "harvested_after": "2026-10-13T05:50:38.023000Z",
+   "harvested_before": "2026-10-18T05:50:35.867000Z",
+   "risk_score": 48.38,
+   "risk_factors": {
+    "as_of": "2026-10-30T23:13:02.192298Z",
+    "model": "risk-v2",
+    "score": 48.38,
+    "points": {
+     "timing": 29.55,
+     "history": 18.82,
+     "neighbourhood": 0.0
+    },
+    "timing": {
+     "value": 0.739,
+     "days_range": [
+      12.7,
+      17.7
+     ],
+     "window_days": [
+      10.0,
+      30.0
+     ],
+     "days_since_harvest": 15.2
+    },
+    "dryness": {
+     "value": 1.0,
+     "reason": null,
+     "source": "Open-Meteo best_match",
+     "missing": false,
+     "rain_next_72h_mm": 0.0,
+     "rain_past_24h_mm": 0.1
+    },
+    "history": {
+     "value": 0.941,
+     "reason": null,
+     "season": "2025-09-15/2025-11-30",
+     "source": "NASA FIRMS VIIRS_SNPP_SP",
+     "missing": false,
+     "radius_km": 5.0,
+     "typical_fires": 6.0,
+     "clipped_to_india": true,
+     "fires_last_season": 17
+    },
+    "weights": {
+     "timing": 0.4,
+     "history": 0.2,
+     "neighbourhood": 0.4
+    },
+    "fetch_ids": {
+     "rain": [
+      4516
+     ],
+     "history": [
+      2910,
+      2911,
+      2912,
+      2913,
+      2914,
+      2915,
+      2916,
+      2917,
+      2918,
+      2919,
+      2920,
+      2921,
+      2922,
+      2923,
+      2924,
+      2925
+     ]
+    },
+    "neighbourhood": {
+     "days": 7,
+     "value": 0.0,
+     "combined": "noisy-or of events and burnt hectares",
+     "fires_7d": 0,
+     "radius_km": 5.0,
+     "burned_ha_7d": 0.0,
+     "typical_events": 30.0,
+     "typical_burned_ha": 81.2,
+     "candidate_unseen_burns_7d": 0
+    }
+   }
+  },
+  {
+   "id": 32259,
+   "harvested_after": "2026-10-18T05:50:35.867000Z",
+   "harvested_before": "2026-10-28T05:50:37.307000Z",
+   "risk_score": 55.11,
+   "risk_factors": {
+    "as_of": "2026-10-30T23:13:02.192298Z",
+    "model": "risk-v2",
+    "score": 55.11,
+    "points": {
+     "timing": 40.0,
+     "history": 11.31,
+     "neighbourhood": 3.81
+    },
+    "timing": {
+     "value": 1.0,
+     "days_range": [
+      2.7,
+      12.7
+     ],
+     "window_days": [
+      10.0,
+      30.0
+     ],
+     "days_since_harvest": 7.7
+    },
+    "dryness": {
+     "value": 1.0,
+     "reason": null,
+     "source": "Open-Meteo best_match",
+     "missing": false,
+     "rain_next_72h_mm": 0.0,
+     "rain_past_24h_mm": 0.1
+    },
+    "history": {
+     "value": 0.565,
+     "reason": null,
+     "season": "2025-09-15/2025-11-30",
+     "source": "NASA FIRMS VIIRS_SNPP_SP",
+     "missing": false,
+     "radius_km": 5.0,
+     "typical_fires": 6.0,
+     "clipped_to_india": true,
+     "fires_last_season": 5
+    },
+    "weights": {
+     "timing": 0.4,
+     "history": 0.2,
+     "neighbourhood": 0.4
+    },
+    "fetch_ids": {
+     "rain": [
+      4516
+     ],
+     "history": [
+      2910,
+      2911,
+      2912,
+      2913,
+      2914,
+      2915,
+      2916,
+      2917,
+      2918,
+      2919,
+      2920,
+      2921,
+      2922,
+      2923,
+      2924,
+      2925
+     ]
+    },
+    "neighbourhood": {
+     "days": 7,
+     "value": 0.095,
+     "combined": "noisy-or of events and burnt hectares",
+     "fires_7d": 3,
+     "radius_km": 5.0,
+     "burned_ha_7d": 0.0,
+     "typical_events": 30.0,
+     "typical_burned_ha": 81.2,
+     "candidate_unseen_burns_7d": 0
+    }
+   }
+  },
+  {
+   "id": 32257,
+   "harvested_after": "2026-10-18T05:50:35.867000Z",
+   "harvested_before": "2026-10-28T05:50:37.307000Z",
+   "risk_score": 59.38,
+   "risk_factors": {
+    "as_of": "2026-10-30T23:13:02.192298Z",
+    "model": "risk-v2",
+    "score": 59.38,
+    "points": {
+     "timing": 40.0,
+     "history": 16.8,
+     "neighbourhood": 2.58
+    },
+    "timing": {
+     "value": 1.0,
+     "days_range": [
+      2.7,
+      12.7
+     ],
+     "window_days": [
+      10.0,
+      30.0
+     ],
+     "days_since_harvest": 7.7
+    },
+    "dryness": {
+     "value": 1.0,
+     "reason": null,
+     "source": "Open-Meteo best_match",
+     "missing": false,
+     "rain_next_72h_mm": 0.0,
+     "rain_past_24h_mm": 0.1
+    },
+    "history": {
+     "value": 0.84,
+     "reason": null,
+     "season": "2025-09-15/2025-11-30",
+     "source": "NASA FIRMS VIIRS_SNPP_SP",
+     "missing": false,
+     "radius_km": 5.0,
+     "typical_fires": 6.0,
+     "clipped_to_india": true,
+     "fires_last_season": 11
+    },
+    "weights": {
+     "timing": 0.4,
+     "history": 0.2,
+     "neighbourhood": 0.4
+    },
+    "fetch_ids": {
+     "rain": [
+      4516
+     ],
+     "history": [
+      2910,
+      2911,
+      2912,
+      2913,
+      2914,
+      2915,
+      2916,
+      2917,
+      2918,
+      2919,
+      2920,
+      2921,
+      2922,
+      2923,
+      2924,
+      2925
+     ]
+    },
+    "neighbourhood": {
+     "days": 7,
+     "value": 0.064,
+     "combined": "noisy-or of events and burnt hectares",
+     "fires_7d": 2,
+     "radius_km": 5.0,
+     "burned_ha_7d": 0.0,
+     "typical_events": 30.0,
+     "typical_burned_ha": 81.2,
+     "candidate_unseen_burns_7d": 0
+    }
+   }
+  },
+  {
+   "id": 33819,
+   "harvested_after": "2026-10-18T05:50:35.867000Z",
+   "harvested_before": "2026-10-28T05:50:37.307000Z",
+   "risk_score": 63.83,
+   "risk_factors": {
+    "as_of": "2026-10-30T23:13:02.192298Z",
+    "model": "risk-v2",
+    "score": 63.83,
+    "points": {
+     "timing": 40.0,
+     "history": 13.77,
+     "neighbourhood": 10.06
+    },
+    "timing": {
+     "value": 1.0,
+     "days_range": [
+      2.7,
+      12.7
+     ],
+     "window_days": [
+      10.0,
+      30.0
+     ],
+     "days_since_harvest": 7.7
+    },
+    "dryness": {
+     "value": 1.0,
+     "reason": null,
+     "source": "Open-Meteo best_match",
+     "missing": false,
+     "rain_next_72h_mm": 0.0,
+     "rain_past_24h_mm": 0.1
+    },
+    "history": {
+     "value": 0.689,
+     "reason": null,
+     "season": "2025-09-15/2025-11-30",
+     "source": "NASA FIRMS VIIRS_SNPP_SP",
+     "missing": false,
+     "radius_km": 5.0,
+     "typical_fires": 6.0,
+     "clipped_to_india": true,
+     "fires_last_season": 7
+    },
+    "weights": {
+     "timing": 0.4,
+     "history": 0.2,
+     "neighbourhood": 0.4
+    },
+    "fetch_ids": {
+     "rain": [
+      4516
+     ],
+     "history": [
+      2910,
+      2911,
+      2912,
+      2913,
+      2914,
+      2915,
+      2916,
+      2917,
+      2918,
+      2919,
+      2920,
+      2921,
+      2922,
+      2923,
+      2924,
+      2925
+     ]
+    },
+    "neighbourhood": {
+     "days": 7,
+     "value": 0.252,
+     "combined": "noisy-or of events and burnt hectares",
+     "fires_7d": 3,
+     "radius_km": 5.0,
+     "burned_ha_7d": 7.28,
+     "typical_events": 30.0,
+     "typical_burned_ha": 81.2,
+     "candidate_unseen_burns_7d": 3
+    }
+   }
+  },
+  {
+   "id": 36083,
+   "harvested_after": "2026-10-18T05:50:35.867000Z",
+   "harvested_before": "2026-10-28T05:50:37.307000Z",
+   "risk_score": 78.31,
+   "risk_factors": {
+    "as_of": "2026-10-30T23:13:02.192298Z",
+    "model": "risk-v2",
+    "score": 78.31,
+    "points": {
+     "timing": 40.0,
+     "history": 15.54,
+     "neighbourhood": 22.78
+    },
+    "timing": {
+     "value": 1.0,
+     "days_range": [
+      2.7,
+      12.7
+     ],
+     "window_days": [
+      10.0,
+      30.0
+     ],
+     "days_since_harvest": 7.7
+    },
+    "dryness": {
+     "value": 1.0,
+     "reason": null,
+     "source": "Open-Meteo best_match",
+     "missing": false,
+     "rain_next_72h_mm": 0.0,
+     "rain_past_24h_mm": 0.1
+    },
+    "history": {
+     "value": 0.777,
+     "reason": null,
+     "season": "2025-09-15/2025-11-30",
+     "source": "NASA FIRMS VIIRS_SNPP_SP",
+     "missing": false,
+     "radius_km": 5.0,
+     "typical_fires": 6.0,
+     "clipped_to_india": true,
+     "fires_last_season": 9
+    },
+    "weights": {
+     "timing": 0.4,
+     "history": 0.2,
+     "neighbourhood": 0.4
+    },
+    "fetch_ids": {
+     "rain": [
+      4516
+     ],
+     "history": [
+      2910,
+      2911,
+      2912,
+      2913,
+      2914,
+      2915,
+      2916,
+      2917,
+      2918,
+      2919,
+      2920,
+      2921,
+      2922,
+      2923,
+      2924,
+      2925
+     ]
+    },
+    "neighbourhood": {
+     "days": 7,
+     "value": 0.569,
+     "combined": "noisy-or of events and burnt hectares",
+     "fires_7d": 5,
+     "radius_km": 5.0,
+     "burned_ha_7d": 22.4,
+     "typical_events": 30.0,
+     "typical_burned_ha": 81.2,
+     "candidate_unseen_burns_7d": 12
+    }
+   }
+  },
+  {
+   "id": 37880,
+   "harvested_after": "2026-10-18T05:50:35.867000Z",
+   "harvested_before": "2026-10-28T05:50:37.307000Z",
+   "risk_score": 80.21,
+   "risk_factors": {
+    "as_of": "2026-10-30T23:13:02.192298Z",
+    "model": "risk-v2",
+    "score": 80.21,
+    "points": {
+     "timing": 40.0,
+     "history": 14.73,
+     "neighbourhood": 25.49
+    },
+    "timing": {
+     "value": 1.0,
+     "days_range": [
+      2.7,
+      12.7
+     ],
+     "window_days": [
+      10.0,
+      30.0
+     ],
+     "days_since_harvest": 7.7
+    },
+    "dryness": {
+     "value": 1.0,
+     "reason": null,
+     "source": "Open-Meteo best_match",
+     "missing": false,
+     "rain_next_72h_mm": 0.0,
+     "rain_past_24h_mm": 0.0
+    },
+    "history": {
+     "value": 0.736,
+     "reason": null,
+     "season": "2025-09-15/2025-11-30",
+     "source": "NASA FIRMS VIIRS_SNPP_SP",
+     "missing": false,
+     "radius_km": 5.0,
+     "typical_fires": 6.0,
+     "clipped_to_india": true,
+     "fires_last_season": 8
+    },
+    "weights": {
+     "timing": 0.4,
+     "history": 0.2,
+     "neighbourhood": 0.4
+    },
+    "fetch_ids": {
+     "rain": [
+      4516
+     ],
+     "history": [
+      2910,
+      2911,
+      2912,
+      2913,
+      2914,
+      2915,
+      2916,
+      2917,
+      2918,
+      2919,
+      2920,
+      2921,
+      2922,
+      2923,
+      2924,
+      2925
+     ]
+    },
+    "neighbourhood": {
+     "days": 7,
+     "value": 0.637,
+     "combined": "noisy-or of events and burnt hectares",
+     "fires_7d": 1,
+     "radius_km": 5.0,
+     "burned_ha_7d": 30.88,
+     "typical_events": 30.0,
+     "typical_burned_ha": 81.2,
+     "candidate_unseen_burns_7d": 18
+    }
+   }
+  },
+  {
+   "id": 38311,
+   "harvested_after": "2026-10-18T05:50:35.867000Z",
+   "harvested_before": "2026-10-28T05:50:37.307000Z",
+   "risk_score": 90.39,
+   "risk_factors": {
+    "as_of": "2026-10-30T23:13:02.192298Z",
+    "model": "risk-v2",
+    "score": 90.39,
+    "points": {
+     "timing": 40.0,
+     "history": 13.77,
+     "neighbourhood": 36.62
+    },
+    "timing": {
+     "value": 1.0,
+     "days_range": [
+      2.7,
+      12.7
+     ],
+     "window_days": [
+      10.0,
+      30.0
+     ],
+     "days_since_harvest": 7.7
+    },
+    "dryness": {
+     "value": 1.0,
+     "reason": null,
+     "source": "Open-Meteo best_match",
+     "missing": false,
+     "rain_next_72h_mm": 0.0,
+     "rain_past_24h_mm": 0.3
+    },
+    "history": {
+     "value": 0.689,
+     "reason": null,
+     "season": "2025-09-15/2025-11-30",
+     "source": "NASA FIRMS VIIRS_SNPP_SP",
+     "missing": false,
+     "radius_km": 5.0,
+     "typical_fires": 6.0,
+     "clipped_to_india": true,
+     "fires_last_season": 7
+    },
+    "weights": {
+     "timing": 0.4,
+     "history": 0.2,
+     "neighbourhood": 0.4
+    },
+    "fetch_ids": {
+     "rain": [
+      4516
+     ],
+     "history": [
+      2910,
+      2911,
+      2912,
+      2913,
+      2914,
+      2915,
+      2916,
+      2917,
+      2918,
+      2919,
+      2920,
+      2921,
+      2922,
+      2923,
+      2924,
+      2925
+     ]
+    },
+    "neighbourhood": {
+     "days": 7,
+     "value": 0.916,
+     "combined": "noisy-or of events and burnt hectares",
+     "fires_7d": 0,
+     "radius_km": 5.0,
+     "burned_ha_7d": 68.0,
+     "typical_events": 30.0,
+     "typical_burned_ha": 81.2,
+     "candidate_unseen_burns_7d": 49
+    }
+   }
+  },
+  {
+   "id": 31870,
+   "harvested_after": "2026-10-03T05:50:38.158000Z",
+   "harvested_before": "2026-10-13T05:50:38.023000Z",
+   "risk_score": 33.38,
+   "risk_factors": {
+    "as_of": "2026-10-30T23:13:02.192298Z",
+    "model": "risk-v2",
+    "score": 33.38,
+    "points": {
+     "timing": 14.55,
+     "history": 18.82,
+     "neighbourhood": 0.0
+    },
+    "timing": {
+     "value": 0.364,
+     "days_range": [
+      17.7,
+      27.7
+     ],
+     "window_days": [
+      10.0,
+      30.0
+     ],
+     "days_since_harvest": 22.7
+    },
+    "dryness": {
+     "value": 1.0,
+     "reason": null,
+     "source": "Open-Meteo best_match",
+     "missing": false,
+     "rain_next_72h_mm": 0.0,
+     "rain_past_24h_mm": 0.1
+    },
+    "history": {
+     "value": 0.941,
+     "reason": null,
+     "season": "2025-09-15/2025-11-30",
+     "source": "NASA FIRMS VIIRS_SNPP_SP",
+     "missing": false,
+     "radius_km": 5.0,
+     "typical_fires": 6.0,
+     "clipped_to_india": true,
+     "fires_last_season": 17
+    },
+    "weights": {
+     "timing": 0.4,
+     "history": 0.2,
+     "neighbourhood": 0.4
+    },
+    "fetch_ids": {
+     "rain": [
+      4516
+     ],
+     "history": [
+      2910,
+      2911,
+      2912,
+      2913,
+      2914,
+      2915,
+      2916,
+      2917,
+      2918,
+      2919,
+      2920,
+      2921,
+      2922,
+      2923,
+      2924,
+      2925
+     ]
+    },
+    "neighbourhood": {
+     "days": 7,
+     "value": 0.0,
+     "combined": "noisy-or of events and burnt hectares",
+     "fires_7d": 0,
+     "radius_km": 5.0,
+     "burned_ha_7d": 0.0,
+     "typical_events": 30.0,
+     "typical_burned_ha": 81.2,
+     "candidate_unseen_burns_7d": 0
+    }
+   }
+  },
+  {
+   "id": 31871,
+   "harvested_after": "2026-10-03T05:50:38.158000Z",
+   "harvested_before": "2026-10-13T05:50:38.023000Z",
+   "risk_score": 30.42,
+   "risk_factors": {
+    "as_of": "2026-10-30T23:13:02.192298Z",
+    "model": "risk-v2",
+    "score": 30.42,
+    "points": {
+     "timing": 14.55,
+     "history": 9.73,
+     "neighbourhood": 6.14
+    },
+    "timing": {
+     "value": 0.364,
+     "days_range": [
+      17.7,
+      27.7
+     ],
+     "window_days": [
+      10.0,
+      30.0
+     ],
+     "days_since_harvest": 22.7
+    },
+    "dryness": {
+     "value": 1.0,
+     "reason": null,
+     "source": "Open-Meteo best_match",
+     "missing": false,
+     "rain_next_72h_mm": 0.0,
+     "rain_past_24h_mm": 0.3
+    },
+    "history": {
+     "value": 0.487,
+     "reason": null,
+     "season": "2025-09-15/2025-11-30",
+     "source": "NASA FIRMS VIIRS_SNPP_SP",
+     "missing": false,
+     "radius_km": 5.0,
+     "typical_fires": 6.0,
+     "clipped_to_india": true,
+     "fires_last_season": 4
+    },
+    "weights": {
+     "timing": 0.4,
+     "history": 0.2,
+     "neighbourhood": 0.4
+    },
+    "fetch_ids": {
+     "rain": [
+      4516
+     ],
+     "history": [
+      2910,
+      2911,
+      2912,
+      2913,
+      2914,
+      2915,
+      2916,
+      2917,
+      2918,
+      2919,
+      2920,
+      2921,
+      2922,
+      2923,
+      2924,
+      2925
+     ]
+    },
+    "neighbourhood": {
+     "days": 7,
+     "value": 0.154,
+     "combined": "noisy-or of events and burnt hectares",
+     "fires_7d": 5,
+     "radius_km": 5.0,
+     "burned_ha_7d": 0.0,
+     "typical_events": 30.0,
+     "typical_burned_ha": 81.2,
+     "candidate_unseen_burns_7d": 0
+    }
+   }
+  }
+ ]
+}

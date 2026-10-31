@@ -1,5 +1,7 @@
 """GET /api/bulletin/latest?lang=en|hi|pa: the newest daily bulletin in one language.
 
+`available` is false (with a `reason`) when that language's text failed the script check.
+
 The bulletin job (blindspot/jobs/bulletin.py) writes it every morning from tool outputs; this
 route only reads the stored rows, so it is fast and works while Gemini is down.
 """
@@ -39,6 +41,20 @@ def _sources(row: Bulletin, session: SessionDep) -> list[SourceRef]:
     return refs
 
 
+def _availability(lang: str, content: dict[str, Any]) -> tuple[bool, str | None]:
+    """(available, why not). A translation whose text mixes in letters of another script (Gemini
+    has put Sinhala, Bengali and Cyrillic letters inside Punjabi words) is kept for audit but is
+    not a publishable bulletin: the client should not show it as one."""
+    verification = content.get("verification") or {}
+    if verification.get("script_ok") is not False:
+        return True, None
+    words = ", ".join(verification.get("foreign_script_words") or [])
+    name = LANGUAGES[lang].split(",")[0]
+    return False, (f"The {name} bulletin is unavailable: the translation mixes letters of another "
+                   f"script into the text ({words[:120] or 'see verification'}). It is kept only "
+                   "for audit; the bulletin job tries again hourly until 12:30 IST.")
+
+
 @router.get("/latest")
 @cached_route(ttl=60)
 def latest(session: SessionDep, lang: Literal["en", "hi", "pa"] = "en"):  # noqa: ANN201
@@ -59,8 +75,11 @@ def latest(session: SessionDep, lang: Literal["en", "hi", "pa"] = "en"):  # noqa
         select(Bulletin.lang).where(Bulletin.date == row.date).order_by(Bulletin.lang)
     ).scalars().all()
     content = row.content or {}
+    available, reason = _availability(row.lang, content)
     return respond(
         {
+            "available": available,
+            "reason": reason,
             "date": row.date.isoformat(),
             "lang": row.lang,
             "generated_at": row.generated_at,

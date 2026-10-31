@@ -8,15 +8,19 @@ GET /api/imagery/featured                        the 6.4 x 4 km window of Indian
 
 Pictures come from blindspot.sources.pcdata: the Planetary Computer tiler, or our own renderer when
 PC's pixels fail the plausibility gate. Every picture is checked before it is served and kept on disk
-forever, so the routes send immutable cache headers. A failure is always a JSON error, never a
+forever, so the routes send immutable cache headers. The featured frames, the case-file chips and the
+featured manifest are also kept in the database (rendered_asset, blindspot.models.assets), because a
+serverless instance starts with an empty disk: the landing page must never wait on a live render. A failure is always a JSON error, never a
 placeholder image. Requests are bounded (area, pixels, collections, the area we watch) so the proxy
 cannot be used to fetch arbitrary imagery at our expense.
 """
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import math
+import os
 import threading
 from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
@@ -36,6 +40,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from blindspot.api import SessionDep, respond
+from blindspot.api.cache import IMMUTABLE  # one year, for browsers and the CDN alike
 from blindspot.api.responses import ORJSONResponse
 from blindspot.config import get_settings
 from blindspot.db import session_scope
@@ -48,7 +53,6 @@ log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/imagery", tags=["imagery"])
 
-IMMUTABLE = "public, max-age=31536000, immutable"
 MAX_SIDE = 2048
 MAX_PIXELS = 2048 * 1024  # 2.1 MP: enough for the 1600 x 1000 landing frames
 MAX_BBOX_KM2 = 900.0  # a 30 x 30 km crop; scar chips are ~1 km, the featured window 25.6 km2
@@ -157,7 +161,41 @@ def render_image(
         raise HTTPException(400, f"{w}x{h} is {w * h} pixels; the limit is {MAX_PIXELS}")
     req = pcdata.RenderRequest(collection, item, kind, w, h, fmt or pcdata.default_format(kind), bounds=b)
     out = _render_or_raise(req, CROP_MIN_VALID)
+    if not out.cached and (role := _persist_role(req)) is not None:
+        pcdata.store(req.cache_key(), out, role)  # the next serverless instance reads it back
     return _image_response(out, req.cache_key())
+
+
+def _persist_role(req: pcdata.RenderRequest) -> str | None:
+    """'frame' or 'chip' when a picture just rendered for GET /render belongs in rendered_asset: a
+    frame of the current featured window, or a chip of a burn scar's case file. Any other crop
+    someone asks for stays on this instance's disk only."""
+    try:
+        if (req.width, req.height) == (FEATURED_W, FEATURED_H):
+            frames = {r.cache_key() for r in _frame_requests(load_featured())}
+            return "frame" if req.cache_key() in frames else None
+        from blindspot.api.routers import (
+            scars,  # the case file's chip geometry is the scars module's
+        )
+
+        if req.width == req.height == scars.CHIP_PX and req.bounds is not None:
+            with session_scope() as session:
+                return "chip" if _is_case_chip(session, req, scars._chip_bbox) else None
+    except Exception as exc:  # never fail a picture that was rendered fine
+        log.warning("could not tell whether %s is a featured asset: %s", req.item, exc)
+    return None
+
+
+def _is_case_chip(session: Session, req: pcdata.RenderRequest, chip_bbox: Any) -> bool:
+    if req.bounds is None or not _table_exists(session, "burn_cluster"):
+        return False
+    w, s, e, n = req.bounds
+    rows = session.execute(text("""
+        SELECT ST_AsGeoJSON(geom)::json, ST_Y(centroid) FROM burn_cluster
+        WHERE (scene_pre = :item OR scene_post = :item) AND geom && ST_MakeEnvelope(:w, :s, :e, :n, 4326)
+        LIMIT 50
+    """), {"item": req.item, "w": w, "s": s, "e": e, "n": n}).all()
+    return any(_round_bbox(chip_bbox(geom, lat)) == req.bounds for geom, lat in rows if geom and lat is not None)
 
 
 @router.get(
@@ -621,7 +659,7 @@ def _render_frame(p: Pass, b: tuple[float, float, float, float]) -> tuple[bool, 
     for kind in ("truecolor", "swir"):
         req = pcdata.RenderRequest(p.collection, p.item["id"], kind, FEATURED_W, FEATURED_H, "jpg", bounds=b)
         try:
-            out = pcdata.render(req, min_valid_fraction=FRAME_MIN_VALID)
+            out = pcdata.render(req, min_valid_fraction=FRAME_MIN_VALID, persist="frame")
         except Exception as exc:  # RenderError, FetchError, SourceUnavailable
             return False, ids, f"{kind}: {exc}"[:300]
         if out.fetch_id is not None:
@@ -648,23 +686,142 @@ def _frame_json(p: Pass, b: tuple[float, float, float, float]) -> dict[str, Any]
     }
 
 
-# The built payload lives on disk, so it survives restarts and the API and the job process share it.
+# The built payload lives on disk and in rendered_asset: the disk copy survives restarts on one
+# machine, the database copy reaches every serverless instance and every job runner. A disk copy
+# older than MANIFEST_RECHECK is compared with the database's, which the `featured` job keeps current.
+FEATURED_KEY = "featured.json"
+MANIFEST_RECHECK = timedelta(minutes=5)
+
+
 def _featured_path() -> Path:
-    return get_settings().cache_path("imagery", "featured.json")
+    return get_settings().cache_path("imagery", FEATURED_KEY)
+
+
+def _write_featured_file(data: bytes) -> None:
+    path = _featured_path()
+    tmp = path.with_suffix(f".{threading.get_ident()}.tmp")
+    tmp.write_bytes(data)
+    tmp.replace(path)
 
 
 def load_featured() -> dict[str, Any] | None:
+    path = _featured_path()
+    disk: dict[str, Any] | None = None
     try:
-        return orjson.loads(_featured_path().read_bytes())
+        disk = orjson.loads(path.read_bytes())
+        if utcnow().timestamp() - path.stat().st_mtime < MANIFEST_RECHECK.total_seconds():
+            return disk
     except (OSError, ValueError):
+        pass
+    stored = _load_stored_manifest()
+    if stored is None or (disk is not None and _age(disk) <= _age(stored[0])):
+        if disk is not None:
+            with contextlib.suppress(OSError):
+                os.utime(path)  # checked: trust the disk copy for another MANIFEST_RECHECK
+        return disk
+    _write_featured_file(stored[1])
+    return stored[0]
+
+
+def _load_stored_manifest() -> tuple[dict[str, Any], bytes] | None:
+    from blindspot.models.assets import load_asset
+
+    try:
+        row = load_asset(FEATURED_KEY)
+        return None if row is None else (orjson.loads(row["data"]), row["data"])
+    except Exception as exc:  # no database or no table yet: the disk copy (if any) is all there is
+        log.warning("could not read the stored featured manifest: %s", exc)
         return None
 
 
 def _store_featured(payload: dict[str, Any]) -> None:
-    path = _featured_path()
-    tmp = path.with_suffix(f".{threading.get_ident()}.tmp")
-    tmp.write_bytes(orjson.dumps(payload, option=orjson.OPT_UTC_Z | orjson.OPT_NAIVE_UTC, default=str))
-    tmp.replace(path)
+    from blindspot.models.assets import save_asset
+
+    data = orjson.dumps(payload, option=orjson.OPT_UTC_Z | orjson.OPT_NAIVE_UTC, default=str)
+    _write_featured_file(data)
+    try:
+        save_asset(FEATURED_KEY, "manifest", "application/json", data)
+    except Exception as exc:
+        log.warning("could not store the featured manifest in the database: %s", exc)
+
+
+def _frame_requests(payload: dict[str, Any] | None) -> list[pcdata.RenderRequest]:
+    """The GET /render requests behind a manifest's frame URLs (both kinds of every frame)."""
+    if not payload or not payload.get("aoi") or not payload.get("frames"):
+        return []
+    b = _round_bbox(payload["aoi"]["bbox"])
+    return [
+        pcdata.RenderRequest(f["collection"], f["item_id"], kind, FEATURED_W, FEATURED_H,
+                             pcdata.default_format(kind), bounds=b)
+        for f in payload["frames"] for kind in ("truecolor", "swir")
+    ]
+
+
+CHIP_SCARS = 24  # case files stored ahead: the largest candidate unseen burns, as the job's prewarm
+
+
+def case_chip_requests(session: Session, limit: int = CHIP_SCARS) -> list[pcdata.RenderRequest]:
+    """The chips (pre and post pass, every kind) of the largest candidate unseen burns' case files,
+    exactly as GET /api/scars/{id} links them, so the cache keys are the ones its pages ask for."""
+    from blindspot.api.routers import (
+        scars,  # the scars module owns the chip geometry and size
+    )
+
+    if not _table_exists(session, "burn_cluster"):
+        return []
+    rows = session.execute(text("""
+        SELECT ST_AsGeoJSON(geom)::json, ST_Y(centroid), scene_pre, scene_post, collection
+        FROM burn_cluster WHERE unseen IS TRUE ORDER BY area_ha DESC, id LIMIT :n
+    """), {"n": limit}).all()
+    out = []
+    for geom, lat, pre, post, collection in rows:
+        b = _round_bbox(scars._chip_bbox(geom, lat))
+        for item in (pre, post):
+            if item and pcdata.collection_for(item) == collection:
+                out += [pcdata.RenderRequest(collection, item, kind, scars.CHIP_PX, scars.CHIP_PX,
+                                             pcdata.default_format(kind), bounds=b) for kind in pcdata.KINDS]
+    return out
+
+
+def store_featured_assets(chip_scars: int = CHIP_SCARS) -> dict[str, Any]:
+    """Keep the featured frames, the largest scars' case-file chips and the manifest in
+    rendered_asset (rendering whatever is missing), then delete stored assets that nothing
+    references and nobody used for a week. Run by the `featured` job, through refresh_featured()."""
+    from blindspot.models.assets import KEEP_DAYS, prune_assets
+
+    manifest = load_featured()
+    wanted: dict[str, tuple[pcdata.RenderRequest, float, str]] = {}
+    for req in _frame_requests(manifest):
+        wanted[req.cache_key()] = (req, FRAME_MIN_VALID, "frame")
+    with session_scope() as session:
+        chips = case_chip_requests(session, chip_scars)
+    for req in chips:
+        wanted.setdefault(req.cache_key(), (req, CROP_MIN_VALID, "chip"))
+    before = pcdata.stored_keys(list(wanted))
+
+    def one(entry: tuple[pcdata.RenderRequest, float, str]) -> None:
+        req, min_valid, role = entry
+        try:
+            pcdata.render(req, min_valid_fraction=min_valid, persist=role)
+        except Exception as exc:  # recorded in source_fetch already; one bad chip must not stop the rest
+            log.warning("featured asset %s %s failed: %s", req.item, req.kind, exc)
+
+    with ThreadPoolExecutor(4) as pool:
+        list(pool.map(one, [entry for key, entry in wanted.items() if key not in before]))
+    if manifest is not None and not pcdata.stored_keys([FEATURED_KEY]):
+        _store_featured(manifest)
+    after = pcdata.stored_keys([*wanted, FEATURED_KEY])
+    summary: dict[str, Any] = {
+        "frames": sum(1 for entry in wanted.values() if entry[2] == "frame"),
+        "chips": sum(1 for entry in wanted.values() if entry[2] == "chip"),
+        "already_stored": len(before),
+        "stored_now": len(after - before - {FEATURED_KEY}),
+        "missing": len(set(wanted) - after),
+        "manifest_stored": FEATURED_KEY in after,
+    }
+    if after:  # an empty answer may mean the database failed: then nothing is pruned
+        summary["pruned"] = prune_assets(after, keep_days=KEEP_DAYS)
+    return summary
 
 
 _build_lock = threading.Lock()  # one build at a time per process
@@ -678,11 +835,24 @@ def _age(payload: dict[str, Any]) -> timedelta:
     return utcnow() - built
 
 
-def refresh_featured(*, force: bool = False) -> dict[str, Any]:
-    """Rebuild the featured frames when they are older than 6 h, the window has moved, or `force`.
+def refresh_featured(*, force: bool = False, store_assets: bool = True) -> dict[str, Any]:
+    """Rebuild the featured frames when they are older than 6 h, the window has moved, or `force`;
+    then (`store_assets`) keep the frames and the case-file chips in the database.
 
-    Used by the `featured` job. Cheap when nothing changed: choosing the window is one query.
-    A build that finds no frames never replaces frames that worked."""
+    Used by the `featured` job. Cheap when nothing changed: choosing the window is one query, and
+    assets already stored cost one lookup. A build that finds no frames never replaces frames that
+    worked."""
+    summary = _rebuild_featured(force)
+    if store_assets:
+        try:
+            summary["assets"] = store_featured_assets()
+        except Exception as exc:  # the frames themselves are fine; say what failed
+            log.exception("storing the featured assets failed")
+            summary["assets"] = {"error": f"{type(exc).__name__}: {exc}"[:300]}
+    return summary
+
+
+def _rebuild_featured(force: bool) -> dict[str, Any]:
     with _build_lock, session_scope() as session:
         current = load_featured()
         window, reason = select_window(session)
@@ -713,7 +883,7 @@ def _same_window(current: dict[str, Any], window: Window) -> bool:
 
 def _refresh_quietly() -> None:
     try:
-        refresh_featured()
+        refresh_featured(store_assets=False)  # inside the API: the frames only, never the chips
     except Exception:
         log.exception("background refresh of the featured frames failed")
 
@@ -752,9 +922,22 @@ def featured() -> ORJSONResponse:
         threading.Thread(target=_refresh_quietly, name="featured-refresh", daemon=True).start()
     sources = [SourceRef(**s) for s in payload.get("sources", [])]
     body = {k: v for k, v in payload.items() if k != "sources"}
+    body["frames"] = [_rebased(frame) for frame in body.get("frames") or []]
     body["stale"] = stale
     return respond(body, sources, max_age=300)
 
 
-__all__ = ["build_featured", "densest_window", "refresh_featured", "render_url", "router",
-           "select_window"]
+def _rebased(frame: dict[str, Any]) -> dict[str, Any]:
+    """The frame with its picture URLs on this deployment's PUBLIC_BASE_URL. The stored manifest
+    keeps the base of whichever host built it (a job runner, a laptop: http://localhost:8000)."""
+    base = get_settings().public_base_url
+    out = dict(frame)
+    for key in ("truecolor_url", "swir_url"):
+        url = out.get(key)
+        if isinstance(url, str) and "/api/imagery/render?" in url:
+            out[key] = base + url[url.index("/api/imagery/render?"):]
+    return out
+
+
+__all__ = ["build_featured", "case_chip_requests", "densest_window", "refresh_featured", "render_url",
+           "router", "select_window", "store_featured_assets"]

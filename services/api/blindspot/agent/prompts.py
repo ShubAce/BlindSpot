@@ -142,8 +142,21 @@ body.
 
 TRANSLATE_TO = {
     "hi": "Hindi, written only in Devanagari script",
-    "pa": "Punjabi, written only in Gurmukhi script (no Devanagari letters)",
+    "pa": "Punjabi, written only in Gurmukhi script (Unicode U+0A00 to U+0A7F)",
 }
+
+# The script rule of each target, as Unicode ranges the model can check itself against. Gemini's
+# free-tier models drop single letters of other scripts into Gurmukhi (seen live on 2026-10-31:
+# Sinhala, Bengali and Cyrillic letters inside Punjabi words), so Punjabi gets the strictest rule;
+# the verifier's script check (verifier.foreign_script) uses the same ranges.
+SCRIPT_RULES = {
+    "hi": """Script: Hindi in Devanagari only (Unicode U+0900 to U+097F). No Gurmukhi or any other script's letters.
+""",
+    "pa": """Script: Gurmukhi script only (Unicode U+0A00 to U+0A7F) for every Punjabi word, every letter and every vowel sign; digits 0-9; no other script. Never use a Devanagari, Bengali, Gujarati, Sinhala, Cyrillic or any other letter or vowel sign, not even one inside a Gurmukhi word. Latin is allowed only for what the English text has as-is: units (µg/m³, km/h), abbreviations (PM2.5, IST, CPCB) and citation markers such as [3]. Check every word before you answer.
+""",
+}
+TRANSLATE_SYSTEMS = {lang: TRANSLATE_SYSTEM + rule for lang, rule in SCRIPT_RULES.items()}
+TRANSLATE_TEMPERATURE = 0.2  # a faithful translation, not a creative one: low randomness
 
 _SECTION_SCHEMA: dict[str, Any] = {
     "type": "object",

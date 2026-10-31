@@ -3,9 +3,11 @@
 Run from services/api so python-dotenv is available:
     cd services/api && uv run python ../../infra/deploy_vercel_api.py [--foundation-only] [--cors URL,...]
 
-Only the web-serving code goes to Vercel. Heavy libraries (rasterio, geopandas, lightgbm, h5py, ...)
+Only the web-serving code goes to Vercel. Heavy job libraries (geopandas, lightgbm, h5py, scipy, ...)
 are deliberately left out: scheduled jobs that need them run on GitHub Actions and write to Neon,
-and the API only reads Neon. Keys are stored as encrypted Vercel environment variables, sent on
+and the API only reads Neon. The two imaging libraries do ship (pillow checks and encodes every
+picture; rasterio draws one when Planetary Computer's pixels fail the plausibility gate); the API
+imports both only on use, so they cost nothing at cold start. Keys are stored as encrypted Vercel environment variables, sent on
 stdin so they never appear in a command line or in this script's output.
 """
 
@@ -34,7 +36,18 @@ WEB_PACKAGES = [
     "geoalchemy2", "httpx", "orjson", "apscheduler", "tzdata", "cachetools", "tenacity",
     "sse-starlette", "python-dotenv", "numpy", "shapely", "skyfield", "sgp4", "jplephem",
     "google-genai", "pystac-client", "planetary-computer",
+    # Imaging, imported on use only (sources/pcdata.py). Unpacked linux cp312 sizes measured on
+    # 2026-10-31: the packages above 141 MB, pillow 13.0.0 +20 MB, rasterio 1.5.2 (GDAL inside) and
+    # affine +121 MB: about 282 MB of Vercel's 500 MB.
+    "pillow", "rasterio", "affine",
 ]
+# The project's production address: the absolute picture URLs the API hands out (PUBLIC_BASE_URL).
+PUBLIC_URL = "https://blindspot-api-azure.vercel.app"
+# Where the function runs: Singapore, beside Neon (aws ap-southeast-1) and near the users in India.
+# Vercel's default (iad1, Washington) puts ~220 ms on every database round trip. Hobby allows one region.
+FUNCTION_REGION = "sin1"
+# Every Vercel deployment of the website (production, previews: blindspot-git-<branch>-<team>...).
+WEB_ORIGIN_REGEX = r"^https://blindspot[a-z0-9-]*\.vercel\.app$"
 SECRET_NAMES = (
     "GEMINI_API_KEY", "FIRMS_MAP_KEY", "DATA_GOV_IN_API_KEY", "OPENAQ_API_KEY",
     "LSASAF_USERNAME", "LSASAF_PASSWORD",
@@ -90,7 +103,7 @@ def assemble(target: Path, foundation_only: bool) -> None:
     versions = locked_versions()
     reqs = [f"{name}=={versions[name]}" for name in WEB_PACKAGES if name in versions]
     (target / "requirements.txt").write_text("\n".join(reqs) + "\n", encoding="utf-8")
-    vercel_json = {"functions": {"index.py": {"maxDuration": 60}}}
+    vercel_json = {"regions": [FUNCTION_REGION], "functions": {"index.py": {"maxDuration": 60}}}
     (target / "vercel.json").write_text(json.dumps(vercel_json, indent=2), encoding="utf-8")
     (target / ".vercelignore").write_text("**/__pycache__\n*.pyc\n", encoding="utf-8")
 
@@ -100,6 +113,7 @@ def main() -> int:
     parser.add_argument("--foundation-only", action="store_true")
     parser.add_argument("--cors", default="", help="extra allowed origins, comma-separated")
     parser.add_argument("--skip-env", action="store_true", help="do not rewrite environment variables")
+    parser.add_argument("--public-url", default=PUBLIC_URL, help="the API's production address")
     args = parser.parse_args()
 
     load_dotenv(REPO_ROOT / ".env")
@@ -128,8 +142,11 @@ def main() -> int:
         values.update({
             "DATABASE_URL": direct_neon_url(neon),
             "ENABLE_SCHEDULER": "0",
+            "INIT_DB_ON_STARTUP": "false",  # the jobs create the tables; a cold start must not
             "CACHE_DIR": "/tmp/blindspot-cache",
+            "PUBLIC_BASE_URL": args.public_url.rstrip("/"),  # picture URLs; otherwise http://localhost:8000
             "CORS_ORIGINS": json.dumps(origins),
+            "CORS_ORIGIN_REGEX": WEB_ORIGIN_REGEX,
         })
         for name, value in values.items():
             if not value:

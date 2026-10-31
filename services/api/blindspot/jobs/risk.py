@@ -6,7 +6,8 @@ risk, every 3 h and after each `sentinel` run:
   2. gather its factors: burning within 5 km in the last 7 days (fire_detection + burn_cluster),
      last season's FIRMS fires within 5 km (NASA FIRMS archive, fetched once and kept on disk),
      and the rain forecast for the next 72 h (Open-Meteo);
-  3. score it with blindspot.analytics.risk and store risk_score / risk_factors on the row;
+  3. score it with blindspot.analytics.risk; store what the run shares once (risk_run) and each
+     field's own numbers on its row (risk_score, risk_factors), rewriting only rows that changed;
   4. backtest: for each pair of clear passes this season, score the fields that were harvested and
      unburnt on the first pass using only what was known then, and check which ones had burnt by
      the second pass (precision@k, AUC, against baselines). The report is kept on disk and served
@@ -55,7 +56,6 @@ SEASON = ((9, 15), (11, 30))  # official stubble-fire monitoring window, 15 Sep 
 FIRMS_MAX_DAYS = 5  # the area API's DAY_RANGE limit (SYNTHESIS section 2 #2)
 RAIN_CELL_DEG = 0.1  # rain is asked once per 0.1 degree cell (~10 km; ECMWF IFS runs at 9 km)
 OPEN_METEO_MAX_POINTS = 1000  # per request (meteo research doc section 1)
-DEG_PREFILTER = 0.06  # >= 5 km in degrees at 30 N, so the spatial index can pre-select candidates
 KM_PER_DEG = 111.32
 BACKTEST_MIN_EACH = 5  # a pass pair needs at least this many burnt and unburnt fields
 BACKTEST_KS = (10, 25, 50, 100, 250)
@@ -101,38 +101,51 @@ def neighbourhood(session: Session, points: list[tuple[int, float, float]], t_en
                   days: int = model.NEIGHBOUR_DAYS, radius_km: float = model.NEIGHBOUR_RADIUS_KM
                   ) -> dict[int, tuple[int, int, float]]:
     """For each (id, lon, lat): FIRMS detections (nominal/high confidence), unseen burn scars, and
-    burnt hectares within `radius_km` during (t_end - days, t_end]. One query for all points.
+    burnt hectares within `radius_km` during (t_end - days, t_end]. Set-based, in four statements
+    whatever the number of points.
 
-    Distances are true metres on the ellipsoid (geography); a bounding-box test first lets the
-    spatial indexes pick the candidates."""
+    Distances are true metres on the ellipsoid (geography). The window's fires and scars are first
+    copied into temporary tables as geography, each with its own spatial index, so the search for
+    a field only meets this week's rows (not the whole season's), no polygon is converted again for
+    every field it is compared with, and one pass over the scars gives both the unseen count and
+    the burnt hectares. (Three correlated subqueries per field over the season's tables took 13 min
+    for 172k fields on the dev box.)"""
     if not points:
         return {}
     has_fires, has_burns = _exists(session, "fire_detection"), _exists(session, "burn_cluster")
+    window = {"t0": t_end - timedelta(days=days), "t1": t_end}
+    session.execute(text("DROP TABLE IF EXISTS nb_point, nb_fire, nb_burn"))
+    session.execute(text("CREATE TEMP TABLE nb_point (id bigint, g geography) ON COMMIT DROP"))
+    driver = session.connection().connection.driver_connection  # the psycopg 3 connection
+    with driver.cursor() as cur, cur.copy("COPY nb_point (id, g) FROM STDIN") as copy:
+        for pid, lon, lat in points:
+            copy.write_row((pid, f"SRID=4326;POINT({float(lon)!r} {float(lat)!r})"))
     # The fires module flags spots hot on 3+ nights (kilns, industry) as static_source: not crop fires.
-    static = "AND NOT f.static_source" if has_fires and "static_source" in _columns(session, "fire_detection") else ""
-    fires_sql = f"""(SELECT count(*) FROM fire_detection f
-        WHERE f.acq_utc > :t0 AND f.acq_utc <= :t1 AND f.confidence <> 'low' {static}
-          AND f.geom && ST_Expand(p.g, :deg)
-          AND ST_DWithin(f.geom::geography, p.g::geography, :m))""" if has_fires else "0"
-    unseen_sql = """(SELECT count(*) FROM burn_cluster b
-        WHERE b.burn_before > :t0 AND b.burn_before <= :t1 AND b.unseen IS TRUE
-          AND b.geom && ST_Expand(p.g, :deg)
-          AND ST_DWithin(b.geom::geography, p.g::geography, :m))""" if has_burns else "0"
-    burned_sql = """(SELECT coalesce(sum(b.area_ha), 0) FROM burn_cluster b
-        WHERE b.burn_before > :t0 AND b.burn_before <= :t1
-          AND b.geom && ST_Expand(p.g, :deg)
-          AND ST_DWithin(b.geom::geography, p.g::geography, :m))""" if has_burns else "0"
-    rows = session.execute(text(f"""
-        WITH p AS (
-            SELECT u.id, ST_SetSRID(ST_MakePoint(u.lon, u.lat), 4326) AS g
-            FROM unnest(CAST(:ids AS bigint[]), CAST(:lons AS float8[]), CAST(:lats AS float8[]))
-                 AS u(id, lon, lat)
-        )
-        SELECT p.id, {fires_sql}, {unseen_sql}, {burned_sql} FROM p
-    """), {
-        "ids": [p[0] for p in points], "lons": [p[1] for p in points], "lats": [p[2] for p in points],
-        "t0": t_end - timedelta(days=days), "t1": t_end, "deg": DEG_PREFILTER, "m": radius_km * 1000,
-    }).all()
+    static = "AND NOT static_source" if has_fires and "static_source" in _columns(session, "fire_detection") else ""
+    session.execute(text(f"""
+        CREATE TEMP TABLE nb_fire ON COMMIT DROP AS
+        SELECT geom::geography AS g FROM fire_detection
+        WHERE acq_utc > :t0 AND acq_utc <= :t1 AND confidence <> 'low' {static}
+    """ if has_fires else "CREATE TEMP TABLE nb_fire (g geography) ON COMMIT DROP"), window)
+    session.execute(text("""
+        CREATE TEMP TABLE nb_burn ON COMMIT DROP AS
+        SELECT geom::geography AS g, area_ha, unseen FROM burn_cluster
+        WHERE burn_before > :t0 AND burn_before <= :t1
+    """ if has_burns else "CREATE TEMP TABLE nb_burn (g geography, area_ha float8, unseen boolean) ON COMMIT DROP"),
+        window)
+    for table in ("nb_fire", "nb_burn"):
+        session.execute(text(f"CREATE INDEX ON {table} USING gist (g)"))
+        session.execute(text(f"ANALYZE {table}"))
+    rows = session.execute(text("""
+        SELECT p.id, f.n, b.unseen, b.ha
+        FROM nb_point p
+        CROSS JOIN LATERAL (SELECT count(*) AS n FROM nb_fire f WHERE ST_DWithin(f.g, p.g, :m)) f
+        CROSS JOIN LATERAL (
+            SELECT count(*) FILTER (WHERE b.unseen IS TRUE) AS unseen, coalesce(sum(b.area_ha), 0) AS ha
+            FROM nb_burn b WHERE ST_DWithin(b.g, p.g, :m)
+        ) b
+    """), {"m": radius_km * 1000}).all()
+    session.execute(text("DROP TABLE nb_point, nb_fire, nb_burn"))
     return {int(r[0]): (int(r[1]), int(r[2]), float(r[3])) for r in rows}
 
 
@@ -293,26 +306,23 @@ def risk() -> dict[str, Any]:
         near = neighbourhood(session, [(f.id, f.lon, f.lat) for f in fields], as_of)
     summary: dict[str, Any] = {"as_of": as_of, "fields": len(fields), "history_fires": len(history.points),
                                "history_season": history.season, "history_reason": history.reason}
+    run_id = None
     if fields:
         rain = rain_forecast(sorted({_cell(f.lon, f.lat) for f in fields}), as_of)
         scored = _score(fields, near, history, rain, as_of)
-        with session_scope() as session:
-            session.execute(text("""
-                UPDATE harvest_cluster AS h SET risk_score = v.score, risk_factors = CAST(v.factors AS jsonb)
-                FROM unnest(CAST(:ids AS bigint[]), CAST(:scores AS float8[]), CAST(:factors AS text[]))
-                     AS v(id, score, factors)
-                WHERE h.id = v.id
-            """), {"ids": [s.id for s in scored], "scores": [s.score for s in scored],
-                   "factors": [orjson.dumps(s.factors, option=orjson.OPT_UTC_Z).decode() for s in scored]})
+        run_id, changed = store_scores(scored, as_of)
         scores = np.array([s.score for s in scored])
-        summary.update(scored=len(scored), rain_cells=len(rain.by_cell), rain_reason=rain.reason,
-                       score_p50=round(float(np.median(scores)), 1), score_p90=round(float(np.percentile(scores, 90)), 1))
+        summary.update(scored=len(scored), run_id=run_id, rows_rewritten=changed, rain_cells=len(rain.by_cell),
+                       rain_reason=rain.reason, score_p50=round(float(np.median(scores)), 1),
+                       score_p90=round(float(np.percentile(scores, 90)), 1))
+        if changed > VACUUM_SHARE * len(scored):
+            vacuum("harvest_cluster")
     else:
         summary["skipped_scoring"] = "no harvested-but-unburnt fields yet"
     try:
         with session_scope() as session:
             report = backtest(session, history, as_of)
-        _store_report(report)
+        _store_report(report, run_id)
         summary["backtest"] = report.get("headline") or report.get("reason")
     except Exception as exc:  # the scores above are saved; a backtest problem must not undo them
         log.exception("risk backtest failed")
@@ -348,6 +358,57 @@ def _score(fields: list[Field], near: dict[int, tuple[int, int, float]], history
         s.factors["dryness"].update(source="Open-Meteo best_match", reason=rain.reason)
         s.factors["fetch_ids"] = fetch_ids
     return scored
+
+
+# --- 3. store -------------------------------------------------------------------------------------------
+
+
+def store_scores(scored: list[model.Scored], as_of: datetime) -> tuple[int, int]:
+    """Write one run: what all fields share into a new risk_run row, each field's own numbers onto
+    its harvest_cluster row ({"run": id, "v": "[...]"}, see analytics/risk.py). Returns (run id, rows
+    rewritten).
+
+    The numbers go through COPY into a temporary table, and one UPDATE ... FROM rewrites only the
+    rows whose numbers changed: Postgres writes a whole new row version on every UPDATE, so
+    rewriting all 172k rows every 3 h would keep the table twice its size between vacuums. Rows
+    left alone already hold what this run computed, which is why readers pair every row with the
+    newest run. The run row and the updates commit together."""
+    shared = model.run_constants(scored[0].factors)
+    with session_scope() as session:
+        run_id = session.execute(text("""
+            INSERT INTO risk_run (as_of, model, fields, factors) VALUES (:as_of, :model, :n, CAST(:f AS jsonb))
+            RETURNING id
+        """), {"as_of": as_of, "model": model.MODEL_VERSION, "n": len(scored),
+               "f": orjson.dumps(shared, option=orjson.OPT_UTC_Z).decode()}).scalar_one()
+        session.execute(text(
+            "CREATE TEMP TABLE risk_stage (id bigint PRIMARY KEY, score float8, v jsonb) ON COMMIT DROP"))
+        driver = session.connection().connection.driver_connection  # the psycopg 3 connection
+        with driver.cursor() as cur, cur.copy("COPY risk_stage (id, score, v) FROM STDIN") as copy:
+            for s in scored:
+                # v is a jsonb *string* holding the numbers as JSON text (analytics/risk.py says why)
+                copy.write_row((s.id, s.score, orjson.dumps(model.pack_values(model.row_values(s.factors))).decode()))
+        changed = session.execute(text("""
+            UPDATE harvest_cluster AS h
+            SET risk_score = s.score, risk_factors = jsonb_build_object('run', CAST(:run AS bigint), 'v', s.v)
+            FROM risk_stage AS s
+            WHERE h.id = s.id
+              AND (h.risk_score IS DISTINCT FROM s.score OR h.risk_factors -> 'v' IS DISTINCT FROM s.v)
+        """), {"run": run_id}).rowcount
+        session.execute(text("UPDATE risk_run SET changed = :c WHERE id = :id"), {"c": changed, "id": run_id})
+    return run_id, changed
+
+
+VACUUM_SHARE = 0.1  # vacuum harvest_cluster when a run rewrote more than this share of its rows
+
+
+def vacuum(table: str) -> None:
+    """VACUUM (ANALYZE) one table, so the space of the old row versions is reused at once instead
+    of whenever autovacuum gets to it (on a 0.5 GB database that matters). Never VACUUM FULL: it
+    locks the table and needs a second copy of it on disk."""
+    from blindspot.db import engine
+
+    with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+        conn.execute(text(f"VACUUM (ANALYZE) {table}"))
 
 
 # --- 4. backtest ----------------------------------------------------------------------------------------
@@ -533,23 +594,38 @@ def _r(value: float | None, digits: int = 3) -> float | None:
     return None if value is None else round(float(value), digits)
 
 
-def _store_report(report: dict[str, Any]) -> None:
-    """Keep the report on disk. A run that found nothing to test (say, while the sentinel module is
-    rebuilding its tables) does not erase the last real result: that one stays, with a note saying
-    when the newer attempt ran and why it had nothing."""
+def _store_report(report: dict[str, Any], run_id: int | None = None) -> None:
+    """Keep the report on the run's risk_run row (what GET /api/risk serves, also on a serverless
+    host with no shared disk) and on disk. A run that found nothing to test (say, while the
+    sentinel module is rebuilding its tables) does not erase the last real result: that one stays,
+    with a note saying when the newer attempt ran and why it had nothing."""
     path = get_settings().cache_path(*model.BACKTEST_FILE)
     if "headline" not in report:
         previous = load_backtest()
         if previous and "headline" in previous:
             previous["latest_attempt"] = {"computed_at": report.get("computed_at"), "reason": report.get("reason")}
             report = previous
+    body = orjson.dumps(report, option=orjson.OPT_UTC_Z | orjson.OPT_NAIVE_UTC, default=str)
+    if run_id is not None:
+        with session_scope() as session:
+            session.execute(text("UPDATE risk_run SET backtest = CAST(:b AS jsonb) WHERE id = :id"),
+                            {"b": body.decode(), "id": run_id})
     tmp = path.with_suffix(".tmp")
-    tmp.write_bytes(orjson.dumps(report, option=orjson.OPT_UTC_Z | orjson.OPT_NAIVE_UTC, default=str))
+    tmp.write_bytes(body)
     tmp.replace(path)
 
 
 def load_backtest() -> dict[str, Any] | None:
-    """The latest backtest report written by the `risk` job, or None."""
+    """The latest backtest report written by the `risk` job (risk_run, else the file), or None."""
+    from blindspot.models.risk import latest_backtest
+
+    try:
+        with session_scope() as session:
+            stored = latest_backtest(session)
+        if stored:
+            return stored
+    except Exception:  # no database: the file is still worth reading
+        log.warning("could not read the stored backtest", exc_info=True)
     try:
         return orjson.loads(get_settings().cache_path(*model.BACKTEST_FILE).read_bytes())
     except (OSError, ValueError):
@@ -619,10 +695,13 @@ def prewarm_case_chips(limit: int = CHIP_PREWARM) -> dict[str, Any]:
             log.warning("chip %s %s failed: %s", req.item, req.kind, exc)
             return "failed"
 
+    # Chips already in rendered_asset (refresh_featured stores them) are ready for every instance;
+    # rendering them here would only read them back from the database on a runner with an empty disk.
+    stored = pcdata.stored_keys(list(requests))
     with ThreadPoolExecutor(4) as pool:
-        outcomes = list(pool.map(one, requests.values()))
+        outcomes = list(pool.map(one, [req for key, req in requests.items() if key not in stored]))
     counts = {k: outcomes.count(k) for k in ("cached", "rendered", "failed")}
-    return {"scars": len(rows), "chips": len(outcomes), **counts}
+    return {"scars": len(rows), "chips": len(requests), "stored": len(stored), **counts}
 
 
 __all__ = ["backtest", "count_within", "featured", "last_season_fires", "load_backtest", "neighbourhood",

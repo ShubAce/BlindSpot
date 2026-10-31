@@ -133,7 +133,9 @@ class HarvestCluster(Base):
     __tablename__ = "harvest_cluster"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    geom: Mapped[WKBElement] = mapped_column(Geometry("POLYGON", srid=4326))
+    # No spatial index on geom: every spatial query on this table goes through centroid (GET /api/risk,
+    # the risk job, place labels), and the unused index was 8 MB of a 0.5 GB hosted database.
+    geom: Mapped[WKBElement] = mapped_column(Geometry("POLYGON", srid=4326, spatial_index=False))
     centroid: Mapped[WKBElement] = mapped_column(Geometry("POINT", srid=4326))
     area_ha: Mapped[float] = mapped_column(Double)
     n_px: Mapped[int] = mapped_column(Integer)

@@ -5,14 +5,18 @@
 # set them with infra/set_github_secrets.py. Until DATABASE_URL is set, every run skips quietly.
 name: data-jobs
 
+# Cadence is sized to Neon's free plan (100 CU-hours and 5 GB egress a month; the database is
+# suspended until the next month if either runs out). Every run keeps the compute awake for its own
+# length plus 5 minutes, so the jobs run hourly only while fires burn and data arrive.
 on:
   schedule:
-    - cron: "*/30 * * * *"   # fires, official counts, air quality, geostationary scans
-    - cron: "15 */3 * * *"   # met grid (-> smoke trajectories), IITM DSS
-    - cron: "40 */6 * * *"   # Sentinel-2 scenes (-> burn risk, featured frames), smoke check, orbits
-    - cron: "0 2-7 * * *"    # bulletin 07:30 IST, hourly retries to 12:30 IST (idempotent)
-    - cron: "30 6 * * *"     # 12:00 IST: season backfills
-    - cron: "0 3 * * 1"      # weekly: boundaries and places
+    - cron: "17 8-18 * * *"        # hourly 13:47-23:47 IST: fires, official counts, air quality, geostationary scans
+    - cron: "17 0,3,6,21 * * *"    # the same group every ~3 h overnight and in the morning
+    - cron: "47 2,8,14,20 * * *"   # met grid every 6 h (-> smoke trajectories), IITM DSS
+    - cron: "40 11 * * *"          # 17:10 IST: Sentinel-2 scenes (-> burn risk, featured frames), smoke check, orbits
+    - cron: "0 2-7 * * *"          # bulletin 07:30 IST, hourly retries to 12:30 IST (idempotent)
+    - cron: "30 6 * * *"           # 12:00 IST: season backfills, retention
+    - cron: "0 3 * * 1"            # weekly: boundaries and places
   workflow_dispatch:
     inputs:
       jobs:
@@ -26,7 +30,7 @@ permissions:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ github.event.schedule == '40 */6 * * *' && 150 || 60 }}
+    timeout-minutes: ${{ github.event.schedule == '40 11 * * *' && 150 || 60 }}
     concurrency:
       group: data-jobs-${{ github.event.schedule || 'manual' }}
       cancel-in-progress: false
@@ -78,11 +82,11 @@ jobs:
         shell: bash
         run: |
           case "${{ github.event.schedule }}" in
-            "*/30 * * * *") jobs="firms_nrt creams_daily air geostationary" ;;
-            "15 */3 * * *") jobs="met air_dss" ;;
-            "40 */6 * * *") jobs="sentinel smoke_validate tle" ;;
+            "17 8-18 * * *"|"17 0,3,6,21 * * *") jobs="firms_nrt creams_daily air geostationary" ;;
+            "47 2,8,14,20 * * *") jobs="met air_dss" ;;
+            "40 11 * * *") jobs="sentinel smoke_validate tle" ;;
             "0 2-7 * * *")  jobs="bulletin" ;;
-            "30 6 * * *")   jobs="firms_backfill geostationary_backfill" ;;
+            "30 6 * * *")   jobs="firms_backfill geostationary_backfill prune" ;;
             "0 3 * * 1")    jobs="boundaries" ;;
             *)              jobs="${{ github.event.inputs.jobs }}" ;;
           esac

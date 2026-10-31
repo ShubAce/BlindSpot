@@ -367,6 +367,44 @@ def read_census_villages(path: Path, bbox: BBox, states: Iterable[int]) -> gpd.G
     return read_geoparquet(path, columns, bbox, ("ST_LGD", states))
 
 
+# --- simplified polygons ------------------------------------------------------------------------
+#
+# The SOI state polygons average ~36,000 vertices (0.57 MB) each, far finer than anything we label
+# or draw; stored as they come, the boundary table is 79 MB, too much for a 0.5 GB database. So
+# polygons are simplified when they are written, with two limits measured on this season's 11,730
+# FIRMS detections (docs/build-logs/deploy-data.md):
+# - SIMPLIFY_DEG: re-labelling every detection with the simplified polygons changes no state or
+#   district inside Punjab, Haryana, Delhi or Chandigarh (0.0003 deg already moved 2 in Punjab).
+# - India's outline is kept exact within EXACT_BAND_DEG of it inside the area we label (the wind
+#   box): detections across the border in Pakistan must never fall inside an Indian polygon. Even
+#   0.00015 deg let one Pakistani detection in; the outline is never simplified, so none can.
+SIMPLIFY_DEG = 0.0002  # ~20 m (topology-preserving Douglas-Peucker)
+EXACT_BAND_DEG = 0.01  # ~1 km either side of India's outline
+
+
+def outline_band(states: Sequence[shapely.Geometry], bbox: BBox) -> shapely.Geometry:
+    """The strip within EXACT_BAND_DEG of India's outline (the union of the SOI state polygons)
+    inside `bbox`. Inside our wind box that outline is the international border (Pakistan, and
+    China / Nepal at its edges)."""
+    min_lon, min_lat, max_lon, max_lat = bbox
+    pad = 2 * EXACT_BAND_DEG  # clip a little wider, so the clip's own edges fall outside bbox
+    clipped = [
+        shapely.clip_by_rect(shapely.make_valid(g), min_lon - pad, min_lat - pad, max_lon + pad, max_lat + pad)
+        for g in states
+    ]
+    outline = shapely.union_all(clipped).boundary
+    return shapely.intersection(outline, shapely.box(*bbox)).buffer(EXACT_BAND_DEG)
+
+
+def simplify_area(geom: shapely.Geometry, band: shapely.Geometry | None = None,
+                  tolerance: float = SIMPLIFY_DEG) -> shapely.Geometry:
+    """`geom` simplified by `tolerance` degrees, except inside `band`, where it stays exact."""
+    simple = shapely.simplify(geom, tolerance, preserve_topology=True)
+    if band is None or not shapely.intersects(geom, band):
+        return simple
+    return shapely.union(shapely.difference(simple, band), shapely.intersection(geom, band))
+
+
 _HADBAST = re.compile(r"\s*\(\s*\d+\s*\)\s*$")
 
 

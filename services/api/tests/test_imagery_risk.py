@@ -154,7 +154,7 @@ def test_render_serves_a_cached_picture_with_immutable_headers(client, monkeypat
                                                   "kind": "truecolor", "w": 320, "h": 200})
     assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg"
     assert r.content == data
-    assert r.headers["cache-control"] == "public, max-age=31536000, immutable"
+    assert r.headers["cache-control"] == "public, max-age=31536000, s-maxage=31536000, immutable"
     assert r.headers["x-imagery-source"] == "pc_data" and r.headers["x-fetch-id"] == "42"
 
 

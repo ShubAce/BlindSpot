@@ -8,6 +8,7 @@ good run stay in place, and the job fails only when every step fails):
               Haryana is still named) and tehsils of Punjab, Haryana, Delhi and Chandigarh, all
               named the way the Local Government Directory names them today. Hansi (Haryana, Dec
               2025) has no open polygon yet, so it is rebuilt from the tehsils it was formed from.
+              Polygons are stored simplified to ~20 m, India's outline exact (sources/boundaries.py).
 2. villages   Census 2011 village points with population (place, kind 'village').
 3. osm        OpenStreetMap towns, plus OSM villages the census list does not have.
 4. cities     Receptor cities: the most populous GeoNames city of each district (place, 'city').
@@ -193,8 +194,11 @@ def load_areas() -> dict[str, Any]:
         src.read_lgd_subdistricts(files["subdistricts"].path, settings.met_bbox, src.AOI_STATES),
         lgd, state_names, files["subdistricts"].fetch_id,
     )
+    # Stored simplified, India's outline exact (sources/boundaries.py explains both limits).
+    band = src.outline_band([a.geom for a in states], settings.met_bbox)
     for area in (*states, *districts, *subdistricts):
         area.props["inputs"] = inputs
+        area.geom = src.simplify_area(area.geom, band)
     with session_scope() as session:
         session.execute(text("DELETE FROM boundary WHERE source = ANY(:s)"), {"s": AREA_SOURCES})
         _insert_areas(session, [*states, *districts, *subdistricts])
@@ -828,7 +832,9 @@ def _fill_subdistrict(session: Session, table: str, relabel_all: bool) -> int:
     if not has_column:
         return 0
     quoted = session.get_bind().dialect.identifier_preparer.quote(table)
-    missing = "" if relabel_all else "AND t.subdistrict IS NULL"
+    # Rows whose name would not change are left alone: an UPDATE writes a new row version, and
+    # rewriting all 240k scar and field rows every reload bloats a small hosted database.
+    missing = "AND t.subdistrict IS DISTINCT FROM b.name" if relabel_all else "AND t.subdistrict IS NULL"
     return session.execute(
         text(
             f"""

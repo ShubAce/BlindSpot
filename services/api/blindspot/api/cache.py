@@ -19,22 +19,29 @@ Two ways to use it:
 Each key is built once even when many requests arrive together (single flight): the others wait
 for the first and get its result. Errors are never cached. The cache is per process, so on
 serverless each warm instance has its own; that is fine for a 30 s TTL.
+
+CDNCacheHeaders (end of this file) adds `s-maxage` so that Vercel's CDN, which sits in front of
+every serverless instance, answers repeat requests without waking a function at all.
 """
 
 from __future__ import annotations
 
 import functools
 import inspect
+import re
 import threading
 from collections.abc import Callable, Hashable
+from dataclasses import dataclass
 from datetime import date, datetime
 from enum import Enum
 from typing import Any
 
 from cachetools import TTLCache
 from sqlalchemy.orm import Session
+from starlette.datastructures import MutableHeaders
 from starlette.requests import Request
 from starlette.responses import Response
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 _caches: dict[tuple[str, float], TTLCache[Hashable, Any]] = {}
 _key_locks: dict[tuple[str, Hashable], threading.Lock] = {}
@@ -160,3 +167,134 @@ def cached_route(ttl: float = 30, maxsize: int = 64) -> Callable[[Callable[..., 
         return wrapper
 
     return decorate
+
+
+# --- CDN headers ----------------------------------------------------------------------------------
+# On Vercel the function sits behind a CDN that caches a response only when Cache-Control carries
+# `s-maxage` (max-age alone is for browsers). These lifetimes follow the cadence column of
+# docs/api-contract-notes.md ("Latency and size"): data that changes every 30 min is cached for a
+# minute, slow data (orbits, bulletins, featured frames) for 5 min, geography for an hour. A
+# rendered Sentinel-2 picture never changes, so it is immutable.
+
+LIVE_S, SLOW_S, GEOGRAPHY_S = 60, 300, 3600
+IMMUTABLE = "public, max-age=31536000, s-maxage=31536000, immutable"
+# How long the CDN may keep serving the old answer while it fetches a new one in the background.
+STALE_WHILE_REVALIDATE_S = {LIVE_S: 600, SLOW_S: 3600, GEOGRAPHY_S: 86400}
+
+
+@dataclass(frozen=True)
+class CDNRule:
+    pattern: re.Pattern[str]
+    ttl: int | None  # s-maxage; None: never cached by the CDN
+    immutable: bool = False
+    finished_runs_only: bool = False  # agent runs: cache only once the run has finished
+
+
+def _rule(pattern: str, ttl: int | None, **flags: bool) -> CDNRule:
+    return CDNRule(re.compile(pattern), ttl, **flags)
+
+
+# First match wins. Paths that match nothing (the docs, /openapi.json) get no CDN header.
+CDN_RULES: tuple[CDNRule, ...] = (
+    _rule(r"^/api/health$", None),  # a liveness probe must reach the function
+    _rule(r"^/api/agent/(ask|status)\b", None),  # the SSE stream; the live quota
+    _rule(r"^/api/agent/runs/", LIVE_S, finished_runs_only=True),
+    _rule(r"^/api/imagery/(render|tiles/)", None, immutable=True),
+    _rule(r"^/api/imagery/tilejson/", GEOGRAPHY_S),
+    _rule(r"^/api/imagery/(featured|scenes)\b", SLOW_S),
+    _rule(r"^/api/geo/", GEOGRAPHY_S),
+    _rule(r"^/api/orbits/(tle|clock|validation)\b", SLOW_S),
+    _rule(r"^/api/air/stubble-share\b", SLOW_S),
+    _rule(r"^/api/smoke/validation\b", SLOW_S),
+    _rule(r"^/api/bulletin/", SLOW_S),
+    _rule(r"^/api/", LIVE_S),  # fires, stats, sources, scars, risk, air, met, smoke, GK-2A, agent
+)
+
+
+def cdn_rule(path: str) -> CDNRule | None:
+    return next((rule for rule in CDN_RULES if rule.pattern.match(path)), None)
+
+
+_MAX_AGE = re.compile(r"(?:^|,)\s*max-age=(\d+)")
+
+
+def cdn_cache_control(rule: CDNRule, current: str | None) -> str | None:
+    """The Cache-Control for a 200 answer under `rule`, or None to leave the response as it is.
+
+    The browser keeps the route's own max-age (the contract's numbers), capped by the CDN lifetime;
+    a route that set `no-store`/`private` is never made public."""
+    if rule.immutable:
+        return IMMUTABLE
+    if rule.ttl is None:
+        return None
+    if current and re.search(r"no-store|no-cache|private", current):
+        return None
+    found = _MAX_AGE.search(current or "")
+    short = min(int(found.group(1)), rule.ttl) if found else min(rule.ttl, LIVE_S)
+    swr = STALE_WHILE_REVALIDATE_S.get(rule.ttl, rule.ttl * 10)
+    return f"public, max-age={short}, s-maxage={rule.ttl}, stale-while-revalidate={swr}"
+
+
+class CDNCacheHeaders:
+    """ASGI middleware: sets the CDN Cache-Control (see CDN_RULES) on successful GET answers.
+
+    Errors, other methods, the agent's SSE stream and quota, and agent runs still in progress keep
+    the headers their route set. `Vary: Origin` is added to every CDN-cached answer, because the
+    CORS headers differ per origin and a CDN must not hand one site's answer to another.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        rule = cdn_rule(scope.get("path", "")) if scope["type"] == "http" else None
+        if rule is None or scope.get("method") not in ("GET", "HEAD"):
+            await self.app(scope, receive, send)
+            return
+        if rule.finished_runs_only:
+            await self._after_body(rule, scope, receive, send)
+            return
+
+        async def send_with_headers(message: Message) -> None:
+            if message["type"] == "http.response.start" and message["status"] == 200:
+                _apply(rule, message)
+            await send(message)
+
+        await self.app(scope, receive, send_with_headers)
+
+    async def _after_body(self, rule: CDNRule, scope: Scope, receive: Receive, send: Send) -> None:
+        # GET /api/agent/runs/{id} is ~25 KB: hold it until the body shows whether the run is done.
+        start: Message | None = None
+        chunks: list[bytes] = []
+
+        async def hold(message: Message) -> None:
+            nonlocal start
+            if message["type"] == "http.response.start":
+                start = message
+                return
+            if message["type"] != "http.response.body" or start is None:
+                await send(message)
+                return
+            chunks.append(message.get("body", b""))
+            if message.get("more_body", False):
+                return
+            body = b"".join(chunks)
+            if start["status"] == 200:
+                if b'"finished_at":null' in body:  # still running: nobody may keep this answer
+                    MutableHeaders(scope=start)["Cache-Control"] = "no-store"
+                else:
+                    _apply(rule, start)
+            await send(start)
+            await send({"type": "http.response.body", "body": body, "more_body": False})
+
+        await self.app(scope, receive, hold)
+
+
+def _apply(rule: CDNRule, start: Message) -> None:
+    headers = MutableHeaders(scope=start)
+    value = cdn_cache_control(rule, headers.get("cache-control"))
+    if value is not None:
+        headers["Cache-Control"] = value
+        vary = {v.strip().lower() for v in (headers.get("vary") or "").split(",")}
+        if "origin" not in vary:  # CORSMiddleware adds it when the request had an Origin
+            headers.add_vary_header("Origin")

@@ -19,6 +19,8 @@ from the repo root whatever directory you start it from.
 | `DATABASE_URL` | `postgresql+psycopg://blindspot:blindspot@localhost:5433/blindspot` | PostGIS |
 | `ENABLE_SCHEDULER` | `0` | run the job scheduler inside the API process |
 | `CORS_ORIGINS` | `http://localhost:3000` | comma-separated or JSON list |
+| `CORS_ORIGIN_REGEX` | unset | origins allowed by pattern too (full match), e.g. the website's preview URLs |
+| `INIT_DB_ON_STARTUP` | `true` | create missing tables at start-up (`false` on serverless) |
 | `CACHE_DIR` | `<repo>/data/cache` | downloads and rendered imagery |
 | `AOI_BBOX` / `MET_BBOX` | `73.8,27.6,77.7,32.6` / `70,26,80,34` | area of interest / wind-field box |
 | `PUBLIC_BASE_URL` | `http://localhost:8000` | absolute URLs the browser can reach |
@@ -85,31 +87,104 @@ done
 | 8 | `smoke`, `smoke_validate` | met, fires, sentinel scars, air | ~20 s, 6 s |
 | 9 | `geostationary`, `geostationary_backfill` | fires (validation), boundaries | 7 s, ~5 min |
 | 10 | `bulletin` (then `featured_investigations`) | everything above; uses Gemini | ~1-2 min |
+| daily | `prune` | nothing; deletes old smoke/met/risk runs, job runs, orphan fetches (`PRUNE_DRY_RUN=1` only counts) | seconds |
 
 `ENABLE_SCHEDULER=1` makes the API process run the scheduler instead. Run the scheduler in one
 process only (one uvicorn worker, or the CLI). Each job is also locked in Postgres, so a CLI run
 and the scheduler never run the same job at the same moment. Every run is stored in `job_run`; on
 restart an interval job waits until it is next due instead of running again straight away.
 
-## 4a. Serverless (Vercel) deployment of the web API
+## 4a. Production: what runs where
 
-The web API (`blindspot.api.main:app`) runs with only these packages: fastapi starlette pydantic
-pydantic-settings sqlalchemy psycopg psycopg-binary geoalchemy2 httpx orjson apscheduler tzdata
-cachetools tenacity sse-starlette python-dotenv numpy shapely skyfield sgp4 jplephem google-genai
-pystac-client planetary-computer. The jobs (rasterio, geopandas, pandas, scipy, h5py, pyarrow,
-pdfplumber, pillow, pyproj...) run elsewhere (a VM or this machine) against the same database.
+| Piece | Where | Notes |
+| --- | --- | --- |
+| Web API (`blindspot.api.main:app`) | Vercel Hobby, one Python function, region `sin1` (Singapore) | reads Neon; no scheduler, no table creation; `maxDuration` 60 s, body cap 4.5 MB |
+| CDN | Vercel, in front of the function | keeps 200 GETs per `s-maxage` (`api/cache.py`, contract notes "Serverless deployment") |
+| Database | Neon free tier (0.5 GB), Postgres 18 + PostGIS, `aws ap-southeast-1` | the API and the jobs use the **direct** host (NEON_DB without `-pooler`) |
+| Jobs | GitHub Actions (`.github/workflows/data-jobs.yml`), writing to Neon | schedules in the workflow; secrets set by `infra/set_github_secrets.py` |
+| Pictures | `rendered_asset` in Neon, written by the `featured` job | frames, the 24 largest scars' chips and the featured manifest; any instance reads them |
+
+The function runs in Singapore beside Neon: from Vercel's default region (`iad1`) every database
+round trip costs ~220 ms. Secrets live only in the repo-root `.env`; the scripts below read them
+from there and pass them on stdin or in the process environment, never on a command line.
+
+## 4b. Load Neon
+
+`infra/load_neon.py` copies the local database to Neon, compacted: simplified boundaries, burn-risk
+factors stored once per run (`risk_run`) plus each field's own numbers, and only the smoke and
+weather runs the `prune` job keeps. It creates the schema first (`init_db`), refuses a local or
+`-pooler` target and is idempotent: it **empties the app's tables on the target** and copies them
+again (~1 min), so rows the jobs wrote on Neon since (fresh fires, newer risk runs) are replaced
+by the local copy. Re-run it only when the local data should win, e.g. after a schema change.
+
+Set `DATABASE_URL` to Neon's direct host in the process environment (it wins over `.env`), never
+in a file. PowerShell:
+
+```powershell
+$line = Get-Content F:\forge\.env | Where-Object { $_ -match '^NEON_DB=' } | Select-Object -First 1
+$env:DATABASE_URL = (($line -replace '^NEON_DB=', '').Trim().Trim("'").Trim('"')) -replace '-pooler\.', '.'
+cd F:\forge\services\api
+uv run python ..\..\infra\load_neon.py                    # only when the local data should win
+uv run python -m blindspot.jobs run featured --no-chain    # frames + chips + manifest into rendered_asset
+Remove-Item Env:DATABASE_URL                               # before anything else, above all pytest
+```
+
+- A new table only needs `init_db`, which every `python -m blindspot.jobs run ...` performs first;
+  `create_all` adds missing tables and never alters existing ones.
+- Never run `pytest` with `DATABASE_URL` pointing at Neon: conftest would create a test database
+  there.
+- Size: 348 MB after the load and three risk runs (cap 512 MB). The daily `prune` job and the
+  `risk` job's changed-rows-only update keep it there; `docs/build-logs/deploy-data.md` has the
+  per-table sizes and the egress of each endpoint.
+
+## 4c. Deploy the web API to Vercel
+
+```powershell
+cd F:\forge\services\api
+uv run python ..\..\infra\deploy_vercel_api.py          # full bundle, env vars, production deploy
+```
+
+The script assembles a work folder (every `blindspot/*.py`, a root `index.py` exposing `app`, a
+`requirements.txt` pinned from `uv.lock` for `WEB_PACKAGES` only, `vercel.json` with the region
+and `maxDuration`), links project `blindspot-api`, rewrites the production environment variables
+and runs `vercel deploy --prod`. It needs `VERCEL_TOKEN` and `NEON_DB` in `.env`. Options:
+`--skip-env` (keep the variables), `--cors URL,...` (extra exact origins), `--public-url URL`
+(default `https://blindspot-api-azure.vercel.app`), `--foundation-only`.
+
+Environment it sets on Vercel:
+
+| Variable | Value |
+| --- | --- |
+| `DATABASE_URL` | Neon direct host |
+| `GEMINI_API_KEY`, `FIRMS_MAP_KEY`, `DATA_GOV_IN_API_KEY`, `OPENAQ_API_KEY`, `LSASAF_*` | from `.env` (encrypted) |
+| `ENABLE_SCHEDULER` | `0` (the jobs run on GitHub Actions) |
+| `INIT_DB_ON_STARTUP` | `false` (cold starts skip `create_all`) |
+| `CACHE_DIR` | `/tmp/blindspot-cache` (per instance, starts empty) |
+| `PUBLIC_BASE_URL` | the production address: the picture URLs in `/api/imagery/featured`, case files and tilejson |
+| `CORS_ORIGINS` / `CORS_ORIGIN_REGEX` | `["http://localhost:3000"]` / `^https://blindspot[a-z0-9-]*\.vercel\.app$` |
+
+Bundle: the web packages (fastapi ... planetary-computer) plus pillow, rasterio and affine for
+drawing pictures, about 282 MB of the 500 MB cap. Job-only libraries (geopandas, pandas, scipy,
+h5py, pyarrow, lightgbm, pdfplumber, pyproj...) are not shipped.
 
 - **Import rule:** importing the app and every router must not import a heavy module. Heavy
   imports live inside the job-time functions that need them. `tests/test_integration.py` proves it
-  by importing the app in a subprocess with those modules made unimportable.
-- **`INIT_DB_ON_STARTUP=false`** on serverless: the tables already exist, so cold starts skip
-  `create_all`. Default `true`.
-- **`ENABLE_SCHEDULER=0`** on serverless (the jobs run elsewhere).
-- Endpoints that render pixels (`/api/imagery/render`, `/api/imagery/tiles/...`) need
-  rasterio/pillow: where these are missing they answer **503** with `missing_module`, not a 500.
-  Pre-rendered images in `CACHE_DIR` are served when present.
-- Responses of hot read endpoints are cached in-process for 30-300 s (`blindspot/api/cache.py`);
-  each warm instance has its own cache.
+  by importing the app in a subprocess with those modules made unimportable; pillow and rasterio
+  are imported only when a picture is drawn.
+- **Pictures:** an instance looks in its `/tmp`, then `rendered_asset`, then renders live (1-20 s).
+  Run `featured` against Neon after a load so the landing frames and the largest scars' chips are
+  stored; the 6-hourly workflow keeps them current.
+- **Payloads:** two default bodies exceed 4.5 MB raw and rely on gzip (browsers always send it):
+  `/api/smoke/forward` and `/api/scars` without filters. See the contract notes, "Limits".
+- Each warm instance also keeps hot responses in memory for 30-300 s (`blindspot/api/cache.py`).
+
+After a deploy, check from outside (the scratch checks used in `docs/build-logs/deploy-api.md`
+do all of this): every contract GET returns 200 with the numbers of the local API (Neon is a
+snapshot, so small drifts are expected), error paths keep their 4xx, every body is under 4.5 MB on
+the wire, `/api/imagery/featured` frame URLs start with the production address and load, `POST
+/api/agent/ask` with an example question streams `run ... done`, `Access-Control-Allow-Origin`
+echoes `https://blindspot-web.vercel.app` and `http://localhost:3000`, and a repeated GET shows
+`x-vercel-cache: HIT` (or `STALE`).
 
 ## 5. Run the tests
 
