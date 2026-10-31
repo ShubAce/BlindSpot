@@ -3,6 +3,9 @@
 # which the Vercel API reads. Chained jobs run automatically: met -> smoke, sentinel -> risk + featured,
 # bulletin -> featured_investigations. Secrets: DATABASE_URL (Neon direct endpoint) and the API keys;
 # set them with infra/set_github_secrets.py. Until DATABASE_URL is set, every run skips quietly.
+# GitHub's own cron has been unreliable in 2026 (scheduled runs hours late or never created, manual
+# dispatches fine), so scheduler.yml keeps this timetable and dispatches each slot with `slot` set to
+# the cron string below; a run picks its jobs the same way either way.
 name: data-jobs
 
 # Cadence is sized to Neon's free plan (100 CU-hours and 5 GB egress a month; the database is
@@ -21,18 +24,23 @@ on:
     inputs:
       jobs:
         description: "Space-separated job names (python -m blindspot.jobs list)"
-        required: true
+        required: false
         default: "firms_nrt air"
+      slot:
+        description: "A cron string from the schedule above (set by scheduler.yml); overrides jobs"
+        required: false
+        default: ""
 
 permissions:
   contents: read
+  actions: write   # see whether scheduler.yml is running, and restart it if it is not
 
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: ${{ github.event.schedule == '40 11 * * *' && 150 || 60 }}
+    timeout-minutes: ${{ (github.event.schedule || github.event.inputs.slot) == '40 11 * * *' && 150 || 60 }}
     concurrency:
-      group: data-jobs-${{ github.event.schedule || 'manual' }}
+      group: data-jobs-${{ github.event.schedule || github.event.inputs.slot || 'manual' }}
       cancel-in-progress: false
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
@@ -51,12 +59,28 @@ jobs:
       run:
         working-directory: services/api
     steps:
+      - name: Leave a scheduled slot to scheduler.yml while it is running
+        id: dedupe
+        if: github.event_name == 'schedule'
+        shell: bash
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          n=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow scheduler.yml --status in_progress --json databaseId --jq length 2>/dev/null || echo 0)
+          if [ "${n:-0}" -gt 0 ]; then
+            echo "::notice::scheduler.yml dispatches this slot; skipping the duplicate."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Check that the database secret is set
         id: guard
         shell: bash
         working-directory: .
         run: |
-          if [ -z "$DATABASE_URL" ]; then
+          if [ "${{ steps.dedupe.outputs.skip }}" = "true" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          elif [ -z "$DATABASE_URL" ]; then
             echo "::notice::DATABASE_URL secret is not set; skipping (run infra/set_github_secrets.py)."
             echo "configured=false" >> "$GITHUB_OUTPUT"
           else
@@ -81,7 +105,7 @@ jobs:
         id: pick
         shell: bash
         run: |
-          case "${{ github.event.schedule }}" in
+          case "${{ github.event.schedule || github.event.inputs.slot }}" in
             "17 8-18 * * *"|"17 0,3,6,21 * * *") jobs="firms_nrt creams_daily air geostationary" ;;
             "47 2,8,14,20 * * *") jobs="met air_dss" ;;
             "40 11 * * *") jobs="sentinel smoke_validate tle" ;;
@@ -111,3 +135,15 @@ jobs:
           for path in /api/health /api/stats/headline /api/imagery/featured /api/sources; do
             curl -fsS -o /dev/null --max-time 60 "$PUBLIC_API_URL$path" && echo "warmed $path" || echo "could not warm $path"
           done
+
+      - name: Restart scheduler.yml if it has stopped
+        if: always() && steps.guard.outputs.configured == 'true'
+        shell: bash
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          n=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow scheduler.yml --limit 5 --json status --jq '[.[] | select(.status != "completed")] | length' 2>/dev/null || echo 1)
+          if [ "${n:-1}" -eq 0 ]; then
+            gh workflow run scheduler.yml --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" && echo "restarted scheduler.yml"
+          fi

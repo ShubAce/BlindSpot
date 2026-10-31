@@ -1,0 +1,44 @@
+# Keeps the data-jobs timetable. GitHub's own cron has been unreliable in 2026 (scheduled runs hours
+# late or never created, while manual dispatches work), so one long job reads the cron strings in
+# data-jobs.yml and dispatches each slot itself, then starts its successor before the 6-hour job limit.
+# Its own cron only restarts the chain if it ever stops; data-jobs.yml also restarts it. To stop the
+# chain, disable this workflow (gh workflow disable scheduler.yml) or cancel the running run.
+name: scheduler
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 */4 * * *"
+
+permissions:
+  actions: write   # dispatch data-jobs.yml and this workflow
+  contents: read
+
+concurrency:
+  group: scheduler
+  cancel-in-progress: false
+
+jobs:
+  timetable:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+
+      - name: Dispatch data-jobs at each of its cron times
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/timetable.py --minutes 270
+
+      - name: Hand over to the next scheduler run
+        if: success() || failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for attempt in 1 2 3; do
+            gh workflow run scheduler.yml --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" && exit 0
+            sleep $((attempt * 20))
+          done
+          echo "::error::could not start the next scheduler run"; exit 1

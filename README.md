@@ -8,8 +8,12 @@ Sentinel-2 photographs days later, whatever hour it was lit. BlindSpot matches e
 measures the evening burning from a geostationary satellite, and follows the smoke to Delhi. A Gemini investigator
 explains any day's air with cited, number-checked answers.
 
+- **Live site:** https://blindspot-web-five.vercel.app (mission control at
+  [/live](https://blindspot-web-five.vercel.app/live), the daily bulletin at
+  [/bulletin](https://blindspot-web-five.vercel.app/bulletin))
 - **Live API:** https://blindspot-api-azure.vercel.app/api/stats/headline (every response lists its sources)
-- **Method and accuracy:** the `/method` page of the site, with every validation number read live
+- **Method and accuracy:** [/method](https://blindspot-web-five.vercel.app/method), with every validation number read
+  live
 - **Design and contracts:** [docs/architecture.md](docs/architecture.md), [docs/api-contract-notes.md](docs/api-contract-notes.md)
 
 ## Why this matters
