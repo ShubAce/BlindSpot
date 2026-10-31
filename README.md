@@ -47,7 +47,7 @@ time farmers burn, not how much they burn.
    back from Delhi and other cities, with a fire-exposure index checked against measured PM2.5.
 6. **The air people breathe.** CPCB stations (via data.gov.in and OpenAQ), the CAMS model (always labelled as a model)
    and the IITM DSS estimate of stubble's share of Delhi's PM2.5.
-7. **An investigator you can question.** Gemini calls 10 tools that read the database. Every number in an answer is
+7. **An investigator you can question.** Gemini calls 11 tools that read the database. Every number in an answer is
    checked against the tool outputs before it is shown, every claim cites its source, and the map follows the
    investigation as it runs.
 8. **A daily bulletin** in English, Hindi and Punjabi, verified the same way. A script check rejects Punjabi text

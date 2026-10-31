@@ -1,12 +1,19 @@
 """The investigator agent over HTTP.
 
-POST /api/agent/ask        {question, lang?} -> text/event-stream of agent events
-GET  /api/agent/runs/{id}  one stored run: events, answer, citations, verification, tool outputs
-GET  /api/agent/examples   recent runs whose answers passed verification
+POST /api/agent/ask        {question, lang?, follow_up_of?} -> text/event-stream of agent events
+GET  /api/agent/runs/{id}  one stored run: events, answer, citations, verification, tool outputs,
+                           and its thread (follow_up_of, context, follow_up_until)
+GET  /api/agent/examples   recent runs whose answers passed verification (no follow-ups)
 GET  /api/agent/status     Gemini budget per model, cooldowns, rate limits (for the UI badge)
 
 The ask route only starts (or joins, or replays) a run and streams its events; the run itself
 lives in blindspot.agent.runner and finishes even if the browser disconnects.
+
+Follow-ups: `follow_up_of` names an earlier investigation (the run_id of its `run` event). The
+model is then also given that question and answer (and the pair before it, in a longer thread) as
+context, never as evidence. A run that cannot be followed up (unknown, not an investigation, no
+answer, older than 24 h) gets a 400 before anything is counted or sent to Gemini: a follow-up
+such as "and yesterday?" means nothing without its context, so it is not answered without it.
 """
 
 from __future__ import annotations
@@ -44,6 +51,14 @@ class AskBody(BaseModel):
     lang: Literal["en", "hi", "pa"] | None = Field(
         None, description="Answer language; by default the script of the question decides"
     )
+    follow_up_of: str | None = Field(
+        None,
+        pattern=r"^[0-9a-f-]{32,36}$",  # a run id: a uuid (lowercased below)
+        description="Ask a follow-up: the run_id (from the `run` event) of an earlier "
+        "investigation that answered within the last 24 h. The model also gets that question and "
+        "answer, and the pair before it in a thread, as context; every number in the new answer "
+        "must still come from the tools it calls for this question.",
+    )
 
     @field_validator("question")
     @classmethod
@@ -53,27 +68,51 @@ class AskBody(BaseModel):
             raise ValueError("ask a question of at least 3 characters")
         return value
 
+    @field_validator("follow_up_of", mode="before")
+    @classmethod
+    def _run_id(cls, value: Any) -> Any:
+        """Run ids are lowercase; an empty value means a question asked on its own."""
+        if isinstance(value, str):
+            return value.strip().lower() or None
+        return value
+
 
 @router.post(
     "/ask",
     response_class=EventSourceResponse,
-    responses={200: {"content": {"text/event-stream": {}}}, 429: {"description": "rate limited"}},
+    responses={
+        200: {"content": {"text/event-stream": {}}},
+        400: {"description": "follow_up_of names a run that cannot be followed up"},
+        429: {"description": "rate limited"},
+        503: {"description": "the run named by follow_up_of could not be read"},
+    },
 )
 async def ask(body: AskBody, request: Request) -> EventSourceResponse:
     """Investigate a question. Streams `run`, `thought`, `tool_call`, `map`, `tool_result`,
     `answer_delta`, `answer`, `verification`, `error` and finally `done`, one JSON object per
-    `data:` line (its `type` repeats the SSE event name)."""
+    `data:` line (its `type` repeats the SSE event name). A follow-up's `run` event also carries
+    `follow_up_of` and `context`, the earlier questions and answers the model was given."""
     # The real client address (Vercel's forwarded address on Vercel, the socket peer elsewhere);
     # on serverless the limit is also counted in Postgres under a salted hash of it.
     client = client_address(request.headers, request.client.host if request.client else None)
     try:
-        run = await runner.ask(body.question, body.lang, client)
+        run = await runner.ask(body.question, body.lang, client, follow_up_of=body.follow_up_of)
     except runner.RateLimited as exc:
         wait = int(exc.retry_after_s) + 1
         raise HTTPException(  # the API's JSON error shape; Retry-After says when to come back
             status_code=429,
             detail=f"Too many questions from this address ({exc}). Try again in {wait} s.",
             headers={"Retry-After": str(wait), "Cache-Control": "no-store"},
+        ) from None
+    except runner.FollowUpRejected as exc:  # checked before the client was counted
+        raise HTTPException(
+            status_code=400, detail=str(exc), headers={"Cache-Control": "no-store"}
+        ) from None
+    except runner.FollowUpUnavailable as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=str(exc),
+            headers={"Retry-After": "30", "Cache-Control": "no-store"},
         ) from None
 
     async def events():  # noqa: ANN202 - async generator of SSE frames
@@ -110,6 +149,7 @@ def _sources_of(row: AgentRun, session: SessionDep) -> list[SourceRef]:
 
 
 def _run_dict(row: AgentRun, *, full: bool) -> dict[str, Any]:
+    follow_up_of, context = runner.follow_up_info(row.events)
     out: dict[str, Any] = {
         "id": row.id,
         "kind": row.kind,
@@ -124,6 +164,12 @@ def _run_dict(row: AgentRun, *, full: bool) -> dict[str, Any]:
         "citations": row.citations or [],
         "verification": row.verification,
         "tools_used": [t.get("name") for t in row.tools or []],
+        # The thread: the run this one follows up, the earlier questions and answers the model was
+        # given as context (oldest first, [] for a question asked on its own), and until when this
+        # run can itself be followed up (null: never). An absolute time, so a cached copy stays true.
+        "follow_up_of": follow_up_of,
+        "context": context,
+        "follow_up_until": runner.follow_up_until(row),
     }
     if full:
         out |= {"error": row.error, "events": row.events or [], "tools": row.tools or [],
@@ -133,7 +179,8 @@ def _run_dict(row: AgentRun, *, full: bool) -> dict[str, Any]:
 
 @router.get("/runs/{run_id}")
 def get_run(run_id: str, session: SessionDep):  # noqa: ANN201
-    """One stored run, with everything the model was shown (`tools`) and every Gemini call."""
+    """One stored run, with everything the model was shown (`tools`, and for a follow-up the
+    earlier questions and answers in `context`) and every Gemini call."""
     row = session.get(AgentRun, run_id[:36])
     if row is None:
         raise HTTPException(status_code=404, detail="no agent run with that id")
@@ -151,6 +198,9 @@ _EXAMPLES_SQL = text(
           -- before it existed carry no honesty block and are never shown as verified examples
           AND (verification->'honesty'->>'passed')::boolean IS TRUE
           AND jsonb_array_length(COALESCE(citations, '[]'::jsonb)) > 0  -- cites evidence
+          -- not a follow-up: "and yesterday?" means nothing without its thread, and asked again
+          -- from the list it would start a new run without that context
+          AND events->0->>'follow_up_of' IS NULL
           AND (CAST(:lang AS text) IS NULL OR lang = :lang)
         ORDER BY cache_key, started_at DESC
     ) latest

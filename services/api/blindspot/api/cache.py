@@ -547,8 +547,8 @@ def job_stamp(session: Session, jobs: Iterable[str]) -> str:
 #   SIX_HOURLY  met grids and smoke runs (met 03:17, 09:17, 15:17, 21:17, smoke chained), IITM DSS,
 #               orbit validation: :30 of the next hour (04:30, 10:30, 16:30, 22:30), then 06:30,
 #               11:30, 17:30, 00:30 for a late start.
-#   DAILY       Sentinel-2 scars, burn risk, featured frames, smoke validation, element sets
-#               (11:17, up to 150 min): 13:30 and 14:30.
+#   DAILY       Sentinel-2 scars, burn risk, the district field brief built from both, featured
+#               frames, smoke validation, element sets (11:17, up to 150 min): 13:30 and 14:30.
 #   BULLETIN    the daily bulletin (02:00, retried 03:17 and 06:17): :30 of hours 2, 3, 6 (+1 h).
 #   WEEKLY      boundaries and places (Monday 03:17): every day at 03:30, so a deploy that changes
 #               how they render is never more than a day away.
@@ -629,8 +629,10 @@ CDN_RULES: tuple[CDNRule, ...] = (
     _rule(r"^/api/(smoke|met)/", SIX_HOURLY),
     _rule(r"^/api/scars/summary\b", HOURLY),  # carries FIRMS counts per district
     _rule(r"^/api/(scars|risk)\b", DAILY),
+    _rule(r"^/api/brief\b", DAILY),  # the field brief: scars and risk ranks, JSON and CSV
     _rule(r"^/api/bulletin/", BULLETIN),
-    _rule(r"^/api/", HOURLY),  # fires, stats, sources, air, GK-2A, orbit passes, agent examples
+    # fires, stats, sources, air, GK-2A, orbit passes, agent examples and guardrail stats
+    _rule(r"^/api/", HOURLY),
 )
 
 

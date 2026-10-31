@@ -37,6 +37,10 @@ in the same turn. Use as few rounds as you need.
 stations measure (get_air_quality), the weather that traps or clears smoke: rain, mixing height, \
 wind (get_weather), and where the air came from (trace_air_back), with fire activity \
 (get_fire_activity) when burning is in question. If the air is not actually bad, say so.
+- When asked where field or enforcement teams (PPCB, HSPCB) should go, or which villages to check, \
+in a district, call get_field_brief; its candidate unseen burns and field ranks follow every rule below. \
+Only the villages in its watchlist_top_tenth have fields in the risk run's top tenth: never say that \
+of another village.
 - The user is looking at a live map. In the same turn as your evidence tools, call show_on_map \
 at least once: turn on the layer your answer relies on (air_stations, fires, smoke_back, scars, \
 risk...) or fly to the place you talk about.
@@ -121,6 +125,51 @@ def revision_turn(unverified: list[str], lang: str, honesty: list[str] | None = 
         "cannot support; do not compute new numbers. Keep the same format, and answer in "
         f"{LANGUAGES.get(lang, LANGUAGES['en'])}."
     )
+
+
+# --- follow-up questions (POST /api/agent/ask with follow_up_of) -------------------------------
+# A follow-up gets the last earlier questions and answers of its thread (runner.follow_up_context:
+# at most two pairs, answers without their citation markers, no tool output) as a first part in
+# front of the question, and this system prompt with one more rule. Its answer is checked like any
+# other, against the tools called for it only, so an earlier answer's figures must be fetched again.
+
+FOLLOW_UP_RULES = """\
+- Follow-up questions: the user turn may begin with EARLIER IN THIS CONVERSATION, the questions \
+and answers that came before this question. Use them only to understand what the new question \
+refers to ("there", "that district", "the day before"). They are not evidence: their numbers may \
+be out of date, and the automatic check accepts only numbers from the tool results of this \
+question. Every number, time and date you write must come from a tool you call now, so call the \
+tools again for any figure you need, even one an earlier answer gave, and cite only this \
+question's tool results.
+"""
+
+# A constant like the plain system prompt (the same bytes for every follow-up), so it is cached too.
+INVESTIGATOR_FOLLOW_UP_SYSTEM = INVESTIGATOR_SYSTEM + FOLLOW_UP_RULES
+
+# Appended to revision_turn for a follow-up: the revision pass cannot call tools, so a figure that
+# only an earlier answer holds has to go.
+FOLLOW_UP_REVISION_NOTE = (
+    "\n\nThe earlier questions and answers at the start of this conversation are not tool "
+    "results: remove any number, time or date that only they contain."
+)
+
+
+def context_turn(earlier: list[dict[str, str]]) -> str:
+    """The part in front of a follow-up's question: the earlier questions and answers of its
+    thread (oldest first), marked as context that is not evidence."""
+    pairs = "\n\n".join(
+        f"Question: {pair['question'].strip()}\nYour answer: {pair['answer'].strip()}"
+        for pair in earlier
+    )
+    return (
+        "EARLIER IN THIS CONVERSATION (context only, not evidence; oldest first):\n\n"
+        f"{pairs}\n\n"
+        "END OF EARLIER CONVERSATION. The new question below may refer to it. Its numbers are not "
+        "evidence: call the tools again for every number, time or date you give."
+    )
+
+
+# --- end of follow-up questions ------------------------------------------------------------------
 
 
 # --- daily bulletin --------------------------------------------------------------------------

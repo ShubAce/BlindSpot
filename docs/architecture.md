@@ -108,6 +108,9 @@ GeoJSON uses `[lon, lat]`. Query `bbox=minLon,minLat,maxLon,maxLat`. Default AOI
 | GET `/api/scars/summary` | since | `{season:{since,clusters,area_ha,unseen_area_ha,unseen_share,fire_detections},by_district:[{district,state,area_ha,clusters,unseen_area_ha,unseen_share,fire_detections}]}` |
 | GET `/api/scars/{id}` | | `{case:{…properties,geometry},imagery:{pre:{date,item_id,collection,truecolor_url,swir_url,nbr_url},post:{…}},fires_nearby:[…],weather_at_burn:{…}}` |
 | GET `/api/risk` | district, limit | `{as_of,totals:{clusters,area_ha},features:FeatureCollection<Polygon,{id,area_ha,harvested_after,harvested_before,days_since_harvest,risk_score,risk_factors,district,village,centroid}>,ranking:[{village,district,area_ha,clusters,risk_score}]}` |
+| GET `/api/brief` | days=7 | district field brief index: `{window:{from,to,days,newest_pass},districts:[{district,state,unseen_clusters,unseen_area_ha,villages,harvested_fields,top_tenth_fields,top_tenth_villages,links}],totals,candidate_unseen_audit,risk_run,ranking_reliability,notes}`; the window ends at the newest Sentinel-2 pass, not today |
+| GET `/api/brief/{district}` | days=7, limit=50 | `{district,state,window,totals,villages:[{village,subdistrict,unseen_clusters,unseen_area_ha,newest_pass,lat,lon,case_ids,maps_url,case_url}],watchlist:[{village,subdistrict,fields,top_tenth_fields,in_top_tenth,best_rank,lat,lon,field_ids,maps_url}],watchlist_in_top_tenth,candidate_unseen_audit,risk_run,ranking_reliability,notes}` |
+| GET `/api/brief/{district}/csv` | days=7, lang=en\|hi\|pa | text/csv (UTF-8 with BOM): one row per village; the count and area header cells carry the window and the audit precision with its 95% CI |
 | GET `/api/air/latest` | | `{stations:[{id,name,city,state,lat,lon,pm25,pm10,observed_at,provider,is_model}],receptors:[{city,pm25_now,pm25_24h_mean,observed_at,provider,n_stations}]}` |
 | GET `/api/air/series` | city, hours=72 | `{city,series:[{t,pm25,n_stations}],model_series:[{t,pm25}]}` |
 | GET `/api/met/now` | city | `{city,t,wind_10m:{speed_kmh,from_deg},wind_925:{speed_kmh,from_deg},blh_m,temp_2m_c,inversion,rain_mm_24h}` |
@@ -117,12 +120,13 @@ GeoJSON uses `[lon, lat]`. Query `bbox=minLon,minLat,maxLon,maxLat`. Default AOI
 | GET `/api/imagery/featured` | | `{aoi:{name,bbox},frames:[{date,item_id,collection,cloud_pct,truecolor_url,swir_url,width,height}]}` |
 | GET `/api/imagery/render` | collection, item, bbox, kind=truecolor\|swir\|nbr, w, h | image/jpeg or image/png, cached on disk, `Cache-Control: public, max-age=31536000, immutable` |
 | GET `/api/stats/headline` | | `{fires_24h:{count,by_satellite,window_ist},season:{…},delhi:{pm25,observed_at,provider},passes:{last,next}}` |
-| POST `/api/agent/ask` | `{question, lang?}` | `text/event-stream` of events below |
-| GET `/api/agent/runs/{id}` · `/api/agent/examples` | | a stored run · recent good runs |
+| POST `/api/agent/ask` | `{question, lang?, follow_up_of?}` | `text/event-stream` of events below; 400 when `follow_up_of` names a run that cannot be followed up (unknown, not an investigation, no answer, over 24 h old) |
+| GET `/api/agent/runs/{id}` · `/api/agent/examples` | | a stored run, with `follow_up_of`, `context`, `follow_up_until` · recent good runs (never follow-ups) |
+| GET `/api/agent/stats` | days=30 | guardrail counts from every stored run: `{window,basis,questions:{runs,answered,failed,figures,all_matched,corrected_figures,honesty,duration_ms,tool_calls,models,languages,series},bulletins:{…},definitions}`; a field older runs lack is `unknown`, never false |
 | GET `/api/bulletin/latest` | lang=en\|hi\|pa | `{date,lang,generated_at,model,title,summary,sections:[{heading,body}],citations}` |
 
 Agent SSE events (one JSON object per `data:` line):
-`run{run_id,model}` · `thought{text}` · `tool_call{id,name,args}` · `tool_result{id,name,ok,summary,sources}` ·
+`run{run_id,model,lang,follow_up_of?,context?}` · `thought{text}` · `tool_call{id,name,args}` · `tool_result{id,name,ok,summary,sources}` ·
 `map{action:"fly_to"|"show_layer"|"highlight",payload}` · `answer_delta{text}` · `answer{text,citations:[{marker,source}]}` ·
 `verification{checked,verified,unverified:[str],passed}` · `error{message,retryable}` · `done{run_id,duration_ms}`.
 
@@ -159,8 +163,16 @@ checks it against tool outputs (tolerant of rounding/units); if any fail, the mo
 list; the final `verification` event states the result. Model fallback chain and retry policy per
 `docs/research/gemini-agent.md`. Every run is stored in `agent_run`.
 
-Tools: `get_fire_activity` · `get_satellite_passes` · `get_burn_scars` · `get_case_file` · `get_air_quality` ·
-`trace_air_back` · `forecast_smoke` · `get_weather` · `get_burn_risk` · `show_on_map` (emits a `map` event only).
+Tools (11): `get_fire_activity` · `get_satellite_passes` · `get_burn_scars` · `get_case_file` · `get_air_quality` ·
+`trace_air_back` · `forecast_smoke` · `get_weather` · `get_burn_risk` · `get_field_brief` (a district's villages
+with candidate unseen burns and its watchlist of harvested fields, from `/api/brief/{district}`; only villages with
+fields in the risk run's top tenth go under that name) · `show_on_map` (emits a `map` event only).
+
+Follow-ups: `follow_up_of` (an earlier investigation's run id, under 24 h old) gives the model at most two earlier
+question/answer pairs as context, without their citation markers or any tool output. They are never evidence: the
+verifier checks the new answer against this run's tool results only, so every figure is fetched again. The `run`
+event stores the link and the exact context. `GET /api/agent/stats` counts how often the verifier and the honesty
+rules passed, corrected or rewrote runs, from every stored run.
 
 ## 8. Robustness
 

@@ -806,3 +806,232 @@ def test_bulletin_replay_checks_every_language(monkeypatch: Any, created: list[s
     assert "११००.०" in removed and "१२.०" in removed  # published with Devanagari digits
     assert hi["citations"] and all(c["source"]["key"] for c in hi["citations"])
     assert set(hi["available_langs"]) == {"en", "hi", "pa"}
+
+
+# --- follow-up questions ------------------------------------------------------------------------
+#
+# The earlier run of a follow-up is the recorded real live-air investigation (2026-10-30), stored as
+# if it had answered a few minutes ago. Its answer names Mundka at 201 µg/m³ [4].
+
+LIVE = json.loads((FIXTURES / "gemini_run_live_air.json").read_text(encoding="utf-8"))
+LIVE_ANSWER = next(e for e in LIVE["events"] if e["type"] == "answer")
+
+
+def _stored_run(
+    created: list[str],
+    *,
+    kind: str = "ask",
+    ok: bool = True,
+    age: timedelta = timedelta(minutes=5),
+    question: str = LIVE["question"],
+    answer: str = LIVE_ANSWER["text"],
+    head: dict[str, Any] | None = None,
+) -> str:
+    """Stores an earlier run to follow up, started `age` ago; `head` adds fields to its `run`
+    event (a stored follow-up's follow_up_of and context). Its verification has no honesty block,
+    so it is never listed as an example."""
+    from blindspot.models.agent import AgentRun
+
+    run_id = str(uuid.uuid4())
+    events = [dict(e) for e in LIVE["events"]]
+    events[0] |= {"run_id": run_id, **(head or {})}
+    started = utcnow() - age
+    with session_scope() as session:
+        session.add(AgentRun(
+            id=run_id, kind=kind, question=question, lang="en", model=events[0]["model"],
+            started_at=started, finished_at=started + timedelta(seconds=9), events=events,
+            answer=answer if ok else None, citations=LIVE_ANSWER["citations"] if ok else [],
+            verification={"passed": True} if ok else None, ok=ok,
+            error=None if ok else "empty answer", tools=LIVE["tools"],
+        ))  # fmt: skip
+    created.append(run_id)
+    return run_id
+
+
+def _context_of(run_id: str, question: str = LIVE["question"], answer: str = LIVE_ANSWER["text"]) -> dict[str, str]:
+    return {"run_id": run_id, "question": question, "answer": runner.context_answer(answer)}
+
+
+def test_a_follow_up_gets_the_earlier_answer_as_context(created: list[str], monkeypatch: Any) -> None:
+    """POST /api/agent/ask with follow_up_of: Gemini sees the earlier question and answer (without
+    its citation markers or any tool output) as a first part marked as context, under the
+    follow-up system prompt. The `run` event and the stored run name the thread, and a follow-up
+    is never listed as an example."""
+    from blindspot.agent import prompts
+    from blindspot.api.main import app
+
+    parent = _stored_run(created)
+    gemini = ReplayClient(RECORDED["calls"])
+    monkeypatch.setattr(runner, "default_client_factory", lambda: gemini)
+    question = f"Which station was the worst? {uuid.uuid4().hex[:6]}"
+    earlier = [_context_of(parent)]
+    assert "[4]" not in earlier[0]["answer"] and "Mundka at 201 µg/m³ and" in earlier[0]["answer"]
+    with TestClient(app) as http:
+        response = http.post("/api/agent/ask", json={"question": question, "lang": "en",
+                                                     "follow_up_of": parent.upper()})  # fmt: skip
+        assert response.status_code == 200
+        frames = _sse(response.text)
+        run_id = frames[0][1]["run_id"]
+        created.append(run_id)
+        assert frames[0][1]["follow_up_of"] == parent and frames[0][1]["context"] == earlier
+        assert frames[-1][0] == "done" and frames[-1][1]["ok"]
+        context, asked = (part.text for part in gemini.requests[0]["contents"][0].parts)
+        assert context == prompts.context_turn(earlier)
+        assert context.startswith("EARLIER IN THIS CONVERSATION (context only, not evidence")
+        assert LIVE["question"] in context and "Mundka at 201 µg/m³" in context
+        assert "DPCC" not in context and "stations_reporting" not in context  # no tool output
+        assert asked.startswith("Current time:") and asked.endswith(f"Question: {question}")
+        assert gemini.requests[0]["config"].system_instruction == prompts.INVESTIGATOR_FOLLOW_UP_SYSTEM
+        stored = http.get(f"/api/agent/runs/{run_id}").json()["run"]
+        assert stored["follow_up_of"] == parent and stored["context"] == earlier
+        assert stored["events"][0]["context"] == earlier  # the record of what the model was given
+        first = http.get(f"/api/agent/runs/{parent}").json()["run"]
+        assert first["follow_up_of"] is None and first["context"] == []
+        started = datetime.fromisoformat(first["started_at"])
+        until = datetime.fromisoformat(first["follow_up_until"])
+        assert until - started == timedelta(hours=24)
+        # Verified, honest and citing sources, yet not an example: "Which station was the
+        # worst?" means nothing without its thread.
+        assert stored["verification"]["passed"] and stored["verification"]["honesty"]["passed"]
+        _give_recorded_citations(run_id)
+        examples = http.get("/api/agent/examples?limit=20").json()["examples"]
+        assert run_id not in [x["id"] for x in examples]
+
+
+def test_a_follow_up_has_its_own_cache_key(created: list[str]) -> None:
+    """The same words after another answer, or asked on their own, are another question: the key
+    includes the run followed up, and only the same follow-up replays the stored answer."""
+    question = f"And which station was the worst? {uuid.uuid4().hex[:6]}"
+    parent, other = _stored_run(created), _stored_run(created)
+    alone, after = runner.cache_key(question, "en"), runner.cache_key(question, "en", parent)
+    assert alone == runner.cache_key(question, "en", None)  # questions on their own keep their key
+    assert len({alone, after, runner.cache_key(question, "en", other)}) == 3
+    run = asyncio.run(runner.run_to_end(question, "en", kind="ask", follow_up_of=parent,
+                                        client_factory=lambda: ReplayClient(RECORDED["calls"])))  # fmt: skip
+    created.append(run.id)
+    _give_recorded_citations(run.id)  # the cache replays only answers that cite evidence
+    with session_scope() as session:
+        stored_key = session.execute(text("SELECT cache_key FROM agent_run WHERE id = :i"),
+                                     {"i": run.id}).scalar_one()  # fmt: skip
+    assert stored_key == after
+    assert runner.find_recent(after, 10)["id"] == run.id
+    assert runner.find_recent(alone, 10) is None
+    again = asyncio.run(runner.ask(f"  {question.upper()} ", "en", "10.0.0.9", follow_up_of=parent))
+    assert again.id == run.id and again.events[0]["cached"] is True
+    assert again.events[0]["follow_up_of"] == parent
+
+
+def test_a_follow_up_of_a_run_that_cannot_be_followed_is_refused(
+    created: list[str], monkeypatch: Any
+) -> None:
+    """Unknown, without an answer, a bulletin, or over a day old: 400 with the reason, before the
+    client is counted or Gemini is called. A follow-up such as "And in Ludhiana?" is not answered
+    without its context."""
+    from blindspot.api.main import app
+
+    made: list[bool] = []
+
+    def no_gemini() -> Any:
+        made.append(True)
+        raise runner.GeminiUnavailable("a refused follow-up must not reach Gemini", retryable=False)
+
+    monkeypatch.setattr(runner, "default_client_factory", no_gemini)
+    refused = {
+        str(uuid.uuid4()): "no finished investigation has that id",
+        _stored_run(created, ok=False): "ended without an answer",
+        _stored_run(created, kind="bulletin"): "not an investigation",
+        _stored_run(created, age=timedelta(hours=25)): "more than 24 h old",
+    }
+    with TestClient(app) as http:
+        for parent, reason in refused.items():
+            response = http.post("/api/agent/ask", json={"question": "And in Ludhiana?",
+                                                         "follow_up_of": parent})  # fmt: skip
+            body = response.json()
+            assert response.status_code == 400 and reason in body["detail"], body
+            assert body["status"] == 400 and body["sources"] == [] and body["generated_at"]
+            assert response.headers["cache-control"] == "no-store"
+        malformed = http.post("/api/agent/ask", json={"question": "And in Ludhiana?",
+                                                      "follow_up_of": "not a run id"})  # fmt: skip
+        assert malformed.status_code == 422
+        # The earlier run cannot be read at all (database down): 503, try again, not a guess.
+        from sqlalchemy.exc import OperationalError
+
+        import blindspot.db
+
+        def database_down() -> Any:
+            raise OperationalError("SELECT 1", {}, ConnectionRefusedError("connection refused"))
+
+        monkeypatch.setattr(blindspot.db, "SessionLocal", database_down)
+        unreadable = http.post("/api/agent/ask", json={"question": "And in Ludhiana?",
+                                                       "follow_up_of": next(iter(refused))})  # fmt: skip
+        assert unreadable.status_code == 503 and "could not be read" in unreadable.json()["detail"]
+        assert unreadable.headers["retry-after"] == "30"
+    assert made == []  # Gemini was never asked
+    assert not any(runner.limiter()._hits.values())  # and nothing was counted against the client
+
+
+def _with_answer_text(call: dict[str, Any], old: str, new: str) -> dict[str, Any]:
+    """A recorded Gemini call whose answer text has `old` replaced by `new`, once."""
+    chunks, replaced = [], 0
+    for raw in call["chunks"]:
+        chunk = json.loads(raw)
+        for candidate in chunk.get("candidates") or []:
+            for part in (candidate.get("content") or {}).get("parts") or []:
+                if isinstance(part.get("text"), str) and not part.get("thought") and old in part["text"]:
+                    part["text"] = part["text"].replace(old, new)
+                    replaced += 1
+        chunks.append(json.dumps(chunk))
+    assert replaced == 1
+    return {**call, "chunks": chunks}
+
+
+def test_a_number_only_the_earlier_answer_gave_is_rejected(created: list[str], monkeypatch: Any) -> None:
+    """The earlier answer is context, not evidence. Here the recorded final answer is changed to
+    repeat the earlier "201 µg/m³" (Mundka) while every tool of this run is down, as it was when
+    the run was recorded (an app with no routes): the number check rejects it, the revision pass
+    says why, and the revised answer, without it, is the one kept."""
+    from blindspot.agent import prompts
+
+    parent = _stored_run(created)
+    final = RECORDED["calls"][4]
+    copied = _with_answer_text(final, "\nCaveat:", "\n- Mundka was the worst station at 201 µg/m³.\nCaveat:")
+    gemini = ReplayClient([*RECORDED["calls"][:4], copied, final])  # the last one: the revision
+    monkeypatch.setattr(runner, "InternalApi", lambda: tools.InternalApi(app=FastAPI()))
+    run = asyncio.run(runner.run_to_end("Which station was the worst, and how bad was it?", "en",
+                                        kind="ask", follow_up_of=parent,
+                                        client_factory=lambda: gemini))  # fmt: skip
+    created.append(run.id)
+    assert "Mundka at 201 µg/m³" in gemini.requests[0]["contents"][0].parts[0].text  # shown...
+    assert not any(t["ok"] for t in run.tools)  # ...and no tool of this run returned it
+    first_pass = run.verification["first_pass_unverified"]
+    assert any(item.startswith("201 µg/m³") for item in first_pass), first_pass
+    revision = gemini.requests[5]["contents"][-1].parts[0].text
+    assert "201 µg/m³" in revision and prompts.FOLLOW_UP_REVISION_NOTE in revision
+    assert run.verification["revised"] and run.verification["passed"] and "201" not in run.answer
+
+
+def test_a_thread_carries_its_last_two_questions_and_answers(created: list[str]) -> None:
+    """A follow-up of a follow-up is given at most the last two earlier pairs
+    (runner.MAX_CONTEXT_PAIRS), oldest first, each answer without its citation markers. A featured
+    investigation can start a thread."""
+    from blindspot.api.main import app
+
+    e2e = json.loads((FIXTURES / "gemini_run_e2e.json").read_text(encoding="utf-8"))
+    cited = next(e for e in e2e["events"] if e["type"] == "answer")["text"]  # a real cited answer
+    first = _stored_run(created, kind="featured")
+    after_first = runner.follow_up_context(first)
+    assert after_first == [_context_of(first)]
+    second = _stored_run(created, question="Did it come from Punjab?", answer=cited,
+                         head={"follow_up_of": first, "context": after_first})  # fmt: skip
+    after_second = runner.follow_up_context(second)
+    assert after_second == [_context_of(first), _context_of(second, "Did it come from Punjab?", cited)]
+    third = _stored_run(created, question="And Bawana?", answer=cited,
+                        head={"follow_up_of": second, "context": after_second})  # fmt: skip
+    after_third = runner.follow_up_context(third)
+    assert [pair["run_id"] for pair in after_third] == [second, third]  # the first pair dropped off
+    assert len(after_third) == runner.MAX_CONTEXT_PAIRS == 2
+    assert "[" in cited and not any("[" in pair["answer"] for pair in after_third)
+    with TestClient(app) as http:
+        stored = http.get(f"/api/agent/runs/{third}").json()["run"]
+    assert stored["follow_up_of"] == second
+    assert [pair["run_id"] for pair in stored["context"]] == [first, second]

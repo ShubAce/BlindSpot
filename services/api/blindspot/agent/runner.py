@@ -12,6 +12,13 @@ One question (POST /api/agent/ask) goes like this:
    and `verification{checked, verified, unverified, passed}`.
 4. `done{run_id, duration_ms}`, always last; failures add `error{message, retryable}` before it.
 
+A follow-up question (`follow_up_of`, the id of an earlier investigation) also gets the last
+earlier questions and answers of its thread, at most MAX_CONTEXT_PAIRS of them, as a context part
+in front of the question: answers only, without their citation markers or any tool output. They
+help the model understand "and there?", but they are never evidence: the verifier still checks
+the new answer against this run's own tool results, so every figure is fetched again. The `run`
+event (stored with the run) records which run was followed up and the exact context given.
+
 Why a manual loop (not the SDK's automatic function calling): we need each step as an event, the
 citations, a model fallback in the middle of a run, and a hard cap on rounds.
 
@@ -55,6 +62,7 @@ from google import genai
 from google.genai import errors, types
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 from blindspot.agent import prompts
 from blindspot.agent.tools import (
@@ -137,6 +145,9 @@ class AgentSettings(BaseSettings):
     # watch a frozen answer that long when another model can take the call.
     idle_s: float = 35.0
     bulletin_idle_s: float = 60.0  # the morning job has no one waiting on it
+    # How long after it started an investigation can be followed up. The air, fire and wind data
+    # an answer describes change by the hour; a day-old answer is no context for "and now?".
+    follow_up_hours: float = 24.0
 
 
 def agent_settings() -> AgentSettings:
@@ -590,8 +601,14 @@ def normalise_question(question: str) -> str:
     return " ".join(re.sub(r"[^\w\s]", " ", folded).split())
 
 
-def cache_key(question: str, lang: str) -> str:
-    return hashlib.sha256(f"{lang}|{normalise_question(question)}".encode()).hexdigest()
+def cache_key(question: str, lang: str, follow_up_of: str | None = None) -> str:
+    """sha256 of the language and the normalised question. A follow-up adds the run it follows:
+    "and yesterday?" after one answer is not the same question as after another, nor on its own.
+    Keys of questions asked on their own are unchanged, so stored answers still replay."""
+    key = f"{lang}|{normalise_question(question)}"
+    if follow_up_of:
+        key += f"|follow-up-of:{follow_up_of}"
+    return hashlib.sha256(key.encode()).hexdigest()
 
 
 def detect_lang(question: str) -> str:
@@ -625,6 +642,10 @@ class Run:
     usage: list[dict[str, Any]] = field(default_factory=list)
     duration_ms: int | None = None
     announced_model: str | None = None  # the model the last `run` event named
+    follow_up_of: str | None = None  # the run this question follows up, if any
+    # The earlier questions and answers the model is given as context, oldest first:
+    # [{run_id, question, answer}] (see follow_up_context). Never evidence.
+    context: list[dict[str, str]] = field(default_factory=list)
     _changed: asyncio.Event = field(default_factory=asyncio.Event)
 
     def emit(self, kind: str, **fields: Any) -> dict[str, Any]:
@@ -841,7 +862,9 @@ def attributed(tools_seen: list[dict[str, Any]]) -> list[Attributed]:
 
 def _evidence(run: Run, now: datetime) -> Evidence:
     """What the model was shown (tool arguments and outputs), the question, the clock, and the
-    tool descriptions (static reference text): everything a number in the answer may come from."""
+    tool descriptions (static reference text): everything a number in the answer may come from.
+    A follow-up's earlier questions and answers (run.context) are deliberately left out: a figure
+    from an earlier answer counts only if a tool of this run returned it again."""
     reference = " ".join(tool.description for tool in TOOLS.values())
     payloads = [{"args": t.get("args"), "output": t.get("output")} for t in run.tools]
     return build_evidence(payloads, question=run.question, now=now, extra=reference)
@@ -908,22 +931,23 @@ async def investigate(run: Run, client_factory: ClientFactory | None = None) -> 
     now = utcnow()
     try:
         planned = await gateway.first_choice()
-        run.emit("run", run_id=run.id, model=planned, lang=run.lang)
-        contents = [
-            types.Content(
-                role="user",
-                parts=[types.Part.from_text(
-                    text=prompts.investigation_turn(run.question, run.lang, now))],
-            )
-        ]  # fmt: skip
+        run.emit("run", run_id=run.id, model=planned, lang=run.lang, **_follow_up_fields(run))
+        # A follow-up's earlier questions and answers come first, as a part of their own marked as
+        # context, and its system prompt adds the rule that they are not evidence. A question asked
+        # on its own sends the same bytes as before (Gemini's implicit prompt cache).
+        system = prompts.INVESTIGATOR_FOLLOW_UP_SYSTEM if run.context else prompts.INVESTIGATOR_SYSTEM
+        first_turn = [types.Part.from_text(
+            text=prompts.investigation_turn(run.question, run.lang, now))]  # fmt: skip
+        if run.context:
+            first_turn.insert(0, types.Part.from_text(text=prompts.context_turn(run.context)))
+        contents = [types.Content(role="user", parts=first_turn)]
         model: str | None = None
         mode, retried_validated, rounds, restarts = "AUTO", False, 0, 0
         answer = ""
         try:
             while True:
                 final = rounds >= MAX_ROUNDS
-                config = _config(mode="NONE" if final else mode, thinking="MEDIUM",
-                                 system=prompts.INVESTIGATOR_SYSTEM)  # fmt: skip
+                config = _config(mode="NONE" if final else mode, thinking="MEDIUM", system=system)
                 try:
                     turn, contents = await model_turn(gateway, run, contents, config,
                                                       prefer=model, stream_text=True)  # fmt: skip
@@ -977,10 +1001,12 @@ async def investigate(run: Run, client_factory: ClientFactory | None = None) -> 
         overclaims = [i.message(facts) for i in check_honesty([answer], run.lang, facts)]
         first_overclaims = overclaims
         if not report.passed or overclaims:
-            contents.append(types.Content(role="user", parts=[types.Part.from_text(
-                text=prompts.revision_turn(report.unverified, run.lang, overclaims))]))  # fmt: skip
+            revise = prompts.revision_turn(report.unverified, run.lang, overclaims)
+            if run.context:  # a number copied from an earlier answer must go (no tools now)
+                revise += prompts.FOLLOW_UP_REVISION_NOTE
+            contents.append(types.Content(role="user", parts=[types.Part.from_text(text=revise)]))
             try:
-                config = _config(mode="NONE", thinking="LOW", system=prompts.INVESTIGATOR_SYSTEM)
+                config = _config(mode="NONE", thinking="LOW", system=system)
                 turn, contents = await model_turn(gateway, run, contents, config,
                                                   prefer=model, stream_text=False)  # fmt: skip
                 if turn.text:
@@ -1124,6 +1150,123 @@ def replay(stored: dict[str, Any]) -> Run:
     return run
 
 
+# --- follow-up questions -------------------------------------------------------------------------
+#
+# Where the link is stored: in the run's first event (`run`), as `follow_up_of` and `context`, in
+# agent_run.events. A new agent_run column would need a migration (init_db only creates missing
+# tables, so the production table would lack it and every insert would fail), and run.tools is the
+# model's evidence: the earlier answer must not be there.
+
+MAX_CONTEXT_PAIRS = 2  # earlier question/answer pairs a follow-up carries: enough, and a small prompt
+CONTEXT_ANSWER_CHARS = 1600  # answers are asked to stay under 220 words; a longer one is cut
+FOLLOW_UP_KINDS = ("ask", "featured")  # investigations; a bulletin write-up is not one
+# A citation marker as the verifier reads them ([3], [1, 2], [2-4]), with the spaces before it.
+_MARKER = re.compile(r"[ \t]*\[\s*\d+(?:\s*[-–,]\s*\d+)*\s*\]")
+
+
+class FollowUpRejected(ValueError):
+    """The run a follow-up names cannot be its context: unknown, not an investigation, without an
+    answer, or too old. POST /api/agent/ask answers 400 with this message, before anything is
+    counted against the client or sent to Gemini."""
+
+
+class FollowUpUnavailable(RuntimeError):
+    """The run a follow-up names could not be read (the database is unavailable): 503."""
+
+
+def context_answer(answer: str) -> str:
+    """An earlier answer as the model is shown it: without its citation markers, which number that
+    run's sources (copied, "[4]" would point at another source of this run, or at none), and at
+    most CONTEXT_ANSWER_CHARS long."""
+    lines = (" ".join(line.split()) for line in _MARKER.sub("", answer).splitlines())
+    text = "\n".join(line for line in lines if line)
+    if len(text) > CONTEXT_ANSWER_CHARS:
+        text = text[:CONTEXT_ANSWER_CHARS].rsplit(maxsplit=1)[0] + " …"
+    return text
+
+
+def follow_up_info(events: list[dict[str, Any]] | None) -> tuple[str | None, list[dict[str, str]]]:
+    """From a run's events: the run it followed up and the context it was given, as its first
+    `run` event recorded them; (None, []) for a question asked on its own."""
+    head = next((e for e in events or [] if isinstance(e, dict) and e.get("type") == "run"), None)
+    if head is None:
+        return None, []
+    parent = head.get("follow_up_of")
+    pairs = [
+        {"run_id": str(p.get("run_id") or ""), "question": p["question"], "answer": p["answer"]}
+        for p in head.get("context") or []
+        if isinstance(p, dict) and isinstance(p.get("question"), str)
+        and isinstance(p.get("answer"), str)
+    ]  # fmt: skip
+    return (parent if isinstance(parent, str) else None), pairs
+
+
+def follow_up_until(row: Any) -> datetime | None:
+    """Until when an agent_run row can be followed up (follow_up_hours after it started), or None
+    when it never can: only an investigation that produced an answer gives a follow-up context."""
+    if row.kind not in FOLLOW_UP_KINDS or not row.ok or not row.answer or row.started_at is None:
+        return None
+    started = row.started_at if row.started_at.tzinfo else row.started_at.replace(tzinfo=UTC)
+    return started + timedelta(hours=agent_settings().follow_up_hours)
+
+
+def follow_up_refusal(row: Any, run_id: str, now: datetime) -> str | None:
+    """Why run `run_id` (its agent_run row, or None) cannot be followed up; None if it can."""
+    if row is None:
+        return (f"Cannot follow up {run_id}: no finished investigation has that id. Ask the full "
+                "question instead.")  # fmt: skip
+    if row.kind not in FOLLOW_UP_KINDS:
+        return f"Cannot follow up {run_id}: it is a {row.kind} run, not an investigation."
+    if not row.ok or not row.answer:
+        return (f"Cannot follow up {run_id}: that investigation ended without an answer. Ask the "
+                "full question instead.")  # fmt: skip
+    until = follow_up_until(row)
+    if until is not None and until <= now:
+        return (f"Cannot follow up {run_id}: it is more than {agent_settings().follow_up_hours:g} h "
+                "old and its data has moved on. Ask the full question again.")  # fmt: skip
+    return None
+
+
+_PARENT_SQL = text(
+    """
+    SELECT id, kind, ok, question, answer, started_at, events->0 AS head
+    FROM agent_run
+    WHERE id = :id
+    """
+)
+
+
+def follow_up_context(run_id: str, now: datetime | None = None) -> list[dict[str, str]]:
+    """The context a follow-up of run `run_id` is given: the context that run was given, then its
+    own question and answer, oldest first and at most MAX_CONTEXT_PAIRS pairs, so a long thread
+    keeps the prompt small. Only the answer text: no tool output of the earlier runs.
+
+    Raises FollowUpRejected when that run cannot be followed up (follow_up_refusal) and
+    FollowUpUnavailable when it cannot be read."""
+    from blindspot.db import SessionLocal
+
+    try:
+        with SessionLocal() as session:
+            row = session.execute(_PARENT_SQL, {"id": run_id}).first()
+    except SQLAlchemyError as exc:
+        log.warning("could not read run %s for a follow-up: %s", run_id, exc)
+        raise FollowUpUnavailable(
+            f"The investigation {run_id} could not be read right now (database unavailable). "
+            "Try again shortly, or ask the full question."
+        ) from exc
+    refusal = follow_up_refusal(row, run_id, now or utcnow())
+    if refusal is not None:
+        raise FollowUpRejected(refusal)
+    _, earlier = follow_up_info([row.head] if isinstance(row.head, dict) else [])
+    own = {"run_id": row.id, "question": row.question, "answer": context_answer(row.answer)}
+    return [*earlier, own][-MAX_CONTEXT_PAIRS:]
+
+
+def _follow_up_fields(run: Run) -> dict[str, Any]:
+    """What the `run` event records of a follow-up: the run it follows and the exact context."""
+    return {"follow_up_of": run.follow_up_of, "context": run.context} if run.follow_up_of else {}
+
+
 # --- entry points -----------------------------------------------------------------------------
 
 
@@ -1250,16 +1393,22 @@ async def ask(
     *,
     kind: str = "ask",
     client_factory: ClientFactory | None = None,
+    follow_up_of: str | None = None,
 ) -> Run:
     """Start (or join, or replay) the investigation of `question`; return the Run to follow.
 
     Order: an identical question already running is joined; one answered within the cache window
     is replayed; otherwise the client's rate limit is checked and a new run starts in the
     background (it finishes and is stored even if the client disconnects).
+
+    `follow_up_of` (an earlier run's id) makes it a follow-up: "identical" then also means the same
+    earlier run (it is part of the cache key), and that run is checked and its context read before
+    the client is counted, so FollowUpRejected or FollowUpUnavailable cost the client nothing.
     """
     question = " ".join(question.split())
     lang = lang or detect_lang(question)
-    key = cache_key(question, lang)
+    follow_up_of = (follow_up_of or "").strip().lower() or None  # run ids are lowercase uuids
+    key = cache_key(question, lang, follow_up_of)
     if kind == "ask":
         running = _inflight.get(key)
         if running is not None:  # asked a moment ago: follow the same run
@@ -1267,6 +1416,8 @@ async def ask(
         stored = await asyncio.to_thread(_stored_answer, key, agent_settings().cache_minutes)
         if stored is not None:
             return replay(stored)
+    context = await asyncio.to_thread(follow_up_context, follow_up_of) if follow_up_of else []
+    if kind == "ask":
         running = _inflight.get(key)  # it may have started while we looked in the database
         if running is not None:
             return running
@@ -1274,7 +1425,8 @@ async def ask(
         running = _inflight.get(key)  # started while we counted: join it (the count stands)
         if running is not None:
             return running
-    run = Run(id=str(uuid.uuid4()), kind=kind, question=question, lang=lang, cache_key=key)
+    run = Run(id=str(uuid.uuid4()), kind=kind, question=question, lang=lang, cache_key=key,
+              follow_up_of=follow_up_of, context=context)  # fmt: skip
     if kind == "ask":
         _inflight[key] = run
     task = asyncio.create_task(_drive(run, client_factory), name=f"agent-run-{run.id}")
@@ -1284,18 +1436,30 @@ async def ask(
 
 
 async def run_to_end(
-    question: str, lang: str, *, kind: str, client_factory: ClientFactory | None = None
+    question: str,
+    lang: str,
+    *,
+    kind: str,
+    client_factory: ClientFactory | None = None,
+    follow_up_of: str | None = None,
 ) -> Run:
-    """Run one investigation to completion without SSE (jobs, scripts)."""
+    """Run one investigation to completion without SSE (jobs, scripts). With `follow_up_of`, a
+    follow-up of that run (FollowUpRejected or FollowUpUnavailable as in ask())."""
+    follow_up_of = (follow_up_of or "").strip().lower() or None
+    context = await asyncio.to_thread(follow_up_context, follow_up_of) if follow_up_of else []
     run = Run(id=str(uuid.uuid4()), kind=kind, question=question, lang=lang,
-              cache_key=cache_key(question, lang))  # fmt: skip
+              cache_key=cache_key(question, lang, follow_up_of), follow_up_of=follow_up_of,
+              context=context)  # fmt: skip
     await _drive(run, client_factory)
     return run
 
 
 __all__ = [
+    "MAX_CONTEXT_PAIRS",
     "MAX_ROUNDS",
     "AgentSettings",
+    "FollowUpRejected",
+    "FollowUpUnavailable",
     "Gateway",
     "GeminiUnavailable",
     "RateLimited",
@@ -1304,8 +1468,12 @@ __all__ = [
     "agent_settings",
     "ask",
     "cache_key",
+    "context_answer",
     "count_question",
     "detect_lang",
+    "follow_up_context",
+    "follow_up_info",
+    "follow_up_until",
     "limiter",
     "model_status",
     "normalise_question",

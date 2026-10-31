@@ -14,7 +14,8 @@ in-process cache) and "cold" is the first call. "Wire" is the gzip size.
   `SourceRef = {key, label, url|null, fetched_at|null, fetch_id|null}`. Keys in source URLs
   are masked as `***`. Some SourceRef URLs are about 2 KB long (CAMS): truncate them in the UI.
 - **Errors** are JSON with one shape: `{detail, status, path, generated_at, sources: []}`.
-  - 400: bad bbox or bad dates.
+  - 400: bad bbox or bad dates; a `follow_up_of` run that cannot be followed up (see "Agent and
+    bulletin").
   - 404: unknown id or city. The body lists the valid values when there is a short list.
   - 422: validation. `detail` is a list of pydantic errors.
   - 429, always with `Retry-After` and `Cache-Control: no-store`: the per-client limits on agent
@@ -452,6 +453,76 @@ Params: `district`, `limit` (default 500), `min_score`, `bbox`.
   database and pulls about 0.05 MB from it (it pulled ~105 MB a run before, measured through a
   byte-counting proxy on the dev database).
 
+## Field brief: `/api/brief*` (addition, 2026-11-01)
+
+Where the pollution control boards' field teams (PPCB in Punjab, HSPCB in Haryana) could look first
+in a district, built from the burn scars and the latest risk run (`routers/brief.py`). Two kinds of
+evidence, each with its qualification in every answer: candidate unseen burns (upper bounds, with
+`candidate_unseen_audit`) and the watchlist (ranks, never probabilities, with
+`ranking_reliability`).
+
+- **The window** is `days` (1..30, default 7) UTC days of Sentinel-2 passes ending at the **newest
+  pass in the scar table, not today**: `window: {from, to, days, newest_pass, anchor, basis}`. The
+  days are the UTC dates of the pass that shows a burn (`burn_before`), as in `/api/scars`, so
+  `/api/scars?district=<d>&unseen=true&since=<from>&until=<to>` lists exactly the scars a brief
+  counts. Say "the 7 days of passes up to <to>", never "the last 7 days".
+- **GET /api/brief** (`days`) returns `{window, label: "candidate unseen burns", districts:
+  [{district, state, unseen_clusters, unseen_area_ha, villages, newest_pass, harvested_fields,
+  harvested_area_ha, top_tenth_fields, top_tenth_villages, links: {brief, csv}}],
+  districts_order, totals: {districts, unseen_clusters, unseen_area_ha}, candidate_unseen_audit:
+  {precision, precision_ci95, audited, method, date, current, reading}, risk_run: {run_id, model,
+  as_of, fields_ranked, top_tenth}, ranking_reliability: {available, model, computed_at, strength,
+  timing_tested, all_pairs: {pairs, auc_weighted_mean, auc_ci95, top_10pct}, reading}, notes:
+  [str], reason}`: the districts of Punjab and Haryana with candidate unseen burns in the window,
+  largest candidate unseen area first. Before any scar is mapped: `window: null`, `districts: []`
+  and a `reason`.
+- **GET /api/brief/{district}** (`days`; `limit` 1..2000, default 50, rows per list; the name in
+  any case, punctuation ignored: "s a s nagar" finds S.A.S Nagar) returns `{district, state,
+  window, label, totals: {unseen_clusters, unseen_area_ha, villages, newest_pass,
+  harvested_fields, harvested_area_ha, top_tenth_fields, top_tenth_villages}, villages: [{village,
+  subdistrict, unseen_clusters, unseen_area_ha, newest_pass, lat, lon, case_ids, maps_url,
+  case_url}], villages_total, villages_order, watchlist: [{village, subdistrict, fields, area_ha,
+  top_tenth_fields, top_tenth_area_ha, in_top_tenth, best_rank, lat, lon, field_ids, maps_url}],
+  watchlist_total, watchlist_in_top_tenth, watchlist_order, candidate_unseen_audit, risk_run,
+  ranking_reliability, notes, links, reason}`.
+  - `totals` always cover every village (`limit` cuts only the lists) and equal the district's
+    row in `GET /api/brief`.
+  - A village's point (`lat`, `lon`, `maps_url`) is its largest candidate unseen burn; `case_ids`
+    (up to 5, largest first) open `/case/<id>`, and `case_url` is the first. `village: null` is a
+    sub-district's scars with no census village within 3 km: show it as unnamed.
+  - **The watchlist lists every village with harvested-but-unburnt fields:** those with fields in
+    the risk run's top tenth first (`in_top_tenth: true`, the first `watchlist_in_top_tenth`
+    rows), then the others by their best-ranked field. **Never present a row with `in_top_tenth:
+    false` as top tenth or high risk.** Many districts have few such villages and some none: on
+    the dev database on 2026-11-01, 21 of 36 districts had fewer than ten, and Karnal none, while
+    its watchlist listed 250 villages, the best ranked 18,794th of 172,130 fields. `best_rank` is
+    the rank of the village's best field among `risk_run.fields_ranked` (1 = the highest); the
+    brief has no scores and no probabilities.
+  - An unknown district is a 404 whose `detail` names the districts with burn scars.
+- **GET /api/brief/{district}/csv** (`days`; `lang` en|hi|pa, anything else 422) returns
+  `text/csv; charset=utf-8` with a byte-order mark (without it Excel garbles Hindi and Punjabi):
+  one row per village of the window (all of them), columns village, sub-district, district,
+  candidate unseen burns, area (ha), newest pass date, lat, lon, Google Maps link, case file link.
+  - The header is in the chosen language, and the count and area cells name the window and carry
+    the audit, so a saved or forwarded file keeps its qualification: "candidate unseen burns,
+    Sentinel-2 passes 2026-10-24 to 2026-10-30 (upper bound: in a hand audit of 23, 87% were real
+    burns, 95% CI 68%-96%)".
+  - The file is `blindspot-brief-<district slug>-<from>-to-<to>.csv`, and
+    `Link: </api/brief/<district>?days=<days>>; rel="describedby"` points to the JSON brief, whose
+    `sources` and `notes` cover every figure in the file.
+  - A name that starts like a spreadsheet formula (`=`, `+`, `-`, `@`, tab, carriage return) is
+    written with a leading apostrophe: village names include OpenStreetMap places, which anyone can
+    edit. Numbers use the digits 0-9 in every language.
+- Sources (`brief.SOURCE_KEYS`): `stac_e84`, `s2_cog`, `worldcover`, `firms`, `boundaries`,
+  `openmeteo` (the risk run's rain), `census2011`, `osm`.
+- Caching: the CDN keeps every 200 answer on the DAILY clock (that of `/api/scars` and
+  `/api/risk`), browsers 5 min, each instance 10 min.
+- Measured read-only on the dev database on 2026-11-01 (body bytes, then gzip): `/api/brief?days=7`
+  15,623 / 3,700 (36 districts; 1.7-4.1 s for an instance's first call, which scans the scar
+  table and ranks every harvested field); `/api/brief/Patiala` with the defaults 37,295 / 7,807; the largest
+  district with `days=30&limit=2000` (Jalandhar: 832 villages, 1,122 watchlist rows) 635,322 /
+  92,461; the largest CSV (Gurdaspur, Punjabi, `days=30`) 173,601 / 25,226.
+
 ---
 
 ## Air: `/api/air/*`
@@ -674,8 +745,26 @@ Params: `district`, `limit` (default 500), `min_score`, `bbox`.
 
 ## Agent and bulletin
 
-- **POST /api/agent/ask** `{question, lang?: "en"|"hi"|"pa"}` returns `text/event-stream`.
+- **POST /api/agent/ask** `{question, lang?: "en"|"hi"|"pa", follow_up_of?: <run_id>}` returns
+  `text/event-stream`.
   - Each frame is `event: <type>` plus `data: <json>` (the event name equals `data.type`).
+  - **Follow-ups (addition, 2026-11-01).** `follow_up_of` is the `run_id` of an earlier
+    investigation's `run` event (kind `ask` or `featured`, answered, started less than 24 h ago;
+    `AGENT_FOLLOW_UP_HOURS`). The model is also given that question and answer, and the pair
+    before it in a longer thread: at most 2 pairs, oldest first, answers without their citation
+    markers and cut at 1,600 characters, never any tool output. They are context, not evidence:
+    the verifier checks the new answer only against this run's own tool results, so every
+    figure is fetched again. The cache key includes the earlier run, so the same follow-up of
+    the same run replays within 10 min; questions asked on their own keep their keys.
+  - **Follow-up refusals,** both before the client is counted or Gemini is called, in the usual
+    JSON error shape with `Cache-Control: no-store`: **400** when the run is unknown, not an
+    investigation (a bulletin), ended without an answer, or is too old (`detail` says which, for
+    example "Cannot follow up <id>: it is more than 24 h old and its data has moved on. Ask the
+    full question again."); **503** with `Retry-After: 30` when the run could not be read (the
+    database is unavailable). A `follow_up_of` that is not a run id (32-36 characters of
+    `0-9a-f-`) is a 422; an empty string means a question asked on its own.
+  - A follow-up's `run` event also carries `follow_up_of` and `context: [{run_id, question,
+    answer}]`, exactly what the model was given.
   - A live run takes 8.4 s, 25 frames. The same question within 10 min replays from the
     stored run in about 140 ms, with `run.cached: true` and `done.replayed: true`.
   - Bad body: 422. Per-IP limit: 429 with `Retry-After`.
@@ -728,11 +817,41 @@ done         {"type":"done","run_id":"97c49cde-...","duration_ms":8228,"ok":true
     Map them through `answer.citations[].marker`.
   - The `map` payload is `{layer, visible, params?}`. Layers seen live: `air_stations`, `fires`,
     `smoke_back`.
+  - `tool_call`/`tool_result` can name an 11th tool, `get_field_brief` (addition, 2026-11-01):
+    the district field brief below, for "where should PPCB/HSPCB teams go in <district>". Its
+    `tool_result.summary` is "Field brief <district> (<first day> to <last day>): <n> candidate
+    unseen burns, <ha> ha in <v> villages (audited precision 87%, 95% CI 67.9-95.5%); <k>
+    villages with fields in the risk run's top tenth". `describe.ts` has no label for it yet (it
+    falls back to "Called get field brief").
 - **GET /api/agent/runs/{id}** returns `{run: {id, kind, question, lang, model, started_at,
-  finished_at, duration_ms, ok, answer, citations, verification, tools_used, error, events,
-  tools, usage}}`. An unknown id returns 404.
+  finished_at, duration_ms, ok, answer, citations, verification, tools_used, follow_up_of,
+  context, follow_up_until, error, events, tools, usage}}`. An unknown id returns 404.
+  - Additions (2026-11-01): `follow_up_of` (the run this one followed up, or null), `context`
+    (the earlier questions and answers it was given, `[]` for a question asked on its own) and
+    `follow_up_until` (until when this run can itself be followed up, an absolute UTC time so a
+    cached copy stays true; null when it never can: a bulletin, a failed run, no answer).
 - **GET /api/agent/examples** (`limit` 1..20, `lang`) returns `{examples: [run without
-  events]}`. It lists only verified runs that cite sources.
+  events]}`. It lists only verified runs that cite sources, and never a follow-up ("and
+  yesterday?" means nothing without its thread). Each example carries the same three thread
+  fields.
+- **GET /api/agent/stats** (addition, 2026-11-01; `days` 1..365, default 30, IST days with today
+  included) counts how the guardrails did, from every stored run of the window (`agent_run`),
+  never from the model's opinion of itself. Returns `{days, window: {from_utc, to_utc,
+  first_day_ist, last_day_ist, day_basis: "IST"}, basis, questions: {...}, bulletins: {...},
+  definitions: {...}}`. `questions` (kinds `ask` and `featured`) and `bulletins` have the same
+  shape: `{kinds, runs, answered, failed, first_run_at, last_run_at, figures: {checked, matched,
+  matched_share, runs, unknown}, all_matched: {runs, of, share, without_figures, unknown},
+  corrected_figures: {runs, of, share, then_passed, then_passed_share, sentences_removed,
+  unknown, how}, honesty: {passed, of, share, first_draft_issues, first_draft_issues_share,
+  then_passed, then_passed_share, fallback_runs, fallback_sentences, unknown}, duration_ms: {p50,
+  p90, n}, tool_calls: {median, n}, models: [{model, runs, share}], languages: [{lang, runs,
+  share}], series: [{date, runs, answered, all_matched, of, all_matched_share}]}`.
+  - A field that older rows lack (the honesty check exists since 31 Oct 2026) is **unknown, not
+    false**: such runs are left out of that block's `of` and shares and counted in `unknown`.
+    Show "n of m (k unknown)", never a share over all runs.
+  - `sources` is the newest recorded Gemini call (`gemini`); the counts are BlindSpot's own.
+  - Measured on the dev database on 2026-11-01 (read-only): 11,320 bytes raw, 2,541 gzip, 72 ms.
+    CDN: HOURLY (the catch-all rule), in process 5 min.
 - **GET /api/agent/status** returns `{key_configured, quota_day_started_at, reserve_share,
   models: [{model, used_today, daily_limit, new_questions_stop_at, cooling_down_until, ...}],
   per_ip_limits: {per_minute, per_day, shared_across_instances}}`. `shared_across_instances` is
@@ -804,9 +923,9 @@ moments, so `s-maxage` varies with the time of the request (never under 60 s):
 
 | Group | Paths | Expires (UTC) | `stale-while-revalidate` |
 | --- | --- | --- | --- |
-| HOURLY | `/api/fires*`, `/api/stats/headline`, `/api/sources`, `/api/scars/summary`, `/api/air/latest`, `/api/air/series`, `/api/geostationary/*`, `/api/orbits/passes`, `/api/agent/examples`, everything else under `/api/` | :30 of 08-19 and 00, 01, 03, 04, 06, 07, 21, 22 | 86400 |
+| HOURLY | `/api/fires*`, `/api/stats/headline`, `/api/sources`, `/api/scars/summary`, `/api/air/latest`, `/api/air/series`, `/api/geostationary/*`, `/api/orbits/passes`, `/api/agent/examples`, `/api/agent/status`, `/api/agent/stats`, everything else under `/api/` | :30 of 08-19 and 00, 01, 03, 04, 06, 07, 21, 22 | 86400 |
 | SIX_HOURLY | `/api/smoke/*` (not validation), `/api/met/*`, `/api/air/stubble-share`, `/api/orbits/validation` | :30 of 04, 10, 16, 22 (the hour after met) and 06, 11, 17, 00 (late start) | 86400 |
-| DAILY | `/api/scars`, `/api/scars/{id}`, `/api/risk`, `/api/smoke/validation`, `/api/orbits/tle`, `/api/orbits/clock`, `/api/imagery/featured`, `/api/imagery/scenes`, `/api/agent/runs/{id}` (finished runs only) | 13:30, 14:30 | 172800 |
+| DAILY | `/api/scars`, `/api/scars/{id}`, `/api/risk`, `/api/brief*` (JSON and CSV), `/api/smoke/validation`, `/api/orbits/tle`, `/api/orbits/clock`, `/api/imagery/featured`, `/api/imagery/scenes`, `/api/agent/runs/{id}` (finished runs only) | 13:30, 14:30 | 172800 |
 | BULLETIN | `/api/bulletin/*` | :30 of 02, 03, 04, 06, 07 | 86400 |
 | WEEKLY | `/api/geo/*`, `/api/imagery/tilejson/*` | 03:30 every day | 604800 |
 | pictures | `/api/imagery/render`, `/api/imagery/tiles/*` | `public, max-age=31536000, s-maxage=31536000, immutable` | |
@@ -892,6 +1011,7 @@ Vercel caps a function response at 4.5 MB. Every default response was measured o
 | GET /api/smoke/validation | 430,653 | 60,588 |
 | GET /api/imagery/render (featured frame, JPEG) | 283,975 | (jpeg) |
 | GET /api/geo/tiles/6/45/26.pbf | 142,441 | 81,699 |
+| GET /api/brief/{district}/csv (every village; the largest, Gurdaspur in Punjabi, `days=30`, measured 2026-11-01 on the dev database) | 173,601 | 25,226 |
 | every other endpoint | < 130,000 | < 14,000 |
 
 - Every default response is under 4 MB after gzip. The largest is 2.5 MB.

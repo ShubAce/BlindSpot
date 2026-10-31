@@ -24,6 +24,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 from google.genai import types
@@ -1121,6 +1122,104 @@ async def get_burn_risk(api: InternalApi, args: dict[str, Any]) -> ToolResult:
     return ToolResult(True, data, reply.sources(), summary)
 
 
+FIELD_BRIEF_ROWS = 10  # villages per list the model sees (the brief's page and CSV list them all)
+FIELD_BRIEF_OUTSIDE_ROWS = 3  # best-ranked villages outside the top tenth: enough to say where next
+FIELD_BRIEF_WATCHLIST_ORDER = (
+    "watchlist_top_tenth: villages with harvested-but-unburnt fields in the risk run's top tenth, the "
+    "most such fields first, then the best rank (rank 1 = the highest of risk_run.fields_ranked). "
+    "best_ranked_outside_top_tenth: the district's best-ranked other villages; none of their fields "
+    "is in the top tenth."
+)
+
+
+async def get_field_brief(api: InternalApi, args: dict[str, Any]) -> ToolResult:
+    """Where field teams could go in one district: GET /api/brief/{district}, trimmed for the model.
+
+    The keys the answer check reads are kept as the brief serves them: every candidate unseen area
+    stays `unseen_area_ha` (so a sentence quoting one must call it a candidate and give the audit),
+    the audit is `candidate_unseen_audit` as get_burn_scars gives it, and the backtest stays under
+    `all_pairs` beside its `strength`. The brief has no risk scores at all, only ranks and counts.
+
+    The brief's watchlist lists every village with harvested fields, those with fields in the run's
+    top tenth first. The model gets those under a name that says so, and the best-ranked of the rest
+    under a name that says they are not: most districts have few villages in the top tenth, some
+    none, and no number check would catch "these villages rank in the top tenth" if it were false."""
+    district = str(args.get("district") or "").strip()
+    if not district:
+        return failed("Field brief", error="give a district name, e.g. 'Sangrur' (get_burn_scars lists districts)")
+    days = int(min(max(args.get("days") or 7, 1), 30))
+    reply = await api.get(f"/api/brief/{quote(district, safe='')}", {"days": days, "limit": FIELD_BRIEF_ROWS})
+    if not reply.ok:
+        return failed(f"Field brief for {district}", reply)
+    body = reply.body
+    window = body.get("window") or {}
+    totals = body.get("totals") or {}
+    unnamed = "unnamed (no census village close enough)"
+
+    def place(row: dict[str, Any]) -> dict[str, Any]:
+        point = [row.get("lon"), row.get("lat")]
+        return {"village": row.get("village") or unnamed, "subdistrict": row.get("subdistrict"),
+                "centroid_lon_lat": _coords(point) if None not in point else None}
+
+    villages = [pruned({**place(v), "unseen_clusters": v.get("unseen_clusters"),
+                        "unseen_area_ha": rnd(v.get("unseen_area_ha")), "newest_pass": v.get("newest_pass"),
+                        "case_ids": (v.get("case_ids") or [])[:3]})
+                for v in body.get("villages") or []]  # fmt: skip
+
+    def watched(row: dict[str, Any], top: bool) -> dict[str, Any]:
+        return pruned({**place(row), "harvested_fields": row.get("fields"), "area_ha": rnd(row.get("area_ha")),
+                       "fields_in_top_tenth": row.get("top_tenth_fields") if top else None,
+                       "best_rank": row.get("best_rank"), "field_ids": (row.get("field_ids") or [])[:3]})
+
+    rows = body.get("watchlist") or []
+    # in_top_tenth missing (it never is) counts as outside: never call a village top tenth unasked
+    in_top = [watched(w, True) for w in rows if w.get("in_top_tenth") is True]
+    outside = [watched(w, False) for w in rows if w.get("in_top_tenth") is not True][:FIELD_BRIEF_OUTSIDE_ROWS]
+    top_total = body.get("watchlist_in_top_tenth") or len(in_top)
+    run = body.get("risk_run") or {}
+    reliability = body.get("ranking_reliability") or {}
+    audit = body.get("candidate_unseen_audit") or {}
+    audit_block = unseen_audit_block({"method": {"audit": {"candidate_unseen": audit, "method": audit.get("method")}}})
+    data = pruned({
+        "district": body.get("district"),
+        "state": body.get("state"),
+        "window": pruned({"first_pass_day": window.get("from"), "last_pass_day": window.get("to"),
+                          "days": window.get("days"), "newest_pass": ist(window.get("newest_pass")),
+                          "anchor": window.get("anchor")}),
+        "label": body.get("label"),
+        "totals": pruned({**totals, "unseen_area_ha": rnd(totals.get("unseen_area_ha")),
+                          "harvested_area_ha": rnd(totals.get("harvested_area_ha"))}),
+        "villages_with_candidate_unseen_burns": villages,
+        "more_villages": max(0, (body.get("villages_total") or 0) - len(villages)) or None,
+        "villages_order": body.get("villages_order"),
+        "watchlist_top_tenth": in_top,
+        "more_watchlist_top_tenth_villages": max(0, top_total - len(in_top)) or None,
+        "watchlist_note": (f"No harvested field in {body.get('district') or district} ranks in the risk run's "
+                           "top tenth." if rows and not in_top else None),
+        "best_ranked_outside_top_tenth": outside,
+        "villages_outside_top_tenth": max(0, (body.get("watchlist_total") or 0) - top_total) if rows else None,
+        "watchlist_order": FIELD_BRIEF_WATCHLIST_ORDER if rows else None,
+        "candidate_unseen_audit": audit_block,
+        "risk_run": pruned({"model": run.get("model"), "as_of": ist(run.get("as_of")),
+                            "fields_ranked": run.get("fields_ranked"), "top_tenth": run.get("top_tenth")}),
+        "ranking_reliability": pruned({
+            "strength": reliability.get("strength"),
+            "all_pairs": pruned(reliability.get("all_pairs") or {}),
+            "reading": reliability.get("reading"),
+        }),
+        "notes": body.get("notes"),
+        "reason": body.get("reason"),
+    })  # fmt: skip
+    summary = (f"Field brief {data.get('district', district)} ({window.get('from')} to {window.get('to')}): "
+               f"{totals.get('unseen_clusters', 0)} candidate unseen burns, {rnd(totals.get('unseen_area_ha'))} ha in "
+               f"{totals.get('villages', 0)} villages")  # fmt: skip
+    if audit_block:  # the step line shows the area, so it carries its audit too
+        lo, hi = audit_block["precision_ci95_pct"]
+        summary += f" (audited precision {audit_block['precision_pct']:g}%, 95% CI {lo:g}-{hi:g}%)"
+    summary += f"; {totals.get('top_tenth_villages', 0)} villages with fields in the risk run's top tenth"
+    return ToolResult(True, data, reply.sources(), summary)
+
+
 MAP_LAYERS = ("fires", "scars", "unseen_scars", "risk", "smoke_forward", "smoke_back",
               "air_stations", "wind", "satellite_passes", "imagery")  # fmt: skip
 HIGHLIGHT_TYPES = ("scar", "risk_cluster", "fire", "station", "district", "city", "village")
@@ -1290,6 +1389,21 @@ TOOLS: dict[str, Tool] = {
                 "district": {"type": "string"},
                 "limit": {"type": "integer", "description": "1-20, default 8."}}},
             get_burn_risk,
+        ),
+        Tool(
+            "get_field_brief",
+            "Where field teams (PPCB, HSPCB) could look first in one district. Lists the villages with "
+            "candidate unseen burns in the latest days of Sentinel-2 data (count, hectares, newest pass, "
+            "a point, case ids for get_case_file); the villages whose harvested-but-unburnt fields rank "
+            "in the risk run's top tenth (watchlist_top_tenth: field counts and best ranks, never a "
+            "probability), which may be none; and the district's best-ranked villages outside the top "
+            "tenth (best_ranked_outside_top_tenth: never call them top tenth or high risk). With the "
+            "audit precision and the ranking's backtest that qualify them.",
+            {"type": "object", "required": ["district"], "properties": {
+                "district": {"type": "string", "description": "District in Punjab or Haryana, e.g. 'Sangrur'."},
+                "days": {"type": "integer",
+                         "description": "Days of Sentinel-2 passes up to the newest one, 1-30. Default 7."}}},
+            get_field_brief,
         ),
         Tool(
             "show_on_map",
