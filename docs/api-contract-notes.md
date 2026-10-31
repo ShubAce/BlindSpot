@@ -819,9 +819,11 @@ moments, so `s-maxage` varies with the time of the request (never under 60 s):
     good headline;
   - `/api/health`;
   - `POST /api/agent/ask` (the SSE stream);
-  - `/api/agent/status`: sent `private, max-age=10` (the browser may keep it 10 s);
   - an agent run that is still in progress. `GET /api/agent/runs/{id}` with `finished_at: null`
     is sent with `no-store`.
+- `/api/agent/status` (the Gemini quota, the same for every visitor) is on the HOURLY clock: the
+  minute poll of an open `/live` tab is answered by the CDN and never wakes the database. Its
+  budget can be up to an hour old; `POST /api/agent/ask` checks the real budget before a live run.
 - Every answer has `Vary: Origin` once (CORS adds it), because the CORS headers differ per origin.
 - Lifetimes add up. A response can be as old as its group's last expiry point at the CDN, then
   up to `max-age` in the browser. With `stale-while-revalidate`, the first request after expiry

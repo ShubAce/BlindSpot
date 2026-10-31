@@ -94,8 +94,9 @@ def test_cdn_rules_follow_the_job_schedule() -> None:
     assert IMMUTABLE == "public, max-age=31536000, s-maxage=31536000, immutable"
     for path in ("/api/health", "/api/agent/ask", "/docs", "/openapi.json"):
         assert header(path, "public, max-age=10") is None, path
-    # the live quota: browsers may keep it 10 s, the CDN never
-    assert header("/api/agent/status", "public, max-age=10") == "private, max-age=10"
+    # the Gemini quota: browsers keep it 10 s, the CDN until the hourly point (polls never reach Neon)
+    assert header("/api/agent/status", "public, max-age=10") == (
+        f"public, max-age=10, s-maxage=1800, stale-while-revalidate=86400, {tail}")
     assert header("/api/fires", "no-store") is None  # a route's own no-store wins
     assert header("/api/fires", "no-cache") is None
     # a route that chose its own shared lifetime keeps it (a headline with a failed block)
@@ -166,7 +167,9 @@ def test_cdn_headers_on_real_routes(client: TestClient) -> None:
         assert r.status_code == status, path
         assert "s-maxage" not in r.headers.get("cache-control", ""), path
     r = client.get("/api/agent/status")
-    assert "s-maxage" not in r.headers.get("cache-control", "") and "public" not in r.headers.get("cache-control", "")
+    assert r.headers["cache-control"].startswith("public, max-age=10, s-maxage="), r.headers["cache-control"]
+    r = client.get("/robots.txt")  # crawlers stay off the API host (each request could wake Neon)
+    assert r.status_code == 200 and "Disallow: /" in r.text and "max-age=86400" in r.headers["cache-control"]
     assert "s-maxage" not in client.post("/api/agent/ask", json={}).headers.get("cache-control", "")
 
 

@@ -612,9 +612,11 @@ def _rule(pattern: str, clock: Clock | None, **flags: bool) -> CDNRule:
 CDN_RULES: tuple[CDNRule, ...] = (
     _rule(r"^/api/health$", None),  # a liveness probe must reach the function
     _rule(r"^/api/agent/ask\b", None),  # the SSE stream
-    # The live Gemini quota. Vercel's CDN also caches a response that has only max-age, so the
-    # route's `public, max-age=10` becomes `private, max-age=10` (the browser may keep it).
-    _rule(r"^/api/agent/status\b", None, private=True),
+    # The Gemini quota is the same for every visitor, so it shares the hourly clock. Uncached, the
+    # minute poll of every open /live tab reached the database and kept the Neon compute awake for
+    # as long as the tab stayed open. A copy up to an hour old is enough for the budget hint;
+    # /api/agent/ask checks the real budget before every live question.
+    _rule(r"^/api/agent/status\b", HOURLY),
     _rule(r"^/api/agent/runs/", DAILY, finished_runs_only=True),  # a finished run never changes
     _rule(r"^/api/imagery/(render|tiles/)", None, immutable=True),
     _rule(r"^/api/imagery/tilejson/", WEEKLY),
@@ -672,7 +674,7 @@ class CDNCacheHeaders:
     """ASGI middleware: sets the CDN Cache-Control (see CDN_RULES) on successful GET answers.
 
     Errors, other methods, the agent's SSE stream and agent runs still in progress keep the
-    headers their route set; the agent quota is made `private`. `Vary: Origin` (the CORS headers
+    headers their route set. `Vary: Origin` (the CORS headers
     differ per origin, so a CDN must not hand one site's answer to another) comes from
     CORSMiddleware, which wraps this middleware and adds it to every response (with or without an
     Origin); adding it here as well gave `Vary: Origin, Accept-Encoding, Origin`.

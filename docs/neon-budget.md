@@ -164,8 +164,9 @@ points of their own: 31 a day. Each group's later point catches a run GitHub sta
 CDN refreshes; `stale-if-error` (a week) keeps answering if the API or the database fails, for any
 5xx: so a headline whose every block failed (the database is down or suspended) is a 503, not a
 200 (see `routers/stats.py`). A headline with only some blocks failed is kept 60 s by the CDN.
-`/api/health`, `/api/agent/ask` and `/api/agent/status` (`private`) never reach the CDN cache;
-errors are never cached.
+`/api/health` and `/api/agent/ask` never reach the CDN cache; errors are never cached.
+`/api/agent/status` (the Gemini quota, the same for every visitor) is on the HOURLY clock, so the
+minute poll of an open `/live` tab is answered by the CDN instead of the database.
 
 ## 5. Monthly projection (30 days)
 
@@ -190,28 +191,30 @@ compute and Sentinel-2 reads, so the "max" column carries their largest local ru
 
 API traffic assumption (judging month), stated so it can be checked against the console:
 
-- a `/live` tab open and visible **2 hours a day**: its `/api/agent/status` poll reaches the
-  database every minute (`latest_refs`; not this area), so the compute stays up: 120 min;
+- an open `/live` tab costs nothing of its own: every route it polls, `/api/agent/status`
+  included, is answered by the CDN between the refresh points below (before 2026-10-31 the status
+  poll reached the database every minute: 120 min for a tab open 2 hours a day);
 - **every one of the 21 refresh points hit once a day** by a visitor outside job wake-ups (the
   website's server in `sin1` and the browsers in India refresh at the same moments, so they share
-  the wake), minus the 2 that fall inside the `/live` hours: 19 x 5.5 = 104.5 min;
+  the wake): 21 x 5.5 = 115.5 min;
 - **crawlers**: the API has no `robots.txt` (404; `api/main.py` is not this area) and crawlers that
   run the website's JavaScript fetch the API from their own region at their own times: an
   allowance of 3 wake-ups a day, 16.5 min.
 
-That is 241 min a day. Together, at Neon's smallest size (0.25 CU):
+That is 132 min a day. Together, at Neon's smallest size (0.25 CU):
 
 | | min/day | CU-hours / month |
 | --- | ---: | ---: |
 | jobs (typical / max) | 202 / 290 | 25 / 36 |
-| traffic | 241 | 30 |
-| **total** | **443 / 531** | **55 / 66** |
+| traffic | 132 | 16.5 |
+| **total** | **334 / 422** | **42 / 53** |
 
 The review's recount of the earlier setup came to ~67 CU-hours (jobs 246 min with the 9-minute
 hourly group, traffic 290 min with 31 refresh points). Running air beside the others (-40 min a
 day) and putting every clock on the hourly points (-10 wakes, -55 min a day) bring the same
 assumptions to **55 CU-hours (55 % of the allowance), 66 if every job takes its longest time on
-the same day**.
+the same day**. Putting `/api/agent/status` on the hourly clock (it had reached the database on
+every poll) brings them to **42 and 53**.
 
 Autoscaling adds `(cap - 0.25) CU x hours at the cap x 30 days` on top. If sentinel and risk lift
 the compute to the cap for their 23-60 minutes a day: at a 0.5 CU cap +3 to +7.5 CU-hours, at 1 CU
@@ -220,11 +223,9 @@ would pass 100 in the worst case. **Set the autoscaling range to 0.25-0.5 CU** (
 the risk job runs out of memory or time at 0.5). A CPU-bound job costs about the same CU-hours at
 any size (half the CU for twice the time); the cap only limits how far a busy hour can spike.
 
-If the console shows more than ~2 CU-hours a day, these levers are ready, largest first:
-`/api/agent/status` answering from memory instead of the database (up to -15 CU-hours; agent
-area), the afternoon hourly runs every 2 hours (`17 8-18/2`; about -10 CU-hours, fires and air
-up to 2 h older on the site), and a `robots.txt` that disallows the API host (the crawler
-allowance).
+If the console shows more than ~2 CU-hours a day, these levers are ready, largest first: the
+afternoon hourly runs every 2 hours (`17 8-18/2`; about -10 CU-hours, fires and air up to 2 h
+older on the site), and a `robots.txt` that disallows the API host (the crawler allowance).
 
 ### Egress (GB)
 

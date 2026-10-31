@@ -158,6 +158,16 @@ def sources(session: SessionDep) -> ORJSONResponse:
     return respond({"sources": source_status(session)}, max_age=15)
 
 
+# Crawlers have nothing to index on the API host, and each request of theirs could wake the database.
+robots = APIRouter(include_in_schema=False)
+
+
+@robots.get("/robots.txt")
+def robots_txt() -> Response:
+    return Response("User-agent: *\nDisallow: /\n", media_type="text/plain",
+                    headers={"Cache-Control": "public, max-age=86400"})
+
+
 # --- app -----------------------------------------------------------------------------------------
 
 
@@ -266,6 +276,7 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(core)
+    app.include_router(robots)
     routers, failed = discover_routers()
     for router in routers:
         app.include_router(router)
