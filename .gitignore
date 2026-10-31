@@ -39,3 +39,6 @@ Thumbs.db
 .idea/
 
 .taste-skill/
+
+# Local submission kit (deck exports, screenshots, video, team notes); not part of the repo
+/submission/

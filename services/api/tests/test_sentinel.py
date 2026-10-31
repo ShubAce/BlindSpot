@@ -416,6 +416,11 @@ def test_scar_case_file(client, stored_scar) -> None:
             assert "collection=sentinel-2-c1-l2a" in url and "bbox=" in url
     assert isinstance(body["fires_nearby"], list)
     assert "available" in body["weather_at_burn"]
+    # provenance: the case's own two scenes, never the newest catalogue fetch (another tile's item)
+    stac_urls = [s["url"] for s in body["sources"] if s["key"] in ("stac_e84", "stac_pc")]
+    assert stac_urls == [f"https://earth-search.aws.element84.com/v1/collections/sentinel-2-c1-l2a/items/{i}"
+                         for i in (PASSES[1], PASSES[2])]
+    assert not [s for s in body["sources"] if s["key"] == "s2_cog" and s.get("fetch_id") is None]
     assert client.get("/api/scars/987654321098").status_code == 404
 
 

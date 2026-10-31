@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import datetime as dt
 import math
+import re
 from typing import Annotated, Any
 from urllib.parse import urlencode
 
@@ -35,11 +36,23 @@ from blindspot.api.cache import (
 from blindspot.api.responses import ORJSONResponse
 from blindspot.config import get_settings
 from blindspot.geo import parse_bbox
-from blindspot.provenance import SourceRef, latest_refs, ref_for_fetch, utcnow
+from blindspot.models.sentinel import S2Scene
+from blindspot.provenance import (
+    SourceRef,
+    label_for,
+    latest_refs,
+    ref_for_fetch,
+    utcnow,
+)
 
 router = APIRouter(prefix="/api/scars", tags=["scars"])
 
 SCAR_SOURCES = ["stac_e84", "s2_cog", "worldcover", "firms", "boundaries"]
+# STAC catalogues of the scenes (as in sources/stac.py, which is not imported here: it loads
+# rasterio, which the API must not load at startup)
+E84_STAC = "https://earth-search.aws.element84.com/v1"
+E84_COLLECTION = "sentinel-2-c1-l2a"
+PC_STAC = "https://planetarycomputer.microsoft.com/api/stac/v1"
 MAX_LIMIT = 20_000
 CHIP_MIN_M = 1200.0  # imagery chips show at least 1.2 km around a scar, for context
 CHIP_PX = 512
@@ -130,6 +143,54 @@ def _label(unseen: bool | None) -> str:
 
 def _sources(session: Session) -> list[SourceRef]:
     return latest_refs(session, SCAR_SOURCES)
+
+
+def _scene_ref(session: Session, item_id: str | None, collection: str | None) -> SourceRef | None:
+    """One of a case's own two Sentinel-2 scenes: its STAC item, dated by the catalogue fetch that
+    found it."""
+    if not item_id:
+        return None
+    scene = session.get(S2Scene, item_id)
+    coll = (scene.collection if scene is not None else None) or collection or E84_COLLECTION
+    found = ref_for_fetch(session, scene.fetch_id) if scene is not None else None
+    key = found.key if found is not None else ("stac_e84" if coll == E84_COLLECTION else "stac_pc")
+    base = E84_STAC if coll == E84_COLLECTION else PC_STAC
+    return SourceRef(key=key, label=label_for(key), url=f"{base}/collections/{coll}/items/{item_id}",
+                     fetched_at=found.fetched_at if found else None, fetch_id=found.fetch_id if found else None)
+
+
+_BBOX_IN_URL = re.compile(r"bbox=(-?[\d.]+),(-?[\d.]+),(-?[\d.]+),(-?[\d.]+)")
+
+
+def _cropland_ref(session: Session, lon: float | None, lat: float | None) -> SourceRef | None:
+    """The newest ESA WorldCover search whose box covers the case: the cropland mask its tile was
+    read with (each search's URL carries its box)."""
+    if lon is None or lat is None:
+        return None
+    rows = session.execute(text(
+        "SELECT id, url FROM source_fetch WHERE ok AND source_key = 'worldcover' ORDER BY started_at DESC LIMIT 200"
+    )).all()
+    for fid, url in rows:
+        m = _BBOX_IN_URL.search(url or "")
+        if m and float(m[1]) <= lon <= float(m[3]) and float(m[2]) <= lat <= float(m[4]):
+            return ref_for_fetch(session, fid)
+    return None
+
+
+def _case_sources(session: Session, row: dict[str, Any], weather_fetch: int | None) -> list[SourceRef]:
+    """What one case file rests on: its own two scenes, the processing run that drew its outline, the
+    cropland mask read for its area, the fire records it was matched against, the boundaries that
+    name it and the weather grid. Not the newest fetch of each source, which may be another tile's
+    scene or another area's mask."""
+    refs = [
+        _scene_ref(session, row["scene_pre"], row["collection"]),
+        _scene_ref(session, row["scene_post"], row["collection"]),
+        ref_for_fetch(session, row["fetch_id"]),
+        _cropland_ref(session, row["lon"], row["lat"]),
+        *latest_refs(session, ["firms", "boundaries"]),
+        ref_for_fetch(session, weather_fetch),
+    ]
+    return [r for r in refs if r is not None]
 
 
 @router.get("")
@@ -594,11 +655,7 @@ def scar(scar_id: int, session: SessionDep) -> ORJSONResponse:
     }
     bbox = _chip_bbox(geometry, row["lat"])
     weather = _weather(session, row)
-    sources = _sources(session)
-    for fid in (row["fetch_id"], weather.get("fetch_id")):
-        ref = ref_for_fetch(session, fid)
-        if ref is not None:
-            sources.append(ref)
+    sources = _case_sources(session, row, weather.get("fetch_id"))
     payload = {
         "case": case,
         "imagery": _imagery(session, row, bbox),

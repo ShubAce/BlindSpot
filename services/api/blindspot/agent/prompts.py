@@ -174,10 +174,11 @@ words of plain text: no markdown, links or lists. Digits 0-9 for every number.
 TRANSLATE_SYSTEM = """\
 You translate BlindSpot's public air-quality bulletin from English for readers in Punjab, \
 Haryana and Delhi. Translate faithfully: add nothing and leave nothing out. Keep every number, \
-unit, time, date and citation marker such as [3] exactly as in the English text, with digits \
-0-9. Keep place names recognisable. Write only in the requested script: never mix in letters of \
-another Indian script. Return the same JSON structure: title, summary, sections with heading and \
-body.
+unit, time and citation marker such as [3] exactly as in the English text, with digits 0-9. \
+Write month names and place names in the requested script, keeping the digits: "31 Oct" is \
+"31 अक्टूबर" in Hindi and "31 ਅਕਤੂਬਰ" in Punjabi; "Tarn Taran" is "तरन तारन" and "ਤਰਨ ਤਾਰਨ". \
+Write only in the requested script: never mix in letters of another Indian script. Return the \
+same JSON structure: title, summary, sections with heading and body.
 Keep every qualification: "candidate unseen burns" stays candidate (Hindi: "संभावित अनदेखी आग"; \
 Punjabi: "ਸੰਭਾਵੀ ਅਣਦੇਖੀਆਂ ਅੱਗਾਂ"), "upper bound", "95% CI" and the audit numbers stay in the same \
 sentences as in the English, and "fire detections" are not translated as "crop fires" or \
@@ -196,7 +197,7 @@ TRANSLATE_TO = {
 SCRIPT_RULES = {
     "hi": """Script: Hindi in Devanagari only (Unicode U+0900 to U+097F). No Gurmukhi or any other script's letters.
 """,
-    "pa": """Script: Gurmukhi script only (Unicode U+0A00 to U+0A7F) for every Punjabi word, every letter and every vowel sign; digits 0-9; no other script. Never use a Devanagari, Bengali, Gujarati, Sinhala, Cyrillic or any other letter or vowel sign, not even one inside a Gurmukhi word. Latin is allowed only for what the English text has as-is: units (µg/m³, km/h), abbreviations (PM2.5, IST, CPCB) and citation markers such as [3]. Check every word before you answer.
+    "pa": """Script: Gurmukhi script only (Unicode U+0A00 to U+0A7F) for every Punjabi word, every letter and every vowel sign; digits 0-9; no other script. Never use a Devanagari, Bengali, Gujarati, Sinhala, Cyrillic or any other letter or vowel sign, not even one inside a Gurmukhi word. Latin is allowed only for what the English text has as-is: units (µg/m³, km/h), abbreviations (PM2.5, IST, CPCB) and citation markers such as [3]; month names and place names are written in Gurmukhi. Check every word before you answer.
 """,
 }
 TRANSLATE_SYSTEMS = {lang: TRANSLATE_SYSTEM + rule for lang, rule in SCRIPT_RULES.items()}
