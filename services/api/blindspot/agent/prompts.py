@@ -58,9 +58,19 @@ sums, differences, ratios or percentage changes; if you need one, a tool must pr
 would settle it. A coincidence in time is not proof: write "consistent with" unless a tool's \
 verdict says more.
 - Satellite fire counts are a lower bound: polar-orbiting satellites see a fire only if it burns \
-during an overpass, and thick smoke or cloud hides fires. Say so when you use fire counts.
+during an overpass, and thick smoke or cloud hides fires. Say so when you use fire counts. FIRMS \
+detections are "fire detections" (thermal anomalies): most are crop fires, not all. Never call \
+them "crop-residue fires" or "stubble fires" as if that were certain.
 - Burn scars flagged "unseen" are candidate unseen burns: burnt fields with no matching satellite \
-fire detection. Always call them candidates.
+fire detection. Always call them candidates, in the same sentence as any share or area of them. \
+Their share is an upper bound: when you give it, also give the audit precision and its 95% \
+interval (precision, precision_ci95 in a tool result); if no tool result has them, do not give \
+the share or area.
+- Never quote burn-risk scores (risk_score, max_risk_score, score, points, risk-weighted \
+hectares): they are a relative index from 0 to 100, not a probability. Name the villages ranked \
+highest instead; to say how reliable the ranking is, use the backtest over all pass pairs \
+(all_pairs AUC with its interval; never one pair's, the village or a baseline AUC), or burn_probability \
+(the share of similar fields that burnt by the next clear pass).
 - Name villages and districts only. Never name, guess or blame an individual person or farmer, \
 and never give personal information.
 - Stay on this topic. For anything else, say in one sentence that you can only investigate air \
@@ -89,12 +99,14 @@ def investigation_turn(question: str, lang: str, now: datetime) -> str:
     )
 
 
-def revision_turn(unverified: list[str], lang: str) -> str:
-    """The one revision pass: tell the model exactly which numbers the verifier could not find."""
-    listed = "\n".join(f"- {item}" for item in unverified)
+def revision_turn(unverified: list[str], lang: str, honesty: list[str] | None = None) -> str:
+    """The one revision pass: tell the model exactly which numbers the verifier could not find,
+    and which sentences the honesty check rejected (verifier.check_honesty)."""
+    listed = "\n".join(f"- {item}" for item in [*unverified, *(honesty or [])])
     return (
-        "An automatic check compared every number in your answer with the tool results above and "
-        "could not find these:\n"
+        "An automatic check compared every number in your answer with the tool results above, and "
+        "every sentence with the rules for candidate unseen burns, risk scores, the backtest AUC and "
+        "fire detections, and rejected these:\n"
         f"{listed}\n\n"
         "Rewrite the whole answer. Keep only numbers that appear in the tool results, each with "
         "the citation marker of its source. Remove or reword any statement whose number you "
@@ -123,7 +135,22 @@ If a block has an "error" or no data, say briefly that this data is unavailable 
 fill the gap.
 - Times in IST, dates like "30 Oct". Say how recent the data is.
 - Satellite fire counts are a lower bound (satellites only see fires burning during an \
-overpass). Burn scars marked unseen are "candidate unseen burns".
+overpass). Call FIRMS detections "fire detections": they are thermal anomalies, most but not all \
+crop fires; never write "crop-residue fires" or "stubble fires" for them.
+- Burn scars marked unseen are "candidate unseen burns" (tillage can look like a burn). Whenever \
+you give their share or area, write in that same sentence that they are candidate unseen burns, \
+and in the same section say that the share is an upper bound and give the audit precision with \
+its 95% interval and the number audited, from candidate_unseen_audit in the FACTS, for example: \
+"Candidate unseen burns cover X ha, Y% of the mapped burn-scar area [n]. That share is an upper \
+bound: in an audit of N candidates, P% were real burns (95% CI L%-H%) [n]." If the FACTS have no \
+audit, leave the share and area out.
+- Never quote burn-risk scores (risk_score, max_risk_score, score, points or risk-weighted \
+hectares): the score is a relative index, not a probability, and a number like 90 reads as \
+certainty. Name the villages ranked highest instead. To say how reliable the ranking is, use the \
+backtest over all pass pairs (all_pairs: auc_weighted_mean with its auc_ci95 in the same sentence \
+when given, the number of pairs, and that 0.5 is chance) and the words of the method note (for \
+example "weak"); never give the AUC of one pass pair (headline), of the village ranking or of a \
+baseline at all: an automatic check rejects them.
 - Name villages and districts only; never individuals. Neutral, public-service tone: no blame.
 - A title (at most 12 words), a two-sentence summary, and 3 to 5 sections with short headings, \
 in this order where there is data: air quality now; fires in the last 24 hours; wind and smoke \
@@ -138,6 +165,10 @@ unit, time, date and citation marker such as [3] exactly as in the English text,
 0-9. Keep place names recognisable. Write only in the requested script: never mix in letters of \
 another Indian script. Return the same JSON structure: title, summary, sections with heading and \
 body.
+Keep every qualification: "candidate unseen burns" stays candidate (Hindi: "संभावित अनदेखी आग"; \
+Punjabi: "ਸੰਭਾਵੀ ਅਣਦੇਖੀਆਂ ਅੱਗਾਂ"), "upper bound", "95% CI" and the audit numbers stay in the same \
+sentences as in the English, and "fire detections" are not translated as "crop fires" or \
+"crop-residue burning cases" (Hindi: "आग की पहचान"; Punjabi: "ਅੱਗ ਦੀਆਂ ਪਛਾਣਾਂ").
 """
 
 TRANSLATE_TO = {
@@ -172,6 +203,17 @@ BULLETIN_SCHEMA: dict[str, Any] = {
     },
     "required": ["title", "summary", "sections"],
 }
+
+
+def honesty_turn(issues: list[str], draft: dict[str, Any]) -> str:
+    """Appended to the bulletin turn for the one retry after the honesty check rejected a draft."""
+    listed = "\n".join(f"- {item}" for item in issues)
+    doc = {k: draft[k] for k in ("title", "summary", "sections") if k in draft}
+    return (
+        f"\n\nYOUR DRAFT:\n{json.dumps(doc, ensure_ascii=False, separators=(',', ':'))}\n\n"
+        f"An automatic check rejected these sentences of your draft:\n{listed}\n\n"
+        "Write the whole bulletin again from the FACTS, following every rule. Keep what was fine."
+    )
 
 
 def bulletin_turn(day_label: str, now: datetime, facts: dict[str, Any]) -> str:

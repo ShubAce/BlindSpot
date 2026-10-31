@@ -65,8 +65,55 @@ FORECAST_DAYS = 5  # forward runs need 48 h ahead of any time on the fetch day
 MIN_REFRESH = timedelta(hours=5)  # never refetch a member sooner (upstream runs are 6 h apart)
 MAX_AGE = timedelta(hours=9)  # always refetch a run older than this, new upstream run or not
 STALE_FAIL = timedelta(hours=24)  # fail the job if the primary member is older and cannot refresh
-KEEP_RUNS = 3  # stored runs per model
+# Stored runs per model. Every reader takes the newest run of each model (models/met.latest_runs:
+# the smoke job, smoke_validate, GET /api/met/*); GET /api/scars/{id} takes the newest grid of each
+# valid hour, which the newest run covers for its 7 past days, and the daily prune job kept only
+# the newest run anyway. Older runs only cost storage and the delete.
+KEEP_RUNS = 1
 PACE_S = 61.0  # seconds between member POSTs (600 calls/min)
+
+# --- the grids this process just stored --------------------------------------------------------------
+# The smoke job runs right after met in the same process (chained) and needs the newest
+# boundary-layer winds and the 10 m row nearest now: ~1.5 MB per member read back from the database
+# (Neon egress) that this process held a second earlier. They are kept here, per model, only for
+# the run just stored; values are what the database holds (float32 of the same short decimals the
+# COPY wrote: one rounding, as Postgres' float4in does), so a reader gets the same arrays.
+_STORED: dict[str, dict[str, Any]] = {}
+
+
+def _remember(model: str, run_id: int, ny: int, nx: int, rows: list[dict[str, Any]]) -> None:
+    bl = [r for r in rows if r["level"] == "bl"]
+    surface = [r for r in rows if r["level"] == "10m"]
+    _STORED[model] = {
+        "run_id": run_id,
+        "bl": (
+            np.array([int(r["valid_at"].timestamp()) for r in bl], dtype=np.int64),
+            {c: np.array([r[c] for r in bl], dtype=np.float32).reshape((len(bl), ny, nx)) for c in ("u", "v")},
+        ),
+        "10m": [(r["valid_at"], r["blh"]) for r in surface],
+    }
+
+
+def stored_level(run_id: int, level: str = "bl") -> tuple[np.ndarray, dict[str, np.ndarray]] | None:
+    """(times, {"u", "v"}) of `level` of a run this process stored, as models.met.load_level
+    returns them for columns ("u", "v"); None when this process did not store that run."""
+    for entry in _STORED.values():
+        if entry["run_id"] == run_id and level in entry and level == "bl":
+            times, arrays = entry["bl"]
+            return times, {k: v.copy() for k, v in arrays.items()}
+    return None
+
+
+def stored_surface_at(run_id: int, valid_at: datetime) -> Any:
+    """The 10 m row (valid_at, blh) of a run this process stored whose hour is closest to
+    `valid_at`, like models.met.row_at; None when this process did not store that run."""
+    from types import SimpleNamespace
+
+    for entry in _STORED.values():
+        if entry["run_id"] == run_id and entry["10m"]:
+            t, blh = min(entry["10m"], key=lambda r: (abs((r[0] - valid_at).total_seconds()), r[0]))
+            return SimpleNamespace(valid_at=t, blh=blh)
+    return None
 
 
 @dataclass
@@ -213,6 +260,7 @@ def store_grid(model: str, grid: ModelGrid, model_runs: dict[str, Any], run_at: 
         _copy_rows(session, rows)
         run.stats = {**grid.stats, "rows": len(rows), "store_ms": round((time.perf_counter() - t0) * 1000)}
         run_id = run.id
+    _remember(model, run_id, spec.ny, spec.nx, rows)  # committed: the smoke job may read it from here
     return run_id
 
 

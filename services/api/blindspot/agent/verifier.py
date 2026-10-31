@@ -432,6 +432,526 @@ def supported(claim: Claim, evidence: Evidence) -> bool:
     return number_supported(claim, evidence)
 
 
+# --- honesty: candidate unseen burns, audit precision, risk scores, backtest AUC, fire detections ---
+#
+# The number check above proves a number came from a tool; it cannot tell whether the sentence
+# around it overclaims. Ways the bulletin did (2026-10-31): it stated the candidate unseen share
+# and area as fact, without the audit precision and its interval; it quoted raw burn-risk scores
+# ("risk scores of 100.0", a relative index, read as certainty); it called FIRMS detections
+# "crop-residue fires" (they are thermal anomalies: most, not all, are crop fires); and it gave the
+# AUC of one pass pair's village ranking as "backtest validation". This check finds such sentences in
+# any language by their numbers: the unseen shares and areas, the audit precision, the risk scores,
+# the AUCs and the FIRMS counts are taken from the tool outputs, so nothing is typed here.
+#
+# A number that merely sits near one of those (a humidity of 75% next to a district's 74.8% unseen
+# share, "98% of the detections" next to Ludhiana's 97.7%) is not a claim about them: an unseen
+# figure must come with words saying it is about burns no satellite saw (or repeat an unseen figure
+# to its last decimal), and a risk score must not be a count ("88 harvested fields", "100 villages").
+
+CANDIDATE_WORDS: dict[str, tuple[str, ...]] = {
+    "en": ("candidate",),
+    "hi": ("संभावित", "उम्मीदवार"),
+    "pa": ("ਸੰਭਾਵੀ", "ਸੰਭਾਵਿਤ", "ਉਮੀਦਵਾਰ"),
+}
+# Words that make a sentence about burns the satellites did not see (the candidate words count too).
+UNSEEN_CUES: dict[str, tuple[str, ...]] = {
+    "en": ("unseen", "missed", "miss ", "undetected", "unnoticed", "no fire", "without a fire", "without fire",
+           "without any fire", "no matching", "no satellite", "not detected", "not seen", "never detected",
+           "no alert", "no detection", "hidden", "invisible", "escaped"),
+    "hi": ("अनदेख", "छूट", "बिना", "दर्ज नहीं", "नहीं देख", "नहीं पकड़", "पकड़ में नहीं", "छिप"),
+    "pa": ("ਅਣਦੇਖ", "ਖੁੰਝ", "ਬਿਨਾਂ", "ਦਰਜ ਨਹੀਂ", "ਨਹੀਂ ਦੇਖ", "ਨਹੀਂ ਫੜ", "ਛੁਪ"),
+}
+RISK_WORDS: dict[str, tuple[str, ...]] = {
+    "en": ("risk", "score"),
+    "hi": ("जोखिम", "स्कोर", "खतरा", "ख़तरा"),
+    "pa": ("ਜੋਖਮ", "ਜੋਖ਼ਮ", "ਸਕੋਰ", "ਖ਼ਤਰ", "ਖਤਰ"),
+}
+# A number followed (within two words) by one of these counts things; it is not a score.
+COUNT_NOUNS: tuple[str, ...] = (
+    "field", "village", "farm", "plot", "district", "pair", "pass", "day", "hour", "fire", "detection",
+    "hectare", "scar", "tile", "time", "year", "town", "cluster", "km", "percent",
+    "खेत", "गांव", "गाँव", "ज़िल", "जिल", "दिन", "घंट", "आग", "बार", "किमी", "शहर",
+    "ਖੇਤ", "ਪਿੰਡ", "ਜ਼ਿਲ", "ਜਿਲ", "ਦਿਨ", "ਘੰਟ", "ਅੱਗ", "ਵਾਰ", "ਕਿਮੀ", "ਸ਼ਹਿਰ",
+)
+AUC_WORDS: tuple[str, ...] = ("auc", "area under", "एयूसी", "ਏਯੂਸੀ")
+_UNSEEN_SHARE_KEYS = {"unseen_share", "unseen_share_pct"}
+_RISK_KEYS = {"risk_score", "max_risk_score", "risk_weighted_ha"}
+_CROP = (r"(?:crop(?:[- ](?:residue|burning))?|stubble(?:[- ]burning)?|paddy(?:[- ](?:straw|residue))?|straw|farm"
+         r"|residue(?:[- ]burning)?|parali)")
+_FIRMS_AS_CROP_FIRES = re.compile(
+    rf"(?<![\w.])(\d[\d,]*)\s+(?:(?:active|new|fresh|more)\s+)?{_CROP}(?:[- ]burning)?\s+"
+    r"(?:fires?|incidents?|cases?|events?)\b", re.I)
+# Hindi and Punjabi word order differs ("ਫਸਲ ਦੇ ਰਹਿੰਦ-ਖੂੰਹਦ ਨੂੰ ਅੱਗ ਲਗਾਉਣ ਦੇ 232 ਮਾਮਲਿਆਂ"): a sentence with a
+# FIRMS count, a crop word and a fire/case word, and no word for "detection", calls detections crop fires.
+_CROP_WORDS = {"hi": ("पराली", "फसल", "फ़सल", "अवशेष", "ठूंठ"), "pa": ("ਪਰਾਲੀ", "ਰਹਿੰਦ", "ਫਸਲ", "ਫ਼ਸਲ", "ਨਾੜ")}
+_FIRE_WORDS = {"hi": ("आग", "मामल", "मामले", "घटना"), "pa": ("ਅੱਗ", "ਮਾਮਲ", "ਘਟਨਾ")}
+_DETECTION_WORDS = {"hi": ("पहचान", "डिटेक्शन", "थर्मल"), "pa": ("ਪਛਾਣ", "ਡਿਟੈਕਸ਼ਨ", "ਥਰਮਲ", "ਖੋਜ")}
+# "95% CI" names the interval; it is not a bound of it
+_CI_NAME = re.compile(r"95\s?(?:%|प्रतिशत|ਪ੍ਰਤੀਸ਼ਤ)\s*(?:CI\b|confidence|विश्वास|ਭਰੋਸੇ|ਵਿਸ਼ਵਾਸ)", re.I)
+# "67.9-95.5%": both ends are percentages
+_PCT_RANGE = re.compile(r"(?<![\w.])(\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)\s*(%|प्रतिशत|ਪ੍ਰਤੀਸ਼ਤ)")
+_SENTENCES = re.compile(r"((?<=[.!?।])[ \t]+|\s*\n\s*)")  # sentences and lines (bullets); split() keeps them
+_BULLET = re.compile(r"^\s*[-•*]\s+")
+_WORD = re.compile(r"[^\s\d.,;:!?।()\[\]]+")
+_CLAUSE_END = re.compile(r"[.,;:!?।(\[]")
+
+
+def _sentences(unit: str) -> list[str]:
+    return [p for i, p in enumerate(_SENTENCES.split(unit)) if i % 2 == 0 and p.strip()]
+
+
+def _prep(text: str) -> str:
+    """The text the honesty check reads: digits normalised, "95% CI" masked, "a-b%" as "a% - b%"."""
+    text = _CI_NAME.sub(" ", normalise_digits(text))
+    return _PCT_RANGE.sub(lambda m: f"{m[1]}{m[3]} – {m[2]}{m[3]}", text)
+
+
+@dataclass
+class HonestyFacts:
+    """What the honesty check needs from the tool outputs (all numbers as the tools gave them)."""
+
+    unseen_share_pct: list[float] = field(default_factory=list)
+    unseen_area_ha: list[float] = field(default_factory=list)
+    risk_scores: list[float] = field(default_factory=list)
+    precision: float | None = None  # audit: share of candidate unseen burns that were real burns
+    precision_ci: tuple[float, float] | None = None
+    audited: int | None = None
+    season: dict[str, Any] | None = None  # {area_ha, unseen_area_ha, unseen_share_pct, markers}
+    audit_markers: list[int] = field(default_factory=list)
+    top_village: dict[str, Any] | None = None  # {village, district, markers}
+    # the backtest over all pass pairs: {auc, ci (lo, hi) or None, pairs, strength, markers}
+    auc_all: dict[str, Any] | None = None
+    auc_other: list[float] = field(default_factory=list)  # one pair's, the villages', baselines', per pair
+    firms_counts: list[float] = field(default_factory=list)  # FIRMS detection counts (not CREAMS events)
+
+
+def _markers_of(block: dict[str, Any]) -> list[int] | None:
+    sources = block.get("sources")
+    if not isinstance(sources, list):
+        return None
+    return [int(m) for s in sources if isinstance(s, dict) for m in re.findall(r"\d+", str(s.get("marker")))]
+
+
+def honesty_facts(payloads: list[Any]) -> HonestyFacts:
+    """Walk the tool outputs for the unseen shares and areas, the audit precision, the season's
+    unseen totals, the risk scores, the top-ranked village, the backtest's AUCs and the FIRMS
+    counts (with the markers of their sources)."""
+    facts = HonestyFacts()
+
+    def num(v: Any) -> float | None:
+        return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) else None
+
+    def pair(v: Any) -> tuple[float, float] | None:
+        if isinstance(v, list) and len(v) == 2 and all(num(x) is not None for x in v):
+            return float(v[0]), float(v[1])
+        return None
+
+    def walk(value: Any, path: tuple[str, ...], markers: list[int]) -> None:
+        if isinstance(value, list):
+            for item in value:
+                walk(item, path, markers)
+            return
+        if not isinstance(value, dict):
+            return
+        markers = _markers_of(value) or markers
+        if num(value.get("unseen_area_ha")) is not None:
+            share = num(value.get("unseen_share_pct"))
+            if share is None and num(value.get("unseen_share")) is not None:
+                share = num(value["unseen_share"]) * (100 if num(value["unseen_share"]) <= 1 else 1)
+            area = num(value.get("area_ha")) or 0.0
+            if share is not None and (facts.season is None or area > facts.season["area_ha"]):
+                facts.season = {"area_ha": area, "unseen_area_ha": num(value["unseen_area_ha"]),
+                                "unseen_share_pct": share, "markers": markers}
+        p, ci = num(value.get("precision")), value.get("precision_ci95")
+        if (p is not None and isinstance(ci, list) and len(ci) == 2 and "unseen" in " ".join(path)
+                and facts.precision is None):
+            facts.precision, facts.precision_ci = p, (float(ci[0]), float(ci[1]))
+            n = value.get("audited", value.get("precision_n"))
+            facts.audited = int(n) if isinstance(n, (int, float)) else None
+            facts.audit_markers = markers
+        ranking = value.get("village_ranking") or value.get("ranking")
+        if facts.top_village is None and isinstance(ranking, list) and ranking and isinstance(ranking[0], dict) \
+                and ranking[0].get("village"):
+            facts.top_village = {"village": ranking[0]["village"], "district": ranking[0].get("district"),
+                                 "markers": markers}
+        all_pairs = value.get("all_pairs")
+        if isinstance(all_pairs, dict) and num(all_pairs.get("auc_weighted_mean")) is not None \
+                and facts.auc_all is None:
+            facts.auc_all = {"auc": num(all_pairs["auc_weighted_mean"]), "ci": pair(all_pairs.get("auc_ci95")),
+                             "pairs": all_pairs.get("pairs"), "markers": markers,
+                             "strength": value.get("strength") if isinstance(value.get("strength"), str) else None}
+        creams = any("creams" in p for p in path)
+        for key, item in value.items():
+            x = num(item)
+            if x is not None:
+                if key == "auc" and 0 < x <= 1:  # one pair's, the villages' or a baseline's AUC
+                    facts.auc_other.append(x)
+                if not creams and (key in ("detections", "detections_total") or path[-1:] == ("by_state",)):
+                    facts.firms_counts.append(x)
+                if x <= 0:  # "0.0 ha of candidate unseen burns" claims nothing
+                    continue
+                if key == "unseen_area_ha":
+                    facts.unseen_area_ha.append(x)
+                elif key in _UNSEEN_SHARE_KEYS:
+                    facts.unseen_share_pct.append(x * 100 if key == "unseen_share" and x <= 1 else x)
+                elif key in _RISK_KEYS or (key == "score" and "risk_factors" in path):
+                    facts.risk_scores.append(x)
+            elif key == "auc_ci95" and pair(item) and "auc_weighted_mean" not in value:
+                facts.auc_other.extend(pair(item) or ())
+            else:
+                walk(item, (*path, str(key)), markers)
+
+    for payload in payloads:
+        walk(payload, (), [])
+    return facts
+
+
+@dataclass
+class HonestyIssue:
+    unit: int  # which text unit (title, summary, a section body, or the answer)
+    sentence: str
+    # unseen_not_candidate / unseen_without_precision / raw_risk_score / firms_called_crop_fires /
+    # auc_not_all_pairs / auc_without_interval
+    kind: str
+
+    def message(self, facts: HonestyFacts) -> str:
+        quoted = f'"{" ".join(self.sentence.split())[:160]}"'
+        a = facts.auc_all or {}
+        ci = a.get("ci")
+        all_pairs = (f"the AUC over all {a.get('pairs')} pass pairs, {a.get('auc')}"
+                     + (f" (95% CI {ci[0]}-{ci[1]})" if ci else "")) if a else None
+        if self.kind == "unseen_not_candidate":
+            return f"{quoted} states a share or area of unseen burns without calling them candidate unseen burns"
+        if self.kind == "unseen_without_precision":
+            if facts.precision is None:
+                return f"{quoted} states a share or area of candidate unseen burns, but no audit precision is available: leave the number out"
+            lo, hi = facts.precision_ci or (None, None)
+            return (f"{quoted} states a share or area of candidate unseen burns without the audit precision "
+                    f"{facts.precision} and its 95% interval {lo}-{hi} from the tool output (and that the share is an upper bound)")
+        if self.kind == "raw_risk_score":
+            return f"{quoted} quotes a raw burn-risk score: it is a relative index, not a probability; name the top-ranked villages instead"
+        if self.kind == "auc_not_all_pairs":
+            return (f"{quoted} gives the AUC of one pass pair, of the village ranking or of a baseline as the "
+                    f"ranking's accuracy: " + (f"use {all_pairs} instead" if all_pairs else "leave it out"))
+        if self.kind == "auc_without_interval":
+            return f"{quoted} gives the all-pairs AUC without its 95% interval: write {all_pairs}"
+        return f"{quoted} calls FIRMS detections crop-residue fires: they are fire detections (thermal anomalies), most but not all crop fires"
+
+
+def _pool(numbers: list[float]) -> Evidence:
+    return Evidence(numbers=list(numbers))
+
+
+def _has(claims: list[Claim], numbers: list[float], units: tuple[str | None, ...] | None = None) -> bool:
+    pool = _pool(numbers)
+    return any(c.kind == "number" and (units is None or c.unit in units) and number_supported(c, pool) for c in claims)
+
+
+def _gap(claim: Claim, numbers: list[float]) -> float:
+    value = abs(claim.value or 0.0)
+    return min((abs(c - value) for p in numbers for c in _conversions(claim.unit, p)), default=math.inf)
+
+
+def _is_count(text: str, claim: Claim) -> bool:
+    """"88 harvested fields", "100 villages", "12 दिन": the number counts things, it is not a score."""
+    after = text[claim.end:claim.end + 60]
+    stop = _CLAUSE_END.search(after)
+    words = _WORD.findall(after[:stop.start()] if stop else after)[:2]
+    return any(w.lower().startswith(noun) for w in words for noun in COUNT_NOUNS)
+
+
+def _unseen_hits(claims: list[Claim], facts: HonestyFacts) -> tuple[list[Claim], bool]:
+    """The claims that state an unseen share or area (closer to it than to an audit number), and
+    whether one repeats an unseen figure to its last decimal."""
+    audit = [v for v in (facts.precision, *(facts.precision_ci or ())) if v is not None]
+    hits, exact = [], False
+    for c in claims:
+        if c.kind != "number":
+            continue
+        pool = facts.unseen_share_pct if c.unit == "%" else facts.unseen_area_ha if c.unit in ("ha", "km2") else []
+        if not pool or not number_supported(c, _pool(pool)):
+            continue
+        gap = _gap(c, pool)
+        if audit and _gap(c, audit) <= gap:
+            continue  # the audit's own precision or interval
+        hits.append(c)
+        exact = exact or (c.decimals >= 1 and gap <= 0.5 * 10 ** (-c.decimals) + 1e-9)
+    return hits, exact
+
+
+def _firms_crop_claim(text: str, lower: str, claims: list[Claim], lang: str, facts: HonestyFacts) -> bool:
+    if lang == "en" or lang not in _CROP_WORDS:
+        for m in _FIRMS_AS_CROP_FIRES.finditer(text):
+            value = float(m[1].replace(",", ""))
+            if not facts.firms_counts or any(abs(value - x) <= max(0.5, REL_TOL * x) for x in facts.firms_counts):
+                return True
+        return False
+    if not facts.firms_counts or not any(w in lower for w in _CROP_WORDS[lang]) \
+            or not any(w in lower for w in _FIRE_WORDS[lang]) or any(w in lower for w in _DETECTION_WORDS[lang]):
+        return False
+    pool = _pool(facts.firms_counts)
+    return any(c.kind == "number" and c.unit is None and (c.value or 0) >= 1 and number_supported(c, pool)
+               for c in claims)
+
+
+def _auc_issue(claims: list[Claim], unit_claims: list[Claim], facts: HonestyFacts) -> str | None:
+    """auc_not_all_pairs when an AUC of the tool outputs other than the all-pairs one is given (as the
+    ranking's accuracy); auc_without_interval when the all-pairs AUC comes without its interval."""
+    values = [c for c in claims if c.kind == "number" and c.unit is None and 0 < (c.value or 0) <= 1]
+    if not values:
+        return None
+    a = facts.auc_all or {}
+    ci = a.get("ci")
+    allowed = [v for v in (a.get("auc"), *(ci or ())) if v is not None] + [0.5, 1.0]  # 0.5 chance, 1 perfect
+    if facts.auc_other and any(number_supported(c, _pool(facts.auc_other))
+                               and not number_supported(c, _pool(allowed)) for c in values):
+        return "auc_not_all_pairs"
+    if a.get("auc") is not None and ci and any(number_supported(c, _pool([a["auc"]])) for c in values) \
+            and not all(_has(unit_claims, [v], (None,)) for v in ci):
+        return "auc_without_interval"
+    return None
+
+
+def check_honesty(units: list[str], lang: str, facts: HonestyFacts) -> list[HonestyIssue]:
+    """Every sentence of `units` that overclaims (see the section comment); [] when all is well."""
+    issues: list[HonestyIssue] = []
+    cand_words = CANDIDATE_WORDS.get(lang, CANDIDATE_WORDS["en"]) + CANDIDATE_WORDS["en"]
+    cues = cand_words + UNSEEN_CUES.get(lang, ()) + UNSEEN_CUES["en"]
+    risk_words = RISK_WORDS.get(lang, RISK_WORDS["en"]) + RISK_WORDS["en"]
+    for index, unit in enumerate(units):
+        unit_claims = extract_claims(_prep(unit))
+        qualified = facts.precision is not None and facts.precision_ci is not None and all(
+            _has(unit_claims, [v], ("%", None)) for v in (facts.precision, *facts.precision_ci))
+        for sentence in _sentences(unit):
+            text = _prep(sentence)
+            claims = extract_claims(text)
+            lower = sentence.lower()
+            hits, exact = _unseen_hits(claims, facts)
+            if hits and (exact or any(w in lower for w in cues)):
+                if not any(w in lower for w in cand_words):
+                    issues.append(HonestyIssue(index, sentence, "unseen_not_candidate"))
+                elif not qualified:
+                    issues.append(HonestyIssue(index, sentence, "unseen_without_precision"))
+            if facts.risk_scores and any(w in lower for w in risk_words) and any(
+                    c.kind == "number" and c.unit in (None, "ha") and (c.value or 0) > 1
+                    and number_supported(c, _pool(facts.risk_scores)) and not _is_count(text, c) for c in claims):
+                issues.append(HonestyIssue(index, sentence, "raw_risk_score"))
+            if any(w in lower for w in AUC_WORDS) and (kind := _auc_issue(claims, unit_claims, facts)):
+                issues.append(HonestyIssue(index, sentence, kind))
+            if _firms_crop_claim(text, lower, claims, lang, facts):
+                issues.append(HonestyIssue(index, sentence, "firms_called_crop_fires"))
+    return issues
+
+
+def _pct(x: float) -> str:
+    return f"{x * 100:.0f}%" if x <= 1 else f"{x:.0f}%"
+
+
+def _pct1(x: float) -> str:
+    return f"{x * 100:.1f}%" if x <= 1 else f"{x:.1f}%"
+
+
+def _cite(markers: list[int]) -> str:
+    return f" [{markers[0]}]" if markers else ""
+
+
+def unseen_sentence(lang: str, facts: HonestyFacts) -> str | None:
+    """The candidate unseen burns of the season with the audit precision, in `lang`, every number
+    from the tool outputs; None when either is missing (then the share is not stated at all)."""
+    s, p, ci = facts.season, facts.precision, facts.precision_ci
+    if not s or p is None or ci is None:
+        return None
+    area, share, n = f"{s['unseen_area_ha']:.0f}", f"{s['unseen_share_pct']:.1f}%", facts.audited
+    a, b = _cite(s["markers"]), _cite(facts.audit_markers or s["markers"])
+    audit = f"{n} " if n else ""
+    if lang == "hi":
+        return (f"संभावित अनदेखी आग (ऐसे जले हुए खेत जिनके लिए किसी उपग्रह ने कोई आग दर्ज नहीं की) {area} हेक्टेयर में हैं, "
+                f"जो मानचित्र पर दर्ज जले क्षेत्र का {share} है{a}। यह हिस्सा ऊपरी सीमा है: {audit}संभावित मामलों की जाँच में "
+                f"{_pct(p)} सचमुच जले हुए निकले (95% CI {_pct(ci[0])}-{_pct(ci[1])}){b}।")
+    if lang == "pa":
+        return (f"ਸੰਭਾਵੀ ਅਣਦੇਖੀਆਂ ਅੱਗਾਂ (ਸੜੇ ਹੋਏ ਖੇਤ ਜਿਨ੍ਹਾਂ ਲਈ ਕਿਸੇ ਉਪਗ੍ਰਹਿ ਨੇ ਕੋਈ ਅੱਗ ਦਰਜ ਨਹੀਂ ਕੀਤੀ) {area} ਹੈਕਟੇਅਰ ਵਿੱਚ ਹਨ, "
+                f"ਜੋ ਨਕਸ਼ੇ ਵਿੱਚ ਦਰਜ ਸੜੇ ਖੇਤਰ ਦਾ {share} ਹੈ{a}। ਇਹ ਹਿੱਸਾ ਉਪਰਲੀ ਹੱਦ ਹੈ: {audit}ਸੰਭਾਵੀ ਮਾਮਲਿਆਂ ਦੀ ਜਾਂਚ ਵਿੱਚ "
+                f"{_pct(p)} ਸੱਚਮੁੱਚ ਸੜੇ ਹੋਏ ਨਿਕਲੇ (95% CI {_pct(ci[0])}-{_pct(ci[1])}){b}।")
+    return (f"Candidate unseen burns (burn scars with no satellite fire detection) cover {area} ha, {share} of the "
+            f"mapped burn-scar area{a}. That share is an upper bound: in an audit of {audit}candidates, {_pct(p)} were "
+            f"real burns (95% CI {_pct(ci[0])}-{_pct(ci[1])}){b}.")
+
+
+def audit_sentence(lang: str, facts: HonestyFacts) -> str | None:
+    """The audit precision alone, to follow a sentence that already names candidate unseen burns
+    (an investigator's district figure keeps its number and gains its qualification)."""
+    p, ci, n = facts.precision, facts.precision_ci, facts.audited
+    if p is None or ci is None:
+        return None
+    c = _cite(facts.audit_markers or (facts.season or {}).get("markers") or [])
+    lo, hi = _pct1(ci[0]), _pct1(ci[1])
+    if lang == "hi":
+        return (f"{f'{n} ' if n else ''}संभावित अनदेखी आग की जाँच में {_pct(p)} सचमुच जले हुए खेत निकले (95% CI {lo}-{hi}), "
+                f"इसलिए संभावित अनदेखी आग के आँकड़े ऊपरी सीमा हैं{c}।")
+    if lang == "pa":
+        return (f"{f'{n} ' if n else ''}ਸੰਭਾਵੀ ਅਣਦੇਖੀਆਂ ਅੱਗਾਂ ਦੀ ਜਾਂਚ ਵਿੱਚ {_pct(p)} ਸੱਚਮੁੱਚ ਸੜੇ ਹੋਏ ਖੇਤ ਨਿਕਲੇ "
+                f"(95% CI {lo}-{hi}), ਇਸ ਲਈ ਸੰਭਾਵੀ ਅਣਦੇਖੀਆਂ ਅੱਗਾਂ ਦੇ ਅੰਕੜੇ ਉਪਰਲੀ ਹੱਦ ਹਨ{c}।")
+    return (f"In an audit of {f'{n} ' if n else ''}candidate unseen burns, {_pct(p)} were real burns (95% CI {lo}-{hi}), "
+            f"so candidate unseen figures are upper bounds{c}.")
+
+
+def risk_sentence(lang: str, facts: HonestyFacts) -> str | None:
+    """The top-ranked village for burning next, without its score; None without a ranking."""
+    v = facts.top_village
+    if not v:
+        return None
+    # census village names are cut at 40 characters upstream: drop a dangling "( R"
+    village = re.sub(r"\s*\([^)]*$", "", str(v["village"])).strip(" ,") or str(v["village"])
+    place = f"{village} ({v['district']})" if v.get("district") else village
+    c = _cite(v["markers"])
+    if lang == "hi":
+        return (f"BlindSpot की जलने के जोखिम की रैंकिंग, जो संभावना नहीं बल्कि एक सापेक्ष सूचकांक है, अभी तक न जले कटे खेतों में "
+                f"{place} को सबसे ऊपर रखती है{c}।")
+    if lang == "pa":
+        return (f"BlindSpot ਦੀ ਸੜਨ ਦੇ ਜੋਖਮ ਦੀ ਦਰਜਾਬੰਦੀ, ਜੋ ਸੰਭਾਵਨਾ ਨਹੀਂ ਸਗੋਂ ਇੱਕ ਸਾਪੇਖ ਸੂਚਕ ਹੈ, ਅਜੇ ਤੱਕ ਨਾ ਸੜੇ ਵੱਢੇ ਖੇਤਾਂ ਵਿੱਚ "
+                f"{place} ਨੂੰ ਸਭ ਤੋਂ ਉੱਪਰ ਰੱਖਦੀ ਹੈ{c}।")
+    return (f"BlindSpot's burn-risk ranking, a relative index and not a probability, puts {place} first among "
+            f"harvested fields not yet burnt{c}.")
+
+
+def auc_sentence(lang: str, facts: HonestyFacts) -> str | None:
+    """How well the ranking did over all pass pairs (the AUC, its interval, the number of pairs);
+    None without the all-pairs backtest."""
+    a = facts.auc_all
+    if not a or a.get("auc") is None:
+        return None
+    c, ci, pairs = _cite(a.get("markers") or []), a.get("ci"), a.get("pairs")
+    auc = f"{a['auc']:.2f}"
+    chance = ci is not None and ci[0] <= 0.5
+    over = f"{pairs} " if pairs else ""
+    if lang == "hi":
+        interval = f"95% CI {ci[0]:.2f}-{ci[1]:.2f}; " if ci else ""
+        tail = ", यानी यह संयोग से साफ़ तौर पर बेहतर नहीं है" if chance else ""
+        return (f"इस मौसम के जले खेतों पर {over}पास-जोड़ियों में जाँचने पर जोखिम रैंकिंग का AUC {auc} है "
+                f"({interval}0.5 संयोग के बराबर है){tail}{c}।")
+    if lang == "pa":
+        interval = f"95% CI {ci[0]:.2f}-{ci[1]:.2f}; " if ci else ""
+        tail = ", ਭਾਵ ਇਹ ਸੰਜੋਗ ਨਾਲੋਂ ਸਾਫ਼ ਤੌਰ ਤੇ ਬਿਹਤਰ ਨਹੀਂ ਹੈ" if chance else ""
+        return (f"ਇਸ ਮੌਸਮ ਦੇ ਸੜੇ ਖੇਤਾਂ ਉੱਤੇ {over}ਪਾਸ-ਜੋੜੀਆਂ ਵਿੱਚ ਜਾਂਚਣ ਤੇ ਜੋਖਮ ਦਰਜਾਬੰਦੀ ਦਾ AUC {auc} ਹੈ "
+                f"({interval}0.5 ਸੰਜੋਗ ਦੇ ਬਰਾਬਰ ਹੈ){tail}{c}।")
+    interval = f"95% CI {ci[0]:.2f}-{ci[1]:.2f}; " if ci else ""
+    tail = ", so it is not clearly better than chance" if chance else ""
+    return (f"Checked against this season's burns over {over}pass pairs, the burn-risk ranking's AUC is {auc} "
+            f"({interval}0.5 is chance){tail}{c}.")
+
+
+def firms_sentence(lang: str, sentence: str, facts: HonestyFacts) -> str | None:
+    """A sentence that called FIRMS detections crop fires, said as fire detections: English keeps the
+    sentence and swaps the words; Hindi and Punjabi say the count again with its own markers."""
+    if lang not in ("hi", "pa"):
+        return _FIRMS_AS_CROP_FIRES.sub(lambda m: f"{m[1]} fire detections", sentence)
+    pool = _pool(facts.firms_counts)
+    count = next((c for c in extract_claims(_prep(sentence)) if c.kind == "number" and c.unit is None
+                  and (c.value or 0) >= 1 and number_supported(c, pool)), None)
+    if count is None:
+        return None
+    n = count.text
+    cites = "".join(f" {m}" for m in _CITATION.findall(sentence))
+    if lang == "hi":
+        return (f"उपग्रहों ने {n} आग की पहचान (थर्मल विसंगतियाँ) दर्ज कीं, जिनमें ज़्यादातर, पर सभी नहीं, "
+                f"फसल अवशेष की आग होती हैं{cites}।")
+    return (f"ਉਪਗ੍ਰਹਿਆਂ ਨੇ {n} ਅੱਗ ਦੀਆਂ ਪਛਾਣਾਂ (ਥਰਮਲ ਵਿਗਾੜ) ਦਰਜ ਕੀਤੀਆਂ, ਜਿਨ੍ਹਾਂ ਵਿੱਚੋਂ ਜ਼ਿਆਦਾਤਰ, ਪਰ ਸਾਰੀਆਂ ਨਹੀਂ, "
+            f"ਫਸਲ ਦੀ ਰਹਿੰਦ-ਖੂੰਹਦ ਦੀਆਂ ਅੱਗਾਂ ਹੁੰਦੀਆਂ ਹਨ{cites}।")
+
+
+_LABEL = {"en": "candidate unseen burns", "hi": "संभावित अनदेखी आग", "pa": "ਸੰਭਾਵੀ ਅਣਦੇਖੀਆਂ ਅੱਗਾਂ"}
+_TAIL = re.compile(r"(?:\s*\[\s*\d+(?:\s*[-–,]\s*\d+)*\s*\])*\s*[.!?।]?\s*$")
+
+
+def _labelled(sentence: str, lang: str) -> str:
+    """The sentence with "(candidate unseen burns)" before its citation markers and full stop."""
+    tail = _TAIL.search(sentence)
+    cut = tail.start() if tail else len(sentence)
+    return f"{sentence[:cut].rstrip()} ({_LABEL.get(lang, _LABEL['en'])}){sentence[cut:]}"
+
+
+def _states_season(sentence: str, facts: HonestyFacts) -> bool:
+    """Whether the sentence gives the season's own unseen area or share (not a district's)."""
+    s = facts.season
+    if not s:
+        return False
+    claims = extract_claims(_prep(sentence))
+    share = _has(claims, [s["unseen_share_pct"]], ("%",)) and _gap_ok(claims, s["unseen_share_pct"], facts, "%")
+    area = _has(claims, [s["unseen_area_ha"]], ("ha", "km2")) and _gap_ok(claims, s["unseen_area_ha"], facts, "ha")
+    return share or area
+
+
+def _gap_ok(claims: list[Claim], value: float, facts: HonestyFacts, unit: str) -> bool:
+    """A claim is closer to the season's figure than to any district's."""
+    pool = facts.unseen_share_pct if unit == "%" else facts.unseen_area_ha
+    others = [v for v in pool if v != value]
+    units = ("%",) if unit == "%" else ("ha", "km2")
+    return any(c.kind == "number" and c.unit in units and _gap(c, [value]) <= _gap(c, others) for c in claims)
+
+
+def honest_fallback(units: list[str], lang: str, facts: HonestyFacts) -> tuple[list[str], list[str]]:
+    """Rewrite what check_honesty() flags without asking the model again, from the tool outputs:
+    - the season's unseen share or area not called candidate becomes unseen_sentence();
+    - any other unseen figure keeps its words, gains "(candidate unseen burns)" when it lacks the word,
+      and is followed by audit_sentence() (once per unit), so a district's figure is not lost;
+    - a raw risk score becomes risk_sentence(), a single-pair AUC auc_sentence();
+    - "N crop-residue fires" becomes "N fire detections" (firms_sentence()).
+    Each whole-sentence replacement is used at most once per text; a sentence with no replacement is
+    dropped. Returns (units, the sentences replaced or dropped)."""
+    issues = check_honesty(units, lang, facts)
+    flagged: dict[tuple[int, str], set[str]] = {}
+    for issue in issues:
+        flagged.setdefault((issue.unit, issue.sentence), set()).add(issue.kind)
+    used: set[str] = set()
+    changed: list[str] = []
+    out = []
+
+    def once(key: str, make: Any) -> str | None:
+        if key in used:
+            return None
+        used.add(key)
+        return make(lang, facts)
+
+    for index, unit in enumerate(units):
+        parts = _SENTENCES.split(unit)  # sentence, separator, sentence, ...
+        kept: list[str] = []
+        audited = False
+        for i in range(0, len(parts), 2):
+            sentence, sep = parts[i], (parts[i + 1] if i + 1 < len(parts) else "")
+            kinds = flagged.get((index, sentence))
+            if not kinds:
+                kept += [sentence, sep]
+                continue
+            changed.append(sentence)
+            new: str | None = None
+            season = "unseen_not_candidate" in kinds and "unseen" not in used and _states_season(sentence, facts)
+            if season and (new := unseen_sentence(lang, facts)):
+                used.add("unseen")
+            elif "raw_risk_score" in kinds:
+                new = once("risk", risk_sentence)
+            elif kinds & {"auc_not_all_pairs", "auc_without_interval"}:
+                new = once("auc", auc_sentence)
+            else:  # repair the sentence itself, so a district's figure is not lost
+                new = sentence
+                if "firms_called_crop_fires" in kinds:
+                    new = firms_sentence(lang, new, facts)
+                if new and "unseen_not_candidate" in kinds:
+                    new = _labelled(new, lang)
+                if new and kinds & {"unseen_not_candidate", "unseen_without_precision"}:
+                    extra = None if audited else audit_sentence(lang, facts)
+                    if facts.precision is None or facts.precision_ci is None:
+                        new = None  # no audit to qualify it with: leave the number out
+                    elif extra:
+                        new, audited = f"{new.rstrip()} {extra}", True
+            if new:
+                bullet = _BULLET.match(sentence)
+                kept += [(bullet[0] if bullet and not _BULLET.match(new) else "") + new, sep]
+            elif kept and "\n" in sep and not kept[-1].strip():
+                kept[-1] = sep  # a dropped line: keep one line break before the next
+        out.append("".join(kept).strip())
+    return out, changed
+
+
 # --- report -----------------------------------------------------------------------------------
 
 

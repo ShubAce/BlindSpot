@@ -17,8 +17,8 @@ between 0 and 1, and the score is a weighted mean of three of them, multiplied b
   not a fitted curve.
 - neighbourhood: burning around the field in the last 7 days, within 5 km. Fires cluster in space and
   time (shared harvest dates, machines, enforcement), so a field whose neighbours are burning is more
-  likely to burn. Two independent views of that burning, combined as "either one" (noisy-OR,
-  1 - (1 - a)(1 - b)): (a) FIRMS detections (nominal or high confidence) plus Sentinel-2 burn scars
+  likely to burn. Two independent views of that burning, averaged (v2 combined them as "either
+  one", a noisy-OR, which saturates; see risk-v3 below): (a) FIRMS detections (nominal or high confidence) plus Sentinel-2 burn scars
   no FIRMS detection explains (candidate unseen burns, so one fire is not counted twice), and
   (b) the hectares of Sentinel-2 burn scars (all of them). risk-v1 used (a) only; its backtest on
   this season showed FIRMS counts within 5 km rank fields no better than a coin flip (AUC ~0.5),
@@ -31,12 +31,24 @@ between 0 and 1, and the score is a weighted mean of three of them, multiplied b
   one multiplies the rest: exp(-rain / 10 mm). 10 mm is the WMO/ETCCDI "heavy precipitation day"
   threshold (R10mm), where the factor falls to 1/e (0.37); 1 mm (the "wet day" threshold) leaves 0.9.
 
-Counts become 0-1 with 1 - exp(-n / typical), where `typical` is today's median among fields that
-have any: a field with a typical busy neighbourhood scores 0.63, a field with none scores 0. The
-weights (0.4 / 0.4 / 0.2) are a stated prior, not fitted; the backtest below reports how well the
-ranking works on this season's real burns, and against which baselines.
+Counts become 0-1 with n / (n + typical), where `typical` is today's median among fields that
+have any: a field with a typical busy neighbourhood scores 0.5, one with three times the typical
+count 0.75, one with none 0, and no count ever reaches 1. The two views of nearby burning are
+averaged. The weights (0.4 / 0.4 / 0.2) are a stated prior, not fitted; the backtest below reports
+how well the ranking works on this season's real burns, and against which baselines.
+
+risk-v3 (2026-10-31) changed only that scale. risk-v2 used 1 - exp(-n / typical) and a noisy-OR of
+the two views, which reach 1.0 in every busy place: with timing 1.0 and no rain, hundreds of fields
+scored 99.7-100.0 and dozens tied at exactly 100.0, so the top of the list carried no order and read
+like certainty. v3 keeps the same factors, the same weights and the same order of each factor; on
+the 148 pass pairs of this season its skill is the same as v2's (no variant tried, including
+dropping last season's fires, beat v2 on the 47 pass pairs after 24 Oct that it was not chosen on;
+docs/build-logs/honesty.md). The score is a relative index, not a probability: the backtest turns
+it into one (`calibration`), and the router states both.
 
 Everything here is pure (numbers in, numbers out), so it can be tested and explained on its own.
+The `risk` job runs the same formula in SQL (score_sql below, checked against score_fields() on
+every run), so that 172,000 fields never have to leave the database.
 """
 
 from __future__ import annotations
@@ -50,7 +62,7 @@ from typing import Any
 
 import orjson
 
-MODEL_VERSION = "risk-v2"
+MODEL_VERSION = "risk-v3"
 # Where the `risk` job leaves its backtest report, under settings.cache_dir (GET /api/risk reads it).
 BACKTEST_FILE = ("risk", "backtest.json")
 
@@ -130,22 +142,21 @@ def dryness_factor(rain_mm: float | None) -> float | None:
     return math.exp(-max(0.0, rain_mm) / HEAVY_RAIN_MM)
 
 
-def saturating(n: float | None, typical: float) -> float | None:
-    """A count as 0-1: 1 - exp(-n / typical). Zero stays zero; a typical count gives 0.63."""
+def relative(n: float | None, typical: float) -> float | None:
+    """A count as 0-1: n / (n + typical). Zero stays zero, a typical count gives 0.5, three times
+    the typical count 0.75, nine times 0.9; it never reaches 1, so busy places keep their order."""
     if n is None:
         return None
-    return 1.0 - math.exp(-max(0.0, n) / max(typical, 1e-9))
+    n = max(0.0, n)
+    return n / (n + max(typical, 1e-9))
 
 
 def neighbourhood_factor(events: float | None, burned_ha: float | None) -> float | None:
-    """Noisy-OR of the two views of nearby burning: high if either one is high, never above 1."""
+    """The mean of the two views of nearby burning (each 0-1)."""
     parts = [v for v in (events, burned_ha) if v is not None]
     if not parts:
         return None
-    miss = 1.0
-    for v in parts:
-        miss *= 1.0 - v
-    return 1.0 - miss
+    return sum(parts) / len(parts)
 
 
 def typical(values: Sequence[float | None]) -> float:
@@ -173,17 +184,25 @@ def combine(timing: float | None, neighbourhood: float | None, history: float | 
     return score, points
 
 
-def score_fields(fields: Sequence[FieldFeatures], as_of: datetime, weights: Weights = PRIOR) -> list[Scored]:
-    """Score every field, with an explanation that a person can read (risk_factors)."""
-    neigh_typ = typical([f.fires_7d + f.unseen_burns_7d for f in fields])
-    ha_typ = typical([f.burned_ha_7d for f in fields])
-    hist_typ = typical([f.fires_last_season for f in fields])
+def typicals(fields: Sequence[FieldFeatures]) -> tuple[float, float, float]:
+    """(events, burnt hectares, last season's fires): the typical counts of one scoring run."""
+    return (typical([f.fires_7d + f.unseen_burns_7d for f in fields]), typical([f.burned_ha_7d for f in fields]),
+            typical([f.fires_last_season for f in fields]))
+
+
+def score_fields(fields: Sequence[FieldFeatures], as_of: datetime, weights: Weights = PRIOR,
+                 typ: tuple[float, float, float] | None = None) -> list[Scored]:
+    """Score every field, with an explanation that a person can read (risk_factors).
+
+    `typ` overrides the typical counts (otherwise taken from `fields`): the job uses it to score a
+    sample of fields with the whole run's typical counts, to check the SQL scorer."""
+    neigh_typ, ha_typ, hist_typ = typ or typicals(fields)
     out = []
     for f in fields:
         timing = timing_factor(f.days_since_harvest)
         events = f.fires_7d + f.unseen_burns_7d
-        neigh = neighbourhood_factor(saturating(events, neigh_typ), saturating(f.burned_ha_7d, ha_typ))
-        hist = saturating(f.fires_last_season, hist_typ)
+        neigh = neighbourhood_factor(relative(events, neigh_typ), relative(f.burned_ha_7d, ha_typ))
+        hist = relative(f.fires_last_season, hist_typ)
         dry = dryness_factor(f.rain_next_72h_mm)
         score, points = combine(timing, neigh, hist, dry, weights)
         out.append(Scored(f.id, score, {
@@ -201,7 +220,8 @@ def score_fields(fields: Sequence[FieldFeatures], as_of: datetime, weights: Weig
                 "value": _r(neigh), "fires_7d": f.fires_7d, "candidate_unseen_burns_7d": f.unseen_burns_7d,
                 "burned_ha_7d": _r(f.burned_ha_7d, 2), "radius_km": NEIGHBOUR_RADIUS_KM,
                 "days": NEIGHBOUR_DAYS, "typical_events": _r(neigh_typ, 1),
-                "typical_burned_ha": _r(ha_typ, 1), "combined": "noisy-or of events and burnt hectares",
+                "typical_burned_ha": _r(ha_typ, 1), "combined": "mean of events and burnt hectares",
+                "scale": "n / (n + typical): 0.5 at the typical count, never 1",
             },
             "history": {
                 "value": _r(hist), "fires_last_season": f.fires_last_season,
@@ -218,6 +238,196 @@ def score_fields(fields: Sequence[FieldFeatures], as_of: datetime, weights: Weig
 
 def _r(value: float | None, digits: int = 3) -> float | None:
     return None if value is None else round(float(value), digits)
+
+
+# --- the same formula in SQL ----------------------------------------------------------------------------
+#
+# The `risk` job scores 172,000 fields and backtests ~360,000 field-pass pairs. Pulling them out of the
+# hosted database to score them in Python cost ~105 MB of egress a run (measured, docs/build-logs/
+# honesty.md); so the job keeps them in temporary tables and runs this, which repeats score_fields()
+# operation for operation (same float order, so the same doubles). The job re-scores a sample of rows
+# with score_fields() on every run and refuses to store if the two disagree.
+
+SCORE_COLUMNS = ("tv float8, nv float8, hv float8, dv float8, tw float8, pt float8, pn float8, ph float8, "
+                 "s float8, v text")
+
+
+def _f(x: float) -> str:
+    return f"CAST({float(x)!r} AS float8)"
+
+
+def score_sql(table: str, group: str = "0", weights: Weights = PRIOR) -> list[str]:
+    """Statements that score every row of a temporary table exactly as score_fields() does.
+
+    The table holds `days` (NULL: harvest date unknown), `fires`, `unseen`, `ha`, `hist` (NULL: last
+    season unknown), `r72`, `r24` (NULL: no forecast) and the SCORE_COLUMNS, which receive the
+    factor values, the points, the score and `v` (ROW_VALUES as JSON text, see below). Rows with the
+    same `group` share their typical counts: a pass pair in the backtest, or a constant (one run)."""
+    full, closed = _f(WINDOW_FULL_DAYS), _f(WINDOW_CLOSED_DAYS)
+    wt, wn, wh = _f(weights.timing), _f(weights.neighbourhood), _f(weights.history)
+    one, zero, hundred = _f(1.0), _f(0.0), _f(100.0)
+
+    def med(expr: str) -> str:  # typical(): median of the positive values, at least 1
+        return (f"greatest({one}, coalesce(percentile_cont(0.5) WITHIN GROUP (ORDER BY {expr}) "
+                f"FILTER (WHERE {expr} > 0), {one}))")
+
+    def rnd(expr: str, digits: int) -> str:
+        return f"CAST(round(CAST({expr} AS numeric), {digits}) AS float8)"
+
+    def js(expr: str) -> str:
+        return f"coalesce(CAST({expr} AS text), 'null')"
+
+    ev = "CAST(t.fires + t.unseen AS float8)"
+    ha = f"greatest({zero}, t.ha)"
+    raw = {k: f"{hundred} * coalesce(t.dv, {one}) * t.{v} * {w} / t.tw"
+           for k, v, w in (("t", "tv", wt), ("n", "nv", wn), ("h", "hv", wh))}
+    return [
+        f"DROP TABLE IF EXISTS {table}_typ",
+        f"""CREATE TEMP TABLE {table}_typ ON COMMIT DROP AS
+            SELECT {group} AS grp, {med("CAST(fires + unseen AS float8)")} AS nt, {med("ha")} AS ht,
+                   {med("CAST(hist AS float8)")} AS hst
+            FROM {table} GROUP BY 1""",
+        f"""UPDATE {table} AS t SET
+              tv = CASE WHEN t.days IS NULL THEN NULL WHEN t.days <= {full} THEN {one}
+                        WHEN t.days >= {closed} THEN {zero} ELSE {one} - (t.days - {full}) / ({closed} - {full}) END,
+              nv = ({ev} / ({ev} + y.nt) + {ha} / ({ha} + y.ht)) / {_f(2.0)},
+              hv = CAST(t.hist AS float8) / (CAST(t.hist AS float8) + y.hst),
+              dv = CASE WHEN t.r72 IS NULL THEN NULL ELSE exp(-greatest({zero}, t.r72) / {_f(HEAVY_RAIN_MM)}) END
+            FROM {table}_typ AS y""" + ("" if group == "0" else f" WHERE y.grp = t.{group}"),
+        # the weights of the factors that exist, summed in score_fields' order (timing, neighbourhood, history)
+        f"""UPDATE {table} AS t SET tw = (CASE WHEN t.tv IS NULL THEN {zero} ELSE {wt} END) + {wn}
+                                        + (CASE WHEN t.hv IS NULL THEN {zero} ELSE {wh} END)""",
+        f"""UPDATE {table} AS t SET
+              pt = {rnd(raw["t"], 2)}, pn = {rnd(raw["n"], 2)}, ph = {rnd(raw["h"], 2)},
+              s = {rnd(f"coalesce({raw['t']}, {zero}) + {raw['n']} + coalesce({raw['h']}, {zero})", 2)}""",
+        f"""UPDATE {table} AS t SET v = '[' || concat_ws(',', {js("t.s")}, {js("t.pt")}, {js("t.pn")}, {js("t.ph")},
+              {js(rnd("t.nv", 3))}, t.fires, t.unseen, {js(rnd("t.ha", 2))}, {js(rnd("t.hv", 3))}, {js("t.hist")},
+              {js(rnd("t.dv", 3))}, {js(rnd("t.r72", 1))}, {js(rnd("t.r24", 1))}) || ']'""",
+    ]
+
+
+# --- calibration: what a score meant on this season's real burns ------------------------------------------
+#
+# The score orders fields; it does not say how likely any one field is to burn. The backtest does: in
+# every pass pair it ranks the fields that were waiting at the first pass and checks which had burnt
+# by the next. Pooled over pairs, the share that burnt in each band of the ranking is a calibrated
+# probability for a field in that band today ("of fields ranked like this one, X% burnt by the next
+# clear pass"), with a 95% CI from resampling whole tiles.
+
+BANDS = ((0.01, "top 1%"), (0.05, "top 1-5%"), (0.10, "top 5-10%"), (0.25, "top 10-25%"),
+         (0.50, "top 25-50%"), (1.0, "bottom 50%"))
+
+
+def tested_score(neighbourhood: float | None, history: float | None, weights: Weights = PRIOR) -> float | None:
+    """The part of a field's score that the backtest tests, 0-100: neighbourhood and history only
+    (the backtest cannot know when a past burnt field was harvested, so timing is left out, and one
+    rain forecast covers a whole tile, so dryness is too). Computed from the stored, 3-decimal factor
+    values, in the same order as TESTED_SQL, so the job's band cuts and the route agree exactly.
+    The calibration (burn_probability) belongs to a field's band in THIS ordering, not in the
+    full score's."""
+    if neighbourhood is None:
+        return None
+    total = weights.neighbourhood + (0.0 if history is None else weights.history)
+    return 100.0 * (neighbourhood * weights.neighbourhood + (0.0 if history is None else history) * weights.history) / total
+
+
+def tested_score_sql(nv: str, hv: str, weights: Weights = PRIOR) -> str:
+    """tested_score() in SQL, from the factor columns (rounded to 3 decimals as stored)."""
+    n = f"CAST(round(CAST({nv} AS numeric), 3) AS float8)"
+    h = f"CAST(round(CAST({hv} AS numeric), 3) AS float8)"
+    wn, wh, zero = _f(weights.neighbourhood), _f(weights.history), _f(0.0)
+    return (f"({_f(100.0)} * ({n} * {wn} + (CASE WHEN {hv} IS NULL THEN {zero} ELSE {h} END) * {wh}) "
+            f"/ ({wn} + (CASE WHEN {hv} IS NULL THEN {zero} ELSE {wh} END)))")
+
+
+def tested_band(score: float | None, cuts: Sequence[float | None]) -> int | None:
+    """The band of a tested score given the run's cuts (the lowest tested score inside each band's
+    top share, see jobs/risk.py _tested_order); None without a score or cuts."""
+    if score is None or not cuts:
+        return None
+    for i, cut in enumerate(cuts):
+        if cut is not None and score >= cut - 1e-9:
+            return i
+    return len(BANDS) - 1
+
+
+def band_index(top_share: float) -> int:
+    """The band of a field whose score is matched or beaten by `top_share` of its run (0-1]."""
+    for i, (edge, _) in enumerate(BANDS):
+        if top_share <= edge + 1e-12:
+            return i
+    return len(BANDS) - 1
+
+
+def auc_ci(scores: Sequence[float], labels: Sequence[int], reps: int = 1000,
+           seed: int = 20261031) -> tuple[float, float] | None:
+    """95% bootstrap interval of roc_auc(): burnt and unburnt fields resampled separately (so every
+    replicate keeps the pair's mix), percentile method. Fields within 5 km share their
+    neighbourhood, so they are not independent: this interval is narrower than the truth."""
+    import numpy as np
+    from scipy.stats import rankdata
+
+    s = np.asarray(scores, dtype=float)
+    y = np.asarray(labels, dtype=int)
+    pos, neg = s[y == 1], s[y == 0]
+    if len(pos) == 0 or len(neg) == 0:
+        return None
+    rng = np.random.default_rng(seed)
+    p = pos[rng.integers(0, len(pos), (reps, len(pos)))]
+    n = neg[rng.integers(0, len(neg), (reps, len(neg)))]
+    ranks = rankdata(np.concatenate([p, n], axis=1), axis=1)
+    aucs = (ranks[:, :len(pos)].sum(axis=1) - len(pos) * (len(pos) + 1) / 2) / (len(pos) * len(neg))
+    lo, hi = np.percentile(aucs, [2.5, 97.5])
+    return float(lo), float(hi)
+
+
+def tile_bootstrap(pairs: Sequence[dict[str, Any]], reps: int = 2000,
+                   seed: int = 20261031) -> dict[str, Any]:
+    """95% intervals for the all-pairs numbers, resampling whole tiles with replacement.
+
+    Pass pairs of one tile share fields and neighbourhoods, so tiles (not fields, not pairs) are the
+    independent units. Each pair is {tile, n, burnt, auc, top_k, top_hits, bands: [[n, burnt], ...]}.
+    Returns the point estimates and intervals of: the size-weighted mean AUC, the pooled share that
+    burnt among each pair's top 10% and its lift over the pooled base rate, and each band's share."""
+    import numpy as np
+
+    tiles = sorted({p["tile"] for p in pairs})
+    col = np.array([tiles.index(p["tile"]) for p in pairs])
+    n = np.array([p["n"] for p in pairs], float)
+    burnt = np.array([p["burnt"] for p in pairs], float)
+    auc = np.array([0.5 if p["auc"] is None else p["auc"] for p in pairs], float)
+    k = np.array([p["top_k"] for p in pairs], float)
+    hits = np.array([p["top_hits"] for p in pairs], float)
+    bands = np.array([[b[0] for b in p["bands"]] for p in pairs], float)
+    band_burnt = np.array([[b[1] for b in p["bands"]] for p in pairs], float)
+
+    def stats(w: np.ndarray) -> np.ndarray:
+        nw = n * w
+        base = (burnt * w).sum() / nw.sum()
+        top = (hits * w).sum() / (k * w).sum()
+        with np.errstate(invalid="ignore", divide="ignore"):
+            share = (band_burnt * w[:, None]).sum(axis=0) / (bands * w[:, None]).sum(axis=0)
+        return np.concatenate([[(auc * nw).sum() / nw.sum(), top, top / base, base], share])
+
+    point = stats(np.ones(len(pairs)))
+    rng = np.random.default_rng(seed)
+    draws = np.array([stats(np.bincount(rng.integers(0, len(tiles), len(tiles)), minlength=len(tiles))[col]
+                            .astype(float)) for _ in range(reps)])
+    lo, hi = np.nanpercentile(draws, 2.5, axis=0), np.nanpercentile(draws, 97.5, axis=0)
+
+    def ci(i: int) -> list[float | None]:
+        return [_r(lo[i]), _r(hi[i])]
+
+    return {
+        "auc_weighted_mean": _r(point[0]), "auc_ci95": ci(0),
+        "top_10pct": {"burnt_share": _r(point[1]), "burnt_share_ci95": ci(1), "lift": _r(point[2]),
+                      "lift_ci95": ci(2), "base_rate": _r(point[3])},
+        "bands": [{"band": label, "fields": int(bands[:, i].sum()), "burnt": int(band_burnt[:, i].sum()),
+                   "burnt_share": _r(point[4 + i]), "burnt_share_ci95": ci(4 + i),
+                   "lift": _r(point[4 + i] / point[3]) if point[3] else None}
+                  for i, (_, label) in enumerate(BANDS)],
+        "tiles": len(tiles), "reps": reps,
+    }
 
 
 # --- storage: what one run shares is stored once, each field keeps only its own numbers -------------

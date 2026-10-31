@@ -276,8 +276,10 @@ def test_dryness_and_saturation():
     assert model.dryness_factor(0) == 1.0
     assert model.dryness_factor(10) == pytest.approx(math.exp(-1))
     assert model.dryness_factor(None) is None
-    assert model.saturating(0, 5) == 0.0
-    assert model.saturating(5, 5) == pytest.approx(1 - math.exp(-1))
+    # risk-v3: n / (n + typical): 0 stays 0, the typical count gives 0.5, and it never reaches 1
+    assert model.relative(0, 5) == 0.0 and model.relative(None, 5) is None
+    assert model.relative(5, 5) == 0.5 and model.relative(15, 5) == 0.75
+    assert model.relative(10_000, 5) < 1.0
     assert model.typical([0, 0, 3, 5, 9, None]) == 5.0 and model.typical([0, 0]) == 1.0
 
 
@@ -314,7 +316,7 @@ def test_metrics_against_a_reference_implementation():
     # ties at the cut are averaged, never broken by list order (which would leak the labels)
     assert model.precision_at_k([1, 1, 1, 1], [1, 1, 0, 0], 2) == 0.5
     assert abs(model.precision_at_k([2, 1, 1, 1], [0, 1, 0, 0], 2) - 1 / 6) < 1e-9
-    assert model.neighbourhood_factor(0.5, 0.5) == 0.75 and model.neighbourhood_factor(None, None) is None
+    assert model.neighbourhood_factor(0.5, 0.25) == 0.375 and model.neighbourhood_factor(None, None) is None
     lo, hi = model.wilson_interval(43, 100)  # by hand: centre 0.4326, half-width 0.0953
     assert lo == pytest.approx(0.3373, abs=1e-3) and hi == pytest.approx(0.5279, abs=1e-3)
 
@@ -377,29 +379,40 @@ def test_last_season_keeps_vegetation_fires_and_caches(monkeypatch, tmp_path):
 
 
 def test_backtest_uses_harvest_dates_when_the_scar_table_has_them(client):
-    """The timing branch (on once burn_cluster records harvest dates): timing enters the score, a
-    timing-only baseline is reported and the harvest-to-burn lag is measured. Points sit in the
-    Indian Ocean, where no fire or scar of any test exists, so only timing separates them."""
+    """The timing branch (on once burn_cluster records harvest dates): timing enters the score and a
+    timing-only baseline is reported. The pass pair's fields go straight into the backtest's table
+    (as _load_pairs would put them); they sit in the Indian Ocean, where no fire or scar of any test
+    exists, so only timing separates them."""
     from blindspot.db import session_scope
     from blindspot.jobs import risk as job
 
     t0 = datetime(2026, 10, 23, 5, 50, tzinfo=UTC)
     t1 = t0 + timedelta(days=5)
-    day = timedelta(days=1)
-    # burnt: harvested 3-8 days before t0; unburnt: harvested 25-30 days before t0.
-    # Rows: (id, lon, lat, harvested_after, harvested_before, burn_after, burn_before, village, area_ha)
-    # and (id, lon, lat, harvested_after, harvested_before, village, area_ha); one village per field.
-    pos = [(i, 60.0 + i / 1000, -5.0, t0 - 8 * day, t0 - 3 * day, t0, t1, f"B{i}", 1.0) for i in range(1, 11)]
-    neg = [(i, 60.1 + i / 1000, -5.0, t0 - 30 * day, t0 - 25 * day, f"U{i}", 2.0) for i in range(1, 13)]
-    empty = job.History(np.empty((0, 2)), "test", [], False)
     with session_scope() as s:
-        out = job._evaluate(s, "TEST", t0, t1, pos, neg, empty, timing_cols=True)
-    assert out["burnt"] == 10 and out["unburnt"] == 12
-    assert out["auc"] == 1.0 and out["baselines"]["timing_only"]["auc"] == 1.0
-    assert out["factors_used"][0] == "timing"
-    # lag = middle of the burn interval (t0 + 2.5 d) - middle of the harvest interval (t0 - 5.5 d) = 8 d
-    assert out["lag_days"] == {"n": 10, "p25": 8.0, "median": 8.0, "p75": 8.0}
-    v = out["villages"]  # villages of burnt fields carry all the risk; bigger (unburnt) ones do not help
+        s.execute(text("DROP TABLE IF EXISTS bt_win, bt"))
+        s.execute(text("CREATE TEMP TABLE bt_win (pair int, tile text, scope text, t0 timestamptz, t1 timestamptz) "
+                       "ON COMMIT DROP"))
+        s.execute(text(f"CREATE TEMP TABLE bt ({job.BT_COLUMNS}{model.SCORE_COLUMNS}) ON COMMIT DROP"))
+        s.execute(text("INSERT INTO bt_win VALUES (0, 'TEST', NULL, :t0, :t1)"), {"t0": t0, "t1": t1})
+        # burnt: harvested 3-8 days before t0 (mid 5.5); unburnt: 25-30 days before (mid 27.5); one village each
+        rows = [(1, 60.0 + i / 1000, 5.5, f"B{i}", 1.0) for i in range(10)]
+        rows += [(0, 60.1 + i / 1000, 27.5, f"U{i}", 2.0) for i in range(12)]
+        s.execute(text("""INSERT INTO bt (pair, label, fid, g, t0, village, area, days)
+                          VALUES (0, :y, :i, ST_SetSRID(ST_MakePoint(:lon, -5.0), 4326)::geography, :t0, :v, :a, :d)"""),
+                  [{"y": y, "i": i, "lon": lon, "t0": t0, "v": v, "a": a, "d": d} for i, (y, lon, d, v, a) in enumerate(rows)])
+        job.fill_neighbourhood(s, "bt", t0, "p.t0 = :t0", {"t0": t0})
+        for stmt in model.score_sql("bt", "pair"):
+            s.execute(text(stmt))
+        per_pair = job._pair_metrics(s, history_ok=False, timing=True)
+        head = job._headline(s, {"pair": 0, "tile": "TEST", "t0": t0, "t1": t1}, history_ok=False, timing=True)
+    m = per_pair[0]
+    assert m["auc"] == 1.0 and m["baselines_auc"]["timing_only"] == 1.0 and m["baselines_auc"]["history_only"] is None
+    assert m["top_k"] == 2 and m["top_hits"] == 2.0  # round(22 / 10) = 2 best-ranked fields, both burnt
+    assert sum(b[0] for b in m["bands"]) == 22 and sum(b[1] for b in m["bands"]) == 10
+    assert head["burnt"] == 10 and head["unburnt"] == 12 and head["auc"] == 1.0
+    assert head["baselines"]["timing_only"]["auc"] == 1.0 and head["factors_used"][0] == "timing"
+    assert head["auc_ci95"] == [1.0, 1.0] and head["precision_ci95"]["10"][0] > 0.6
+    v = head["villages"]  # villages of burnt fields carry all the risk; bigger (unburnt) ones do not help
     assert v["villages"] == 22 and v["with_a_burn"] == 10 and v["auc"] == 1.0
     assert v["baseline_area_only"]["auc"] == 0.0 and v["precision_at_k"]["10"] == 1.0
 

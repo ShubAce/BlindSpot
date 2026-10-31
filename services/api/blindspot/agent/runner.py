@@ -27,7 +27,9 @@ Robustness, because judges watch live and the free tier is small:
   model and says "AI narrative unavailable". It never shows a canned answer.
 - The same normalised question within 10 minutes replays the stored run instead of calling
   Gemini again, and identical questions asked at the same moment share one run (single flight).
-- A per-IP rate limit (in the router) protects the quota from one noisy client.
+- A per-client rate limit protects the quota from one noisy client: in memory, and on serverless
+  deployments also counted in Postgres (blindspot.models.client_quota) so that it holds across
+  instances and cold starts. Joined and replayed runs are never counted.
 """
 
 from __future__ import annotations
@@ -67,8 +69,12 @@ from blindspot.agent.tools import (
 from blindspot.agent.verifier import (
     Attributed,
     Evidence,
+    HonestyFacts,
     build_evidence,
+    check_honesty,
     cited_markers,
+    honest_fallback,
+    honesty_facts,
     verify,
 )
 from blindspot.config import ENV_FILE, get_settings
@@ -840,6 +846,45 @@ def _evidence(run: Run, now: datetime) -> Evidence:
     return build_evidence(payloads, question=run.question, now=now, extra=reference)
 
 
+async def unseen_audit(api: InternalApi) -> dict[str, Any] | None:
+    """The burn-scar audit of candidate unseen burns (/api/scars/summary method.audit.candidate_unseen):
+    the share an audit found to be real burns, its 95% interval and how many were audited. Any
+    candidate unseen share or area must come with it (verifier.check_honesty); the agent's burn-scar
+    tool leaves it out, so the bulletin and the answer check add it to that tool's output. None if
+    the audit is unavailable."""
+    try:
+        reply = await api.get("/api/scars/summary")
+    except Exception as exc:  # the check then drops unqualified shares instead
+        log.warning("burn-scar audit unavailable: %s", exc)
+        return None
+    audit = ((reply.body or {}).get("method") or {}).get("audit") or {} if reply.ok else {}
+    unseen = audit.get("candidate_unseen") or {}
+    if unseen.get("precision") is None or not unseen.get("precision_ci95"):
+        return None
+    return {
+        "precision": unseen["precision"], "precision_ci95": unseen["precision_ci95"],
+        "audited": unseen.get("audited"), "method": audit.get("method"),
+        "reading": "precision = share of audited candidate unseen burns that were real burns; "
+                   "so the candidate unseen share is an upper bound",
+    }
+
+
+async def _with_unseen_audit(api: InternalApi, run: Run) -> HonestyFacts:
+    """The honesty facts of the run's tools; when they state candidate unseen burns without the
+    audit, the audit is added to the burn-scar tool's output first (so the revision pass may quote
+    it, the number check finds it, and the stored run shows where it came from)."""
+    facts = honesty_facts([{"args": t.get("args"), "output": t.get("output")} for t in run.tools])
+    if facts.precision is not None or not (facts.unseen_area_ha or facts.unseen_share_pct):
+        return facts
+    block = await unseen_audit(api)
+    scars = [t for t in run.tools if t.get("name") == "get_burn_scars" and isinstance(t.get("output"), dict)]
+    if block is None or not scars:
+        return facts
+    for tool in scars:
+        tool["output"]["candidate_unseen_audit"] = block
+    return honesty_facts([{"args": t.get("args"), "output": t.get("output")} for t in run.tools])
+
+
 async def _evidence_pack(api: InternalApi, run: Run, book: CitationBook) -> None:
     """Gemini cannot answer: still show the evidence the agent would have used (no narrative)."""
     city = "Delhi"  # the main receptor; a city named in the question wins
@@ -931,9 +976,16 @@ async def investigate(run: Run, client_factory: ClientFactory | None = None) -> 
         report = verify(answer, _evidence(run, now), set(book.refs), attributed(run.tools))
         first_report = report
         revised = False
-        if not report.passed:
+        # The honesty rule (verifier.check_honesty): candidate unseen burns named as candidates and
+        # qualified by the audit precision, no raw risk scores, no single-pair AUC as the ranking's
+        # accuracy, FIRMS detections not called crop fires.
+        # The burn-scar audit is added to the scar tool's output when an unseen share needs it.
+        facts = await _with_unseen_audit(api, run)
+        overclaims = [i.message(facts) for i in check_honesty([answer], run.lang, facts)]
+        first_overclaims = overclaims
+        if not report.passed or overclaims:
             contents.append(types.Content(role="user", parts=[types.Part.from_text(
-                text=prompts.revision_turn(report.unverified, run.lang))]))  # fmt: skip
+                text=prompts.revision_turn(report.unverified, run.lang, overclaims))]))  # fmt: skip
             try:
                 config = _config(mode="NONE", thinking="LOW", system=prompts.INVESTIGATOR_SYSTEM)
                 turn, contents = await model_turn(gateway, run, contents, config,
@@ -941,16 +993,25 @@ async def investigate(run: Run, client_factory: ClientFactory | None = None) -> 
                 if turn.text:
                     second = verify(turn.text, _evidence(run, now), set(book.refs),
                                     attributed(run.tools))  # fmt: skip
-                    if len(second.unverified) <= len(report.unverified):
+                    again = [i.message(facts) for i in check_honesty([turn.text], run.lang, facts)]
+                    if len(second.unverified) + len(again) <= len(report.unverified) + len(overclaims):
                         answer, report, model, revised = turn.text, second, turn.model, True
+                        overclaims = again
             except GeminiUnavailable as exc:  # keep the first answer, flagged as unverified
                 log.warning("revision pass unavailable: %s", exc)
+        rewritten: list[str] = []
+        if overclaims:  # still overclaiming after the revision: rewrite those sentences from the tools
+            [answer], rewritten = honest_fallback([answer], run.lang, facts)
+            report = verify(answer, _evidence(run, now), set(book.refs), attributed(run.tools))
         citations = [c for m in cited_markers(answer) if (c := book.citation(m))]
         run.answer, run.citations, run.model = answer, citations, model
         if (auto := _auto_map_event(run)) is not None:
             run.emit("map", **auto)
         run.verification = {**report.as_event(), "revised": revised,
-                            "first_pass_unverified": first_report.unverified if revised else []}  # fmt: skip
+                            "first_pass_unverified": first_report.unverified if revised else [],
+                            "honesty": {"passed": not check_honesty([answer], run.lang, facts),
+                                        "first_pass_issues": first_overclaims,
+                                        "fallback_sentences": rewritten}}  # fmt: skip
         run.emit("answer", text=answer, citations=citations, model=model)
         run.emit("verification", **run.verification)
         run.ok = True
@@ -1028,6 +1089,34 @@ def find_recent(key: str, minutes: float) -> dict[str, Any] | None:
         return None
 
 
+# Stored answers this process found, so replaying one again (the same question asked over and over,
+# by one client or many) reads its events (~15 KB) from Postgres at most once per REPLAY_MEMO_S per
+# instance instead of on every request. A stored run never changes; the memo also ends with the
+# run's own replay window.
+REPLAY_MEMO_S = 120.0
+_replay_memo: dict[str, tuple[float, dict[str, Any]]] = {}
+
+
+def _stored_answer(key: str, minutes: float) -> dict[str, Any] | None:
+    now = time.time()
+    memo = _replay_memo.get(key)
+    if memo is not None:
+        if memo[0] > now:
+            return memo[1]
+        _replay_memo.pop(key, None)
+    stored = find_recent(key, minutes)
+    if stored is not None:
+        started = stored.get("started_at")
+        until = now + REPLAY_MEMO_S
+        if isinstance(started, datetime):
+            until = min(until, started.timestamp() + minutes * 60)
+        if until > now:
+            if len(_replay_memo) >= 256:
+                _replay_memo.clear()
+            _replay_memo[key] = (until, stored)
+    return stored
+
+
 def replay(stored: dict[str, Any]) -> Run:
     """A finished Run whose events are the stored ones, marked as a replay of that run."""
     run = Run(id=stored["id"], kind="ask", question="", lang="", started_at=stored["started_at"])
@@ -1052,28 +1141,68 @@ class RateLimited(Exception):
 
 
 class RateLimiter:
-    """Sliding-window limits per client key (an IP address): N per minute and M per day."""
+    """Sliding-window limits per client key (an IP address): N per minute and M per day.
 
-    def __init__(self, per_minute: int, per_day: int) -> None:
-        self.per_minute, self.per_day = per_minute, per_day
+    In process memory: exact for one long-lived process, the first line of defence everywhere.
+    Serverless instances also count in the database (blindspot.models.client_quota, see ask())."""
+
+    def __init__(self, per_minute: int, per_day: int, noun: str = "questions") -> None:
+        self.per_minute, self.per_day, self.noun = per_minute, per_day, noun
         self._hits: dict[str, deque[float]] = defaultdict(deque)
+        # Clients the shared (database) count refused, until when: refused here without asking the
+        # database again, so a client hammering past its limit costs no query per request.
+        self._blocked: dict[str, tuple[float, str]] = {}
         self._lock = threading.Lock()
+
+    def forget(self, key: str) -> None:
+        """Take back the last hit of `key` (the shared count refused the request after all)."""
+        with self._lock:
+            hits = self._hits.get(key)
+            if hits:
+                hits.pop()
+
+    def block(self, key: str, retry_after_s: float, reason: str) -> None:
+        """Remember that the shared count refused `key` for `retry_after_s` seconds."""
+        with self._lock:
+            self._blocked[key] = (time.time() + retry_after_s, reason)
+            if len(self._blocked) > 10_000:
+                now = time.time()
+                for k in [k for k, (until, _) in self._blocked.items() if until <= now]:
+                    del self._blocked[k]
+
+    def _refusal(self, key: str, now: float) -> RateLimited | None:
+        blocked = self._blocked.get(key)
+        if blocked is not None:
+            if blocked[0] > now:
+                return RateLimited(blocked[0] - now, blocked[1])
+            del self._blocked[key]
+        hits = self._hits.get(key)
+        if not hits:
+            return None
+        while hits and now - hits[0] > 86400:
+            hits.popleft()
+        last_minute = [t for t in hits if now - t <= 60]
+        if len(last_minute) >= self.per_minute:
+            return RateLimited(60 - (now - last_minute[0]) + 1, f"at most {self.per_minute} {self.noun} a minute")
+        if len(hits) >= self.per_day:
+            return RateLimited(86400 - (now - hits[0]) + 1, f"at most {self.per_day} {self.noun} a day")
+        return None
+
+    def peek(self, key: str) -> None:
+        """Raise RateLimited if a hit for `key` would be refused here, without counting anything."""
+        with self._lock:
+            refusal = self._refusal(key, time.time())
+        if refusal is not None:
+            raise refusal
 
     def hit(self, key: str) -> None:
         """Count one request for `key`, or raise RateLimited without counting it."""
         now = time.time()
         with self._lock:
-            hits = self._hits[key]
-            while hits and now - hits[0] > 86400:
-                hits.popleft()
-            last_minute = [t for t in hits if now - t <= 60]
-            if len(last_minute) >= self.per_minute:
-                raise RateLimited(60 - (now - last_minute[0]) + 1,
-                                  f"at most {self.per_minute} questions a minute")  # fmt: skip
-            if len(hits) >= self.per_day:
-                raise RateLimited(86400 - (now - hits[0]) + 1,
-                                  f"at most {self.per_day} questions a day")  # fmt: skip
-            hits.append(now)
+            refusal = self._refusal(key, now)
+            if refusal is not None:
+                raise refusal
+            self._hits[key].append(now)
             if len(self._hits) > 10_000:  # forget idle clients
                 for idle in [k for k, v in self._hits.items() if not v][:1000]:
                     del self._hits[idle]
@@ -1088,6 +1217,25 @@ def limiter() -> RateLimiter:
         s = agent_settings()
         _limiter = RateLimiter(s.ip_per_minute, s.ip_per_day)
     return _limiter
+
+
+def count_question(client_key: str) -> None:
+    """Count one new question from `client_key` or raise RateLimited (nothing counted then).
+
+    First the in-memory limiter; then, on serverless deployments (client_quota.shared_limits_enabled),
+    the same limits counted in Postgres across every instance, so a cold start or another instance
+    does not reset them. Only new runs are counted: joins and replays never reach this."""
+    from blindspot.models import client_quota
+
+    mem = limiter()
+    mem.hit(client_key)
+    if not client_quota.shared_limits_enabled():
+        return
+    refusal = client_quota.hit_or_allow("ask", client_key, mem.per_minute, mem.per_day, mem.noun)
+    if refusal is not None:
+        mem.forget(client_key)
+        mem.block(client_key, refusal.retry_after_s, refusal.reason)  # no query until then
+        raise RateLimited(refusal.retry_after_s, refusal.reason)
 
 
 async def _drive(run: Run, client_factory: ClientFactory | None) -> None:
@@ -1123,13 +1271,16 @@ async def ask(
         running = _inflight.get(key)
         if running is not None:  # asked a moment ago: follow the same run
             return running
-        stored = await asyncio.to_thread(find_recent, key, agent_settings().cache_minutes)
+        stored = await asyncio.to_thread(_stored_answer, key, agent_settings().cache_minutes)
         if stored is not None:
             return replay(stored)
         running = _inflight.get(key)  # it may have started while we looked in the database
         if running is not None:
             return running
-        limiter().hit(client_key)
+        await asyncio.to_thread(count_question, client_key)
+        running = _inflight.get(key)  # started while we counted: join it (the count stands)
+        if running is not None:
+            return running
     run = Run(id=str(uuid.uuid4()), kind=kind, question=question, lang=lang, cache_key=key)
     if kind == "ask":
         _inflight[key] = run
@@ -1160,6 +1311,7 @@ __all__ = [
     "agent_settings",
     "ask",
     "cache_key",
+    "count_question",
     "detect_lang",
     "limiter",
     "model_status",

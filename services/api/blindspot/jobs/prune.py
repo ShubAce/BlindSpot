@@ -13,6 +13,7 @@ What goes, and why it is safe:
 - risk_run: runs that no harvest_cluster row points at, except the newest and the newest with a
   backtest (what GET /api/risk serves).
 - job_run older than 30 days.
+- response_body (stored API answers) that nobody read for 3 days.
 - source_fetch older than 30 days that no row points at: no fetch_id column of any table and no
   `fetch_id` / `fetch_ids` key anywhere in any JSON column (citations in agent runs, bulletins,
   smoke and risk runs...). Provenance of every number still shown stays.
@@ -93,6 +94,14 @@ def run_prune(dry_run: bool = False) -> dict[str, Any]:
             for table in ("smoke_run", "met_run", "risk_run", "job_run", "source_fetch"):
                 if doomed[table]:
                     session.execute(text(f"DELETE FROM {table} WHERE id = ANY(:ids)"), {"ids": doomed[table]})
+    # Stored API answers (models/assets.response_body) nobody read for RESPONSE_KEEP_DAYS: old runs'
+    # bodies and one-off queries. A body still in use is kept; a pruned one is re-stored on demand.
+    from blindspot.models.assets import prune_bodies
+
+    try:
+        summary["response_body"] = prune_bodies(dry_run=dry_run)
+    except SQLAlchemyError as exc:  # an optimisation's table; never fail the prune for it
+        summary["response_body"] = {"error": f"{type(exc).__name__}: {str(exc)[:200]}"}
     if not dry_run:
         touched = [t for t in ("smoke_run", "met_grid", "met_run", "source_fetch") if summary[t]["rows"]]
         for table in touched:

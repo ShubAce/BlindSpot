@@ -30,7 +30,7 @@ import logging
 import re
 import time
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -47,6 +47,7 @@ from blindspot.agent.runner import (
     attributed,
     cool_after,
     save_run,
+    unseen_audit,
 )
 from blindspot.agent.tools import (
     TOOLS,
@@ -60,9 +61,13 @@ from blindspot.agent.tools import (
 from blindspot.agent.verifier import (
     Attributed,
     Evidence,
+    HonestyFacts,
     build_evidence,
+    check_honesty,
     cited_markers,
     foreign_script,
+    honest_fallback,
+    honesty_facts,
     verify,
 )
 from blindspot.geo import IST
@@ -161,6 +166,44 @@ def parse(raw: str) -> dict[str, Any]:
     return doc
 
 
+async def add_unseen_audit(api: InternalApi, facts: dict[str, Any]) -> None:
+    """Put the burn-scar audit (runner.unseen_audit: /api/scars/summary method.audit.candidate_unseen)
+    into the burn-scar block: the share of candidate unseen burns that an audit found to be real
+    burns, its 95% interval and how many were audited. The bulletin must give these whenever it
+    gives the candidate unseen share; the agent's burn-scar tool leaves them out."""
+    block = (facts.get("burn_scars_season") or {}).get("output")
+    if not isinstance(block, dict):
+        return
+    audit = await unseen_audit(api)
+    if audit is not None:
+        block["candidate_unseen_audit"] = audit
+
+
+def units(doc: dict[str, Any]) -> list[str]:
+    """The texts of a bulletin in order: title, summary, each section body."""
+    return [doc["title"], doc["summary"], *(s["body"] for s in doc["sections"])]
+
+
+def with_units(doc: dict[str, Any], texts: list[str]) -> dict[str, Any]:
+    sections = [{"heading": s["heading"], "body": body}
+                for s, body in zip(doc["sections"], texts[2:], strict=True) if body]
+    return {**doc, "title": texts[0], "summary": texts[1], "sections": sections}
+
+
+def honest(lang: str, doc: dict[str, Any], hf: HonestyFacts, first: list[str], retried: bool
+           ) -> tuple[dict[str, Any], dict[str, Any]]:
+    """The last line of the honesty rule: whatever still overclaims after the retry is rewritten
+    from the tool outputs (verifier.honest_fallback). Returns (doc, the report for verification)."""
+    left = [i.message(hf) for i in check_honesty(units(doc), lang, hf)]
+    replaced: list[str] = []
+    if left:
+        texts, replaced = honest_fallback(units(doc), lang, hf)
+        doc = with_units(doc, texts)
+    return doc, {"passed": not check_honesty(units(doc), lang, hf), "first_pass_issues": first,
+                 "retried": retried, "after_retry_issues": left if retried else [],
+                 "fallback_sentences": replaced}
+
+
 def full_text(doc: dict[str, Any]) -> str:
     parts = [doc["title"], doc["summary"]]
     for section in doc["sections"]:
@@ -218,13 +261,25 @@ class Checker:
 
 def publish(
     lang: str, doc: dict[str, Any], checker: Checker, book: CitationBook, model: str,
-    now: datetime,
+    now: datetime, hf: HonestyFacts | None = None, first_issues: list[str] | None = None,
+    retried: bool = False,
 ) -> dict[str, Any]:  # fmt: skip
-    """The stored content of one language: the checked text, its citations and its report."""
+    """The stored content of one language: the checked text, its citations and its report.
+
+    With `hf` the honesty rule is enforced too (see honest()): before the number check, and once
+    more after it, in case the number check removed the sentence that qualified a share."""
+    honesty = None
+    if hf is not None:
+        doc, honesty = honest(lang, doc, hf, first_issues or [], retried)
     first = checker.check(full_text(doc))
     removed: list[str] = []
     if not first.passed:
         doc, removed = checker.scrub(doc)
+    if hf is not None and honesty is not None and check_honesty(units(doc), lang, hf):
+        texts, gone = honest_fallback(units(doc), lang, hf)
+        doc = with_units(doc, texts)
+        honesty["fallback_sentences"] += gone
+        honesty["passed"] = not check_honesty(units(doc), lang, hf)
     final = checker.check(full_text(doc))
     # Letters of another script, or U+FFFD where the model sent bytes that are not valid UTF-8.
     mixed = foreign_script(full_text(doc), lang) + [w for w in full_text(doc).split() if "\ufffd" in w]
@@ -234,7 +289,8 @@ def publish(
         "citations": citations,
         "verification": {**final.as_event(), "first_pass_unverified": first.unverified,
                          "removed_sentences": removed, "script_ok": not mixed,
-                         "foreign_script_words": mixed[:20]},  # fmt: skip
+                         "foreign_script_words": mixed[:20],
+                         **({"honesty": honesty} if honesty is not None else {})},  # fmt: skip
         "data_as_of": ist(now),
         "model": model,
     }
@@ -242,26 +298,39 @@ def publish(
 
 async def translate(
     lang: str, english: dict[str, Any], checker: Checker, book: CitationBook, gateway: Gateway,
-    now: datetime,
+    now: datetime, hf: HonestyFacts | None = None,
 ) -> dict[str, Any]:  # fmt: skip
-    """The checked English in `lang`: one call; if its script check fails, one more call on the
-    other model of the chain. Returns the better of the two (flagged when neither is clean)."""
+    """The checked English in `lang`: one call; if its script check or its honesty check fails,
+    one more call on the other model of the chain. Returns the better of the two (flagged when
+    neither is clean of other scripts; an overclaim left after the retry is rewritten, see honest())."""
     turn = prompts.translation_turn(lang, english)
     system = prompts.TRANSLATE_SYSTEMS.get(lang, prompts.TRANSLATE_SYSTEM)
+
+    def issues(doc: dict[str, Any]) -> list[str]:
+        return [i.message(hf) for i in check_honesty(units(doc), lang, hf)] if hf is not None else []
+
     used, text = await _generate(gateway, turn, system=system, thinking="LOW",
                                  temperature=prompts.TRANSLATE_TEMPERATURE)  # fmt: skip
-    best = publish(lang, parse(text), checker, book, used, now)
-    if best["verification"]["script_ok"]:
+    doc = parse(text)
+    first = issues(doc)
+    best = publish(lang, doc, checker, book, used, now, hf, first)
+    if best["verification"]["script_ok"] and not first:
         return best
     other = next((m for m in gateway.chain if m != used), None)
-    log.warning("bulletin %s: other-script letters from %s (%s); asking %s", lang, used,
-                best["verification"]["foreign_script_words"][:5], other or "it again")  # fmt: skip
+    log.warning("bulletin %s from %s: other-script letters %s, honesty issues %d; asking %s", lang, used,
+                best["verification"]["foreign_script_words"][:5], len(first), other or "it again")  # fmt: skip
     used, text = await _generate(gateway, turn, system=system, thinking="LOW", prefer=other,
                                  temperature=prompts.TRANSLATE_TEMPERATURE)  # fmt: skip
-    again = publish(lang, parse(text), checker, book, used, now)
-    if len(again["verification"]["foreign_script_words"]) <= len(
-        best["verification"]["foreign_script_words"]
-    ):
+    doc = parse(text)
+    again = publish(lang, doc, checker, book, used, now, hf, first, retried=True)
+    if again["verification"].get("honesty"):
+        again["verification"]["honesty"]["after_retry_issues"] = issues(doc)
+
+    def badness(c: dict[str, Any]) -> tuple[int, int]:
+        h = c["verification"].get("honesty") or {}
+        return (len(c["verification"]["foreign_script_words"]), len(h.get("fallback_sentences") or []))
+
+    if badness(again) <= badness(best):
         best = again
     if not best["verification"]["script_ok"]:
         log.warning("bulletin %s: still other-script letters (%s); stored flagged", lang,
@@ -326,15 +395,30 @@ async def write_bulletin(
         if with_data == 0:
             reasons = "; ".join(str(v.get("error")) for v in facts.values())
             raise RuntimeError(f"no data to write a bulletin from ({reasons[:400]})")
+        await add_unseen_audit(api, facts)
+        hf = honesty_facts(list(facts.values()))
         day_label = f"{now.astimezone(IST):%A %d %B %Y}"
-        model, raw = await _generate(gateway, prompts.bulletin_turn(day_label, now, facts),
-                                     system=prompts.BULLETIN_SYSTEM, thinking="MEDIUM")  # fmt: skip
-        english = publish("en", parse(raw), Checker.for_facts(facts, book, now), book, model, now)
+        turn = prompts.bulletin_turn(day_label, now, facts)
+        model, raw = await _generate(gateway, turn, system=prompts.BULLETIN_SYSTEM, thinking="MEDIUM")
+        draft = parse(raw)
+        first = [i.message(hf) for i in check_honesty(units(draft), "en", hf)]
+        retried = False
+        if first:  # one retry with the rejected sentences; what still overclaims is rewritten in publish()
+            try:
+                again, raw2 = await _generate(gateway, turn + prompts.honesty_turn(first, draft),
+                                              system=prompts.BULLETIN_SYSTEM, thinking="MEDIUM")  # fmt: skip
+                second = parse(raw2)
+                retried = True
+                if len(check_honesty(units(second), "en", hf)) <= len(first):
+                    draft, model = second, again
+            except (GeminiUnavailable, ValueError, errors.APIError, httpx.HTTPError) as exc:
+                log.warning("bulletin: the honesty retry failed (%s); rewriting from the facts", exc)
+        english = publish("en", draft, Checker.for_facts(facts, book, now), book, model, now, hf, first, retried)
         published = {"en": english}
         same_numbers = Checker.for_translation(english, book, now)
         langs = [lang for lang in prompts.LANGUAGES if lang != "en"]
         outcomes = await asyncio.gather(
-            *(translate(lang, english, same_numbers, book, gateway, now) for lang in langs),
+            *(translate(lang, english, same_numbers, book, gateway, now, hf) for lang in langs),
             return_exceptions=True,
         )
         failures = {}
@@ -389,6 +473,19 @@ def _stored_english(day: Any) -> dict[str, Any] | None:
         ).scalar_one_or_none()
 
 
+def _stored_facts(day: Any) -> HonestyFacts:
+    """The honesty facts of the run that wrote the stored English (its tool outputs)."""
+    from blindspot.db import SessionLocal
+    from blindspot.models.agent import AgentRun, Bulletin
+
+    with SessionLocal() as session:
+        tools = session.execute(
+            select(AgentRun.tools).join(Bulletin, Bulletin.run_id == AgentRun.id)
+            .where(Bulletin.date == day, Bulletin.lang == "en")
+        ).scalar_one_or_none()
+    return honesty_facts([{"args": t.get("args"), "output": t.get("output")} for t in tools or []])
+
+
 async def translate_stored(
     day: Any, langs: list[str], *, now: datetime | None = None,
     client_factory: ClientFactory | None = None,
@@ -411,8 +508,9 @@ async def translate_stored(
     gateway = Gateway("bulletin", run.id, client_factory)
     try:
         checker = Checker.for_translation(english, book, now)
+        hf = await asyncio.to_thread(_stored_facts, day)
         outcomes = await asyncio.gather(
-            *(translate(lang, english, checker, book, gateway, now) for lang in langs),
+            *(translate(lang, english, checker, book, gateway, now, hf) for lang in langs),
             return_exceptions=True,
         )
         published, failures = {}, {}
@@ -455,3 +553,120 @@ async def translate_stored(
         run.finish()
         await asyncio.to_thread(save_run, run)
         await gateway.aclose()
+
+
+# --- the honesty rule on a bulletin already stored (no Gemini) ------------------------------------------
+
+
+def _stored_day(day: Any) -> tuple[dict[str, dict[str, Any]], dict[str, Any] | None]:
+    """The stored bulletin rows of `day` ({lang: content}) and the run that wrote the English."""
+    from blindspot.db import SessionLocal
+    from blindspot.models.agent import AgentRun, Bulletin
+
+    with SessionLocal() as session:
+        rows = dict(session.execute(select(Bulletin.lang, Bulletin.content).where(Bulletin.date == day)).all())
+        found = session.execute(
+            select(AgentRun.id, AgentRun.started_at, AgentRun.tools, AgentRun.events)
+            .join(Bulletin, Bulletin.run_id == AgentRun.id).where(Bulletin.date == day, Bulletin.lang == "en")
+        ).first()
+    run = None if found is None else {"id": found[0], "started_at": found[1], "tools": found[2] or [],
+                                      "events": found[3] or []}
+    return rows, run
+
+
+def _save_recheck(day: Any, docs: dict[str, dict[str, Any]], run_id: str, tools: list[dict[str, Any]]) -> None:
+    """Replace the content of the rewritten rows (each keeps its run and generated_at) and record the
+    audit the check added in the English run's tools (where the numbers came from)."""
+    from blindspot.db import session_scope
+    from blindspot.models.agent import AgentRun, Bulletin
+
+    with session_scope() as session:
+        for lang, content in docs.items():
+            session.execute(Bulletin.__table__.update().where(Bulletin.date == day, Bulletin.lang == lang)
+                            .values(content=content))
+        session.execute(AgentRun.__table__.update().where(AgentRun.id == run_id).values(tools=tools))
+
+
+async def recheck_stored(day: Any, *, write: bool = True) -> dict[str, Any]:
+    """Apply the honesty rule to the stored bulletin of `day` without calling Gemini: what overclaims
+    is rewritten from the tool outputs of the run that wrote its English (verifier.honest_fallback),
+    then the numbers are checked again exactly as on the first run (the English against those tool
+    outputs and their markers, each translation against the new English). Rows that pass are left as
+    they are. For bulletins written before the rule existed (the live one of 2026-10-31); with
+    write=False nothing is stored and the summary says what would change."""
+    from blindspot.provenance import SourceRef
+
+    rows, run = await asyncio.to_thread(_stored_day, day)
+    if "en" not in rows or run is None or not run["tools"]:
+        raise RuntimeError(f"no stored English bulletin with its tool outputs for {day}")
+    tools = run["tools"]
+    facts = {str(t.get("id") or i): {k: v for k, v in t.items() if k not in ("id", "name", "args", "ok")}
+             for i, t in enumerate(tools)}
+    hf = honesty_facts(list(facts.values()))
+    audit_added = False
+    if hf.precision is None and (hf.unseen_area_ha or hf.unseen_share_pct):
+        api = InternalApi(timeout_s=FACT_TIMEOUT_S)
+        try:
+            audit = await unseen_audit(api)
+        finally:
+            await api.aclose()
+        for tool in tools:
+            if audit is not None and tool.get("name") == "get_burn_scars" and isinstance(tool.get("output"), dict):
+                tool["output"]["candidate_unseen_audit"] = audit  # the same dict as in `facts`
+                audit_added = True
+        hf = honesty_facts(list(facts.values()))
+    book = CitationBook()  # every source the run saw, with its marker
+    for event in run["events"]:
+        for source in event.get("sources") or [] if event.get("type") == "tool_result" else []:
+            book.refs[int(source["marker"])] = SourceRef.model_validate({k: v for k, v in source.items() if k != "marker"})
+    for citation in rows["en"].get("citations") or []:
+        book.refs.setdefault(int(citation["marker"]), SourceRef.model_validate(citation["source"]))
+    now = run["started_at"]  # the clock of the first run: its "today", "yesterday" and "as of"
+    if now.tzinfo is None:  # the codebase convention: naive means UTC
+        now = now.replace(tzinfo=UTC)
+
+    def doc_of(content: dict[str, Any]) -> dict[str, Any]:
+        return {"title": content["title"], "summary": content["summary"], "sections": content["sections"]}
+
+    def redo(lang: str, content: dict[str, Any], checker: Checker) -> dict[str, Any] | None:
+        doc = doc_of(content)
+        first = [i.message(hf) for i in check_honesty(units(doc), lang, hf)]
+        if not first:
+            return None
+        new = publish(lang, doc, checker, book, content.get("model") or "", now, hf, first)
+        new["data_as_of"] = content.get("data_as_of", new["data_as_of"])
+        new["verification"]["honesty"]["rechecked_at"] = ist(utcnow())
+        return new
+
+    changed: dict[str, dict[str, Any]] = {}
+    english = redo("en", rows["en"], Checker.for_facts(facts, book, now))
+    if english is not None:
+        changed["en"] = english
+    same_numbers = Checker.for_translation(english or rows["en"], book, now)
+    for lang in (lang for lang in prompts.LANGUAGES if lang != "en" and lang in rows):
+        again = redo(lang, rows[lang], same_numbers)
+        if again is not None:
+            changed[lang] = again
+    if write and changed:
+        await asyncio.to_thread(_save_recheck, day, changed, run["id"], tools)
+    return {
+        "date": str(day), "written": bool(write and changed), "audit_added": audit_added,
+        "languages": {lang: {"rewritten_sentences": len(c["verification"]["honesty"]["fallback_sentences"]),
+                             "honesty_passed": c["verification"]["honesty"]["passed"],
+                             "verified": c["verification"]["passed"], "script_ok": c["verification"]["script_ok"],
+                             "removed_sentences": len(c["verification"]["removed_sentences"])}
+                      for lang, c in changed.items()},
+        "unchanged": sorted(set(rows) - set(changed)),
+        "texts": {lang: full_text(c) for lang, c in changed.items()},
+    }
+
+
+if __name__ == "__main__":  # python -m blindspot.agent.bulletin recheck 2026-10-31 [--dry-run]
+    import sys
+    from datetime import date
+
+    if len(sys.argv) < 3 or sys.argv[1] != "recheck":
+        raise SystemExit("usage: python -m blindspot.agent.bulletin recheck YYYY-MM-DD [--dry-run]")
+    sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
+    outcome = asyncio.run(recheck_stored(date.fromisoformat(sys.argv[2]), write="--dry-run" not in sys.argv))
+    print(json.dumps(outcome, ensure_ascii=False, indent=1, default=str))

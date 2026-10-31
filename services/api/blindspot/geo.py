@@ -169,7 +169,9 @@ def fill_admin(session: Session, table: str, *, only_missing: bool = True) -> in
     For any table with geom, state and district columns (fire_detection, burn_cluster, ...). Run
     it after boundaries load to label rows stored before they existed. A polygon is placed by a
     point on its surface, so a scar on a district border still gets exactly one district.
-    Returns the number of rows updated; the caller commits.
+    Returns the number of rows changed; the caller commits. Rows that already carry the right
+    names are not rewritten: the weekly boundaries job relabels every table (only_missing=False),
+    and rewriting ~100k unchanged rows cost a database minute and bloated the tables each week.
     """
     quoted = session.get_bind().dialect.identifier_preparer.quote(table)
     missing = "AND t.district IS NULL" if only_missing else ""
@@ -179,6 +181,7 @@ def fill_admin(session: Session, table: str, *, only_missing: bool = True) -> in
         SET state = b.state, district = b.name
         FROM boundary AS b
         WHERE b.level = 'district' AND ST_Intersects(b.geom, ST_PointOnSurface(t.geom)) {missing}
+          AND (t.state IS DISTINCT FROM b.state OR t.district IS DISTINCT FROM b.name)
         """
     )
     return session.execute(sql).rowcount

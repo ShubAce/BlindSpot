@@ -390,6 +390,51 @@ def air_latest(
     return payload, _refs(session, fetch_ids, [OPENAQ, DATAGOV, CAMS])
 
 
+_CITY_SQL = text(
+    f"""
+    WITH latest AS ({_LATEST_SQL.text})
+    SELECT * FROM latest
+    WHERE lower(city) = lower(:city)
+       OR (provider = :datagov AND station_name IN (
+           SELECT station_name FROM latest WHERE lower(city) = lower(:city) AND provider = :datagov))
+    ORDER BY provider, station_id, parameter
+    """
+)
+_FETCHES_SQL = text(
+    f"""
+    WITH latest AS ({_LATEST_SQL.text})
+    SELECT provider, max(fetch_id) AS fetch_id FROM latest GROUP BY provider ORDER BY provider
+    """
+)
+
+
+def air_city(
+    session: Session, city: str, at: datetime | None = None
+) -> tuple[dict[str, Any] | None, list[SourceRef]]:
+    """One city's receptor entry and the sources, exactly as air_latest() gives them (the
+    headline's Delhi block), reading that city's stations only: air_latest reads every station in
+    the area (~150 KB of rows) to answer for one city. CPCB-feed stations elsewhere that share a
+    name with one of the city's are read too, because the city AQI looks stations up by name."""
+    at = _as_of(at)
+    bbox = AOI_BBOX
+    params = {"at": at, "since": at - LISTED_FOR, "min_lon": bbox[0], "min_lat": bbox[1],
+              "max_lon": bbox[2], "max_lat": bbox[3]}
+    stations: dict[tuple[str, str], _Station] = {}
+    for r in session.execute(_CITY_SQL, {**params, "city": city, "datagov": DATAGOV}):
+        key = (r.provider, r.station_id)
+        if key not in stations:
+            stations[key] = _Station(
+                r.provider, r.station_id, r.station_name, r.city, r.state, r.lat, r.lon, r.is_model
+            )
+        stations[key].values[r.parameter] = (r.value, r.observed_at)
+    fetch_ids = {r.provider: r.fetch_id for r in session.execute(_FETCHES_SQL, params) if r.fetch_id is not None}
+    found = list(stations.values())
+    aqis = {s.name: _aqi(s, at) for s in found if s.provider == DATAGOV}
+    receptors = _receptors(session, found, aqis, at)
+    entry = next((r for r in receptors if (r.get("city") or "").lower() == city.lower()), None)
+    return entry, _refs(session, fetch_ids, [OPENAQ, DATAGOV, CAMS])
+
+
 @router.get("/latest")
 @cached_route(ttl=30)
 def latest(session: SessionDep, bbox: BBoxDep, at: datetime | None = None) -> ORJSONResponse:

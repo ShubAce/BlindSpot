@@ -24,7 +24,7 @@ import os
 import threading
 from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -32,7 +32,7 @@ from urllib.parse import urlencode
 
 import numpy as np
 import orjson
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi import Path as PathParam
 from fastapi.responses import Response
 from shapely.geometry import box, mapping, shape
@@ -46,6 +46,12 @@ from blindspot.config import get_settings
 from blindspot.db import session_scope
 from blindspot.geo import AOI_BBOX, district_for_point, nearest_place, parse_bbox
 from blindspot.http import FetchError
+from blindspot.models.client_quota import (
+    client_address,
+    hit_or_allow,
+    on_vercel,
+    shared_limits_enabled,
+)
 from blindspot.provenance import SourceRef, latest_refs, ref_for_fetch, utcnow
 from blindspot.sources import pcdata
 
@@ -60,6 +66,26 @@ AOI_MARGIN_DEG = 0.25  # requests must stay within the area we watch, plus this 
 MIN_TILE_Z, MAX_TILE_Z = 9, 16  # z9 ~ 300 m/px; Sentinel-2's 10 m is about z14, z15-16 overzoom
 CROP_MIN_VALID = 0.5  # half of a requested crop must have data (a scene edge may cut a chip)
 KM_PER_DEG = 111.32  # length of one degree of latitude (and of longitude at the equator), km
+# A crop's corners snap to a power-of-two grid of about 1/SNAP_CELLS of its longer side (each edge
+# moves at most 1/64 of the side, under 2%), so requests a few metres apart share one cache entry
+# instead of forcing a fresh 1-20 s render each. The featured frames and the case-file chips keep
+# their exact boxes (their URLs are stored and cached as immutable everywhere).
+SNAP_CELLS = 32
+# A box must be at least this long on its longer side (about 11 m, one Sentinel-2 pixel): a smaller
+# one has nothing to show, and its snapped corners would collapse at 6 decimals.
+MIN_BBOX_SIDE_DEG = 0.0001
+# How far (deg) a case-file chip's centre may lie from its scar's extent centre: the chip box is that
+# centre +- half a side, rounded to 6 decimals, so the true offset is under 1e-6; 1e-4 (~10 m) leaves
+# room for float rounding and still rules out every other cluster.
+CHIP_CENTRE_TOL = 1e-4
+# Live renders (a picture not yet drawn) per client. Pictures already drawn (disk, rendered_asset)
+# never count. A case file outside the stored ones costs 6 renders (pre/post x 3 kinds).
+RENDER_PER_MINUTE = int(os.environ.get("IMAGERY_RENDER_PER_MINUTE", "30"))
+RENDER_PER_DAY = int(os.environ.get("IMAGERY_RENDER_PER_DAY", "300"))
+# Live map tiles (a tile not yet on this instance's disk) per client, a separate budget: one map
+# view of a scene loads 30-60 tiles, and people behind one NAT (a venue's Wi-Fi) share an address.
+TILES_PER_MINUTE = int(os.environ.get("IMAGERY_TILES_PER_MINUTE", "600"))
+TILES_PER_DAY = int(os.environ.get("IMAGERY_TILES_PER_DAY", "6000"))
 
 
 def _km_per_deg_lon(lat: float) -> float:
@@ -93,6 +119,109 @@ def bbox_param(b: Iterable[float]) -> str:
     return ",".join(f"{v:.6f}" for v in b)
 
 
+def snap_bbox(b: tuple[float, float, float, float]) -> tuple[float, float, float, float]:
+    """`b` with every corner on the nearest point of a grid whose step is the power of two (in
+    degrees) just under 1/SNAP_CELLS of the box's longer side: a 1 km chip snaps to ~27 m, a 30 km
+    crop to ~870 m. The same box always snaps the same way; one already on the grid is unchanged."""
+    side = max(b[2] - b[0], b[3] - b[1])
+    if side <= 0:
+        return b
+    step = 2.0 ** math.floor(math.log2(side / SNAP_CELLS))
+    w, s, e, n = (round(v / step) * step for v in b)
+    if e <= w:
+        e = w + step
+    if n <= s:
+        n = s + step
+    return _round_bbox((w, s, e, n))
+
+
+def _require_watched_item(item: str) -> None:
+    """Refuse an item whose MGRS tile does not intersect the area we watch, from its id alone, so
+    no upstream lookup is ever made for a scene elsewhere (pcdata.watched_tiles derives the tiles
+    from AOI_BBOX)."""
+    tile = pcdata.item_tile(item)
+    if tile is None or tile not in pcdata.watched_tiles(AOI_BBOX, AOI_MARGIN_DEG):
+        raise HTTPException(400, f"item {item!r} is on MGRS tile {tile}, which does not intersect the area we "
+                                 f"watch {AOI_BBOX} (+{AOI_MARGIN_DEG} deg)")
+
+
+_render_limiter_instance: Any = None
+_tile_limiter_instance: Any = None
+
+
+def _render_limiter() -> Any:
+    global _render_limiter_instance
+    if _render_limiter_instance is None:
+        from blindspot.agent.runner import RateLimiter
+
+        _render_limiter_instance = RateLimiter(RENDER_PER_MINUTE, RENDER_PER_DAY, noun="new pictures")
+    return _render_limiter_instance
+
+
+def _tile_limiter() -> Any:
+    global _tile_limiter_instance
+    if _tile_limiter_instance is None:
+        from blindspot.agent.runner import RateLimiter
+
+        _tile_limiter_instance = RateLimiter(TILES_PER_MINUTE, TILES_PER_DAY, noun="new map tiles")
+    return _tile_limiter_instance
+
+
+def _live_limiter(scope: str) -> Any:
+    return _tile_limiter() if scope == "tiles" else _render_limiter()
+
+
+def _too_many(scope: str, exc: Any) -> HTTPException:
+    """The 429 for a refused live render or tile: the API's JSON error, with Retry-After."""
+    wait = int(exc.retry_after_s) + 1
+    what = "map tiles" if scope == "tiles" else "pictures"
+    return HTTPException(429, f"Too many new {what} from this address ({exc}); {what} already drawn "
+                              f"are not limited. Try again in {wait} s.",
+                         headers={"Retry-After": str(wait), "Cache-Control": "no-store"})
+
+
+def _client_of(request: Request) -> str:
+    return client_address(request.headers, request.client.host if request.client else None)
+
+
+def _peek_live(request: Request, scope: str) -> None:
+    """429 if this client is already past its limit of live `scope` work on this instance (its own
+    count, or a refusal of the shared count it remembers), without counting and without any query.
+    Called before a request does database or upstream work it would only need for a live render."""
+    from blindspot.agent.runner import RateLimited
+
+    try:
+        _live_limiter(scope).peek(_client_of(request))
+    except RateLimited as exc:
+        raise _too_many(scope, exc) from None
+
+
+def _count_live(request: Request, scope: str) -> None:
+    """Count one live render ("render") or live map tile ("tiles") for this client, or answer 429.
+
+    In memory first; on serverless also in Postgres across instances (blindspot.models.client_quota),
+    under a salted hash of the real client address. A shared refusal is remembered on this instance
+    until it lapses, so a client past its limit costs no further query here."""
+    from blindspot.agent.runner import RateLimited
+
+    address = _client_of(request)
+    mem = _live_limiter(scope)
+    try:
+        mem.hit(address)
+        if shared_limits_enabled():
+            refusal = hit_or_allow(scope, address, mem.per_minute, mem.per_day, mem.noun)
+            if refusal is not None:
+                mem.forget(address)
+                mem.block(address, refusal.retry_after_s, refusal.reason)
+                raise RateLimited(refusal.retry_after_s, refusal.reason)
+    except RateLimited as exc:
+        raise _too_many(scope, exc) from None
+
+
+def _count_live_render(request: Request) -> None:
+    _count_live(request, "render")
+
+
 def render_url(collection: str, item: str, bbox: Iterable[float], kind: str, w: int, h: int) -> str:
     """Absolute URL of GET /api/imagery/render for these parameters (what other modules embed)."""
     query = urlencode({"collection": collection, "item": item, "bbox": bbox_param(bbox),
@@ -100,7 +229,8 @@ def render_url(collection: str, item: str, bbox: Iterable[float], kind: str, w: 
     return f"{get_settings().public_base_url}/api/imagery/render?{query}"
 
 
-def _image_response(out: pcdata.Rendered, key: str) -> Response:
+def _image_response(out: pcdata.Rendered, key: str,
+                    bounds: tuple[float, float, float, float] | None = None) -> Response:
     headers = {
         "Cache-Control": IMMUTABLE,
         "ETag": f'"{key}"',
@@ -113,12 +243,14 @@ def _image_response(out: pcdata.Rendered, key: str) -> Response:
     }
     if out.note:
         headers["X-Imagery-Note"] = out.note.encode("ascii", "replace").decode()
+    if bounds is not None:  # the box actually drawn (a requested box may have been snapped)
+        headers["X-Imagery-Bbox"] = bbox_param(bounds)
     return Response(content=out.data, media_type=out.media_type, headers=headers)
 
 
-def _render_or_raise(req: pcdata.RenderRequest, min_valid: float) -> pcdata.Rendered:
+def _render_or_raise(req: pcdata.RenderRequest, min_valid: float, **options: Any) -> pcdata.Rendered:
     try:
-        return pcdata.render(req, min_valid_fraction=min_valid)
+        return pcdata.render(req, min_valid_fraction=min_valid, **options)
     except pcdata.RenderBusy as exc:
         raise HTTPException(503, str(exc), headers={"Retry-After": "5"}) from None
     except pcdata.RenderError as exc:
@@ -132,6 +264,7 @@ def _render_or_raise(req: pcdata.RenderRequest, min_valid: float) -> pcdata.Rend
     responses={200: {"content": {"image/jpeg": {}, "image/png": {}}, "description": "the picture"}},
 )
 def render_image(
+    request: Request,
     collection: Annotated[Literal["sentinel-2-l2a", "sentinel-2-c1-l2a"], Query()],
     item: Annotated[str, Query(min_length=20, max_length=80)],
     bbox: Annotated[str, Query(description="minLon,minLat,maxLon,maxLat")],
@@ -144,9 +277,16 @@ def render_image(
     burnt fields dark, green crops green) or NBR on a red-yellow-green scale.
 
     JPEG by default for truecolor/swir, PNG for nbr. Cached on disk and immutable once rendered.
+
+    A picture already drawn for exactly this request (on disk, or stored: the featured frames and
+    case-file chips) is served as is. Otherwise the current featured frames and the case-file
+    chips are drawn for their exact box; any other box is snapped to a grid (snap_bbox; the box
+    drawn is in X-Imagery-Bbox), and a picture not yet drawn counts against the client's limit of
+    live renders (429 with Retry-After past it). Items must lie on the MGRS tiles of the area we watch.
     """
     if pcdata.collection_for(item) != collection:
         raise HTTPException(400, f"item {item!r} is not a {collection} item id")
+    _require_watched_item(item)
     if not bbox.strip():
         raise HTTPException(400, "bbox is required: minLon,minLat,maxLon,maxLat")
     try:
@@ -155,15 +295,37 @@ def render_image(
         raise HTTPException(400, str(exc)) from None
     if not _inside_watch_area(b):
         raise HTTPException(400, f"bbox must lie within the area we watch {AOI_BBOX} (+{AOI_MARGIN_DEG} deg)")
+    if b[2] <= b[0] or b[3] <= b[1] or max(b[2] - b[0], b[3] - b[1]) < MIN_BBOX_SIDE_DEG:
+        raise HTTPException(400, f"bbox must be at least {MIN_BBOX_SIDE_DEG} deg on its longer side, "
+                                 "with min < max at 6 decimals")
     if (area := _bbox_km2(b)) > MAX_BBOX_KM2:
         raise HTTPException(400, f"bbox covers {area:.0f} km2; the limit is {MAX_BBOX_KM2:.0f} km2")
     if w * h > MAX_PIXELS:
         raise HTTPException(400, f"{w}x{h} is {w * h} pixels; the limit is {MAX_PIXELS}")
     req = pcdata.RenderRequest(collection, item, kind, w, h, fmt or pcdata.default_format(kind), bounds=b)
-    out = _render_or_raise(req, CROP_MIN_VALID)
-    if not out.cached and (role := _persist_role(req)) is not None:
-        pcdata.store(req.cache_key(), out, role)  # the next serverless instance reads it back
-    return _image_response(out, req.cache_key())
+    # 1. Already drawn for exactly this URL: every stored frame and chip is served byte for byte.
+    if (hit := pcdata.lookup(req)) is not None:
+        return _image_response(hit, req.cache_key(), req.bounds)
+    # 2. A current featured frame or a case-file chip keeps its exact box and is stored once drawn
+    #    (the next serverless instance reads it back); any other box snaps to the grid. Telling a
+    #    chip needs a database query, so a client already past its limit is refused before it.
+    if _may_be_case_chip(req):
+        _peek_live(request, "render")
+    role = _persist_role(req)
+    if role is None:
+        req = replace(req, bounds=snap_bbox(b))
+        if (hit := pcdata.lookup(req, stored=False)) is not None:  # rendered_asset never holds these
+            return _image_response(hit, req.cache_key(), req.bounds)
+    # 3. A live render: count it for this client first.
+    _count_live_render(request)
+    out = _render_or_raise(req, CROP_MIN_VALID, persist=role, stored_lookup=False)
+    return _image_response(out, req.cache_key(), req.bounds)
+
+
+def _may_be_case_chip(req: pcdata.RenderRequest) -> bool:
+    from blindspot.api.routers import scars
+
+    return req.width == req.height == scars.CHIP_PX and req.bounds is not None
 
 
 def _persist_role(req: pcdata.RenderRequest) -> str | None:
@@ -190,11 +352,17 @@ def _is_case_chip(session: Session, req: pcdata.RenderRequest, chip_bbox: Any) -
     if req.bounds is None or not _table_exists(session, "burn_cluster"):
         return False
     w, s, e, n = req.bounds
+    # A chip is centred on its scar's extent (scars._chip_bbox), so only clusters whose extent is
+    # centred within CHIP_CENTRE_TOL of the box can match: at most one or two rows come back
+    # instead of every cluster of the scene under the box (up to 50 geometries, ~14 KB).
     rows = session.execute(text("""
         SELECT ST_AsGeoJSON(geom)::json, ST_Y(centroid) FROM burn_cluster
         WHERE (scene_pre = :item OR scene_post = :item) AND geom && ST_MakeEnvelope(:w, :s, :e, :n, 4326)
-        LIMIT 50
-    """), {"item": req.item, "w": w, "s": s, "e": e, "n": n}).all()
+          AND abs((ST_XMin(geom) + ST_XMax(geom)) / 2 - :cx) < :tol
+          AND abs((ST_YMin(geom) + ST_YMax(geom)) / 2 - :cy) < :tol
+        LIMIT 5
+    """), {"item": req.item, "w": w, "s": s, "e": e, "n": n, "cx": (w + e) / 2, "cy": (s + n) / 2,
+           "tol": CHIP_CENTRE_TOL}).all()
     return any(_round_bbox(chip_bbox(geom, lat)) == req.bounds for geom, lat in rows if geom and lat is not None)
 
 
@@ -204,6 +372,7 @@ def _is_case_chip(session: Session, req: pcdata.RenderRequest, chip_bbox: Any) -
     responses={200: {"content": {"image/png": {}}, "description": "a 256 px map tile"}},
 )
 def tile(
+    request: Request,
     kind: Literal["truecolor", "swir", "nbr"],
     item: Annotated[str, PathParam(min_length=20, max_length=80)],
     z: Annotated[int, PathParam(ge=MIN_TILE_Z, le=MAX_TILE_Z)],
@@ -213,11 +382,14 @@ def tile(
     """One 256 px Web Mercator tile of a single Sentinel-2 item, for a map layer.
 
     PNG with transparency outside the scene. Tiles outside the item's footprint are a 404 without
-    any upstream call, so panning around the edge of a scene costs nothing.
+    any upstream call, so panning around the edge of a scene costs nothing. A tile already drawn on
+    this instance is served as is; a live one counts against the client's limit of new map tiles
+    (a budget of its own, larger than the live render limit; 429 with Retry-After past it).
     """
     collection = pcdata.collection_for(item)
     if collection is None:
         raise HTTPException(400, f"{item!r} is not a Sentinel-2 L2A item id we serve")
+    _require_watched_item(item)
     try:
         row = int(y.removesuffix(".png"))
     except ValueError:
@@ -227,6 +399,10 @@ def tile(
     lonlat = pcdata.tile_lonlat_bounds(z, x, row)
     if not _overlaps_watch_area(lonlat):
         raise HTTPException(404, "tile outside the area we watch")
+    req = pcdata.RenderRequest(collection, item, kind, 256, 256, "png", tile=(z, x, row))
+    if (hit := pcdata.lookup(req, stored=False)) is not None:  # drawn on this instance already
+        return _image_response(hit, req.cache_key())
+    _peek_live(request, "tiles")  # past the limit: no STAC lookup either
     try:
         footprint = shape(pcdata.get_item(collection, item)["geometry"])
     except FetchError as exc:
@@ -235,7 +411,7 @@ def tile(
         raise
     if not footprint.intersects(box(*lonlat)):
         raise HTTPException(404, "tile outside the scene")
-    req = pcdata.RenderRequest(collection, item, kind, 256, 256, "png", tile=(z, x, row))
+    _count_live(request, "tiles")
     out = _render_or_raise(req, 0.0)
     return _image_response(out, req.cache_key())
 
@@ -246,10 +422,12 @@ def tilejson(
     kind: Literal["truecolor", "swir", "nbr"],
     item: Annotated[str, PathParam(min_length=20, max_length=80)],
 ) -> ORJSONResponse:
-    """TileJSON 3.0 for one item's tile layer, so a map can add it with one URL."""
+    """TileJSON 3.0 for one item's tile layer, so a map can add it with one URL. Only items on the
+    MGRS tiles of the area we watch: any other is refused before the STAC lookup."""
     collection = pcdata.collection_for(item)
     if collection is None:
         raise HTTPException(400, f"{item!r} is not a Sentinel-2 L2A item id we serve")
+    _require_watched_item(item)
     try:
         stac = pcdata.get_item(collection, item)
     except FetchError as exc:
@@ -320,7 +498,14 @@ FRAMES_LOOKBACK_DAYS = 20  # "since 2026-10-10" on 30 Oct: ~4 revisits of an orb
 FIRMS_LOOKBACK_DAYS = 10
 BURN_LOOKBACK_DAYS = FRAMES_LOOKBACK_DAYS  # burns that appear within the frames
 MAX_FRAMES = 4
-FEATURED_TTL = timedelta(hours=6)
+FEATURED_TTL = timedelta(hours=6)  # the `featured` job rebuilds frames older than this
+# When the served frames count as stale. A long-lived local process runs the job itself every 6 h
+# (jobs/risk.py, every_minutes=360), so there it is FEATURED_TTL. On Vercel the frames come only
+# from GitHub Actions, where `featured` runs once a day, chained after `sentinel` at 11:40 UTC
+# (.github/workflows/data-jobs.yml), and that chain may run up to its 150 min timeout: one day plus
+# the chain plus 3.5 h of slack for a slow runner is 30 h.
+FEATURED_JOB_EVERY_SERVERLESS = timedelta(days=1)
+FEATURED_STALE_AFTER_SERVERLESS = FEATURED_JOB_EVERY_SERVERLESS + timedelta(minutes=150) + timedelta(hours=3.5)
 MAX_WINDOW_CLOUD = 0.10  # cloud + shadow + cirrus share of the window (Scene Classification Layer)
 MAX_WINDOW_NODATA = 0.01  # the pass must cover the whole window
 # A frame on the landing page should look clean: up to 10% cloud is fine for analysis, but a cloud
@@ -894,10 +1079,19 @@ def featured() -> ORJSONResponse:
     automatically from the data (most burned area in burn scars, or most FIRMS detections while
     there are no scars yet), one per clear Sentinel-2 pass of the last 20 days, oldest first.
 
-    Served from a cache rebuilt every 6 h by the `featured` job. When the cache is older than that,
-    the stale frames are served (marked `stale`) while a rebuild runs in the background.
+    Served from a cache rebuilt by the `featured` job. When the cache is older than `stale_after_hours`
+    the frames are still served, marked `stale` (with `age_minutes`). A long-lived process then
+    rebuilds them in a background thread. A serverless instance (VERCEL set) never starts one:
+    Vercel freezes the function after the response, so the work would be lost; the daily job on
+    GitHub Actions refreshes the stored manifest instead.
     """
+    serverless = on_vercel()
     payload = load_featured()
+    if payload is None and serverless:
+        # No stored manifest (or the database did not answer): building one here would take 20-60 s
+        # of upstream calls in every cold instance, and would store no pictures. The job builds it.
+        raise HTTPException(503, "the featured frames are not stored yet (the daily `featured` job builds them); "
+                                 "try again later", headers={"Retry-After": "300"})
     if payload is None:
         # Nothing built yet (the job has not run): build now, once, for everyone waiting.
         if _build_lock.acquire(timeout=180):
@@ -917,13 +1111,17 @@ def featured() -> ORJSONResponse:
         if payload is None:
             raise HTTPException(503, "the featured frames are being built; try again in a minute",
                                 headers={"Retry-After": "60"})
-    stale = _age(payload) > FEATURED_TTL
-    if stale and not _build_lock.locked():
+    age = _age(payload)
+    stale_after = FEATURED_STALE_AFTER_SERVERLESS if serverless else FEATURED_TTL
+    stale = age > stale_after
+    if stale and not serverless and not _build_lock.locked():
         threading.Thread(target=_refresh_quietly, name="featured-refresh", daemon=True).start()
     sources = [SourceRef(**s) for s in payload.get("sources", [])]
     body = {k: v for k, v in payload.items() if k != "sources"}
     body["frames"] = [_rebased(frame) for frame in body.get("frames") or []]
     body["stale"] = stale
+    body["age_minutes"] = None if age == timedelta.max else max(0, int(age.total_seconds() // 60))
+    body["stale_after_hours"] = round(stale_after.total_seconds() / 3600, 2)
     return respond(body, sources, max_age=300)
 
 

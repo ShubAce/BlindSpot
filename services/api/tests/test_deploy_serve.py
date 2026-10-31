@@ -9,6 +9,7 @@ test writes are deleted by that test.
 from __future__ import annotations
 
 import asyncio
+import re
 import uuid
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -56,38 +57,116 @@ def _delete_assets(*keys: str) -> None:
 # --- CDN cache headers ---------------------------------------------------------------------------
 
 
-def test_cdn_rules_follow_the_contract_cadence() -> None:
-    def header(path: str, current: str | None = None) -> str | None:
-        rule = cdn_rule(path)
-        return None if rule is None else cdn_cache_control(rule, current)
+def test_cdn_rules_follow_the_job_schedule() -> None:
+    """Each group's answers expire together, just after its jobs are due to have finished."""
+    at = datetime(2026, 11, 2, 9, 0, tzinfo=UTC)  # 14:30 IST, a Monday
 
+    def header(path: str, current: str | None = None, now: datetime = at) -> str | None:
+        rule = cdn_rule(path)
+        return None if rule is None else cdn_cache_control(rule, current, now)
+
+    tail = "stale-if-error=604800"
+    # hourly group (jobs at :17): the 08:17 run is done by 09:30
     assert header("/api/fires", "public, max-age=30") == (
-        "public, max-age=30, s-maxage=60, stale-while-revalidate=600")
-    assert header("/api/orbits/tle", "public, max-age=300").endswith("s-maxage=300, stale-while-revalidate=3600")
+        f"public, max-age=30, s-maxage=1800, stale-while-revalidate=86400, {tail}")
+    assert "s-maxage=1800," in header("/api/stats/headline", "public, max-age=60")
+    assert "s-maxage=1800," in header("/api/scars/summary", "public, max-age=60")
+    # at night the hourly group waits for the 3-hourly runs (21:17 -> 21:30, then 22:30)
+    assert "s-maxage=5400," in header("/api/fires", "public, max-age=30", datetime(2026, 11, 2, 20, 0, tzinfo=UTC))
+    # met + smoke (03:17, 09:17...): the next hourly point, 10:30 (then 11:30 for a late start)
+    assert "s-maxage=5400," in header("/api/smoke/forward", "public, max-age=60")
+    assert "s-maxage=5400," in header("/api/met/now", "public, max-age=60")
+    # Sentinel-2 group (11:17): 13:30
+    assert header("/api/scars", "public, max-age=60") == (
+        f"public, max-age=60, s-maxage=16200, stale-while-revalidate=172800, {tail}")
+    assert "s-maxage=16200," in header("/api/risk", "public, max-age=60")
+    assert "s-maxage=16200," in header("/api/smoke/validation", "public, max-age=300")
+    assert "s-maxage=16200," in header("/api/imagery/featured", None)
+    assert header("/api/imagery/featured", None).startswith("public, max-age=60,")  # no max-age: 60 s
+    # boundaries: every day at 03:30 (weekly data; a deploy shows within a day)
     assert header("/api/geo/boundaries", "public, max-age=3600") == (
-        "public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400")
-    assert header("/api/imagery/featured", None) == "public, max-age=60, s-maxage=300, stale-while-revalidate=3600"
+        f"public, max-age=300, s-maxage=66600, stale-while-revalidate=604800, {tail}")
+    # the bulletin: 02:30, 03:30, 06:30 while it is written and retried (+1 h for a late start)
+    assert "s-maxage=63000," in header("/api/bulletin/latest", "public, max-age=300")
+    # never less than a minute, never past the group's cap
+    assert "s-maxage=60," in header("/api/fires", "public, max-age=30", datetime(2026, 11, 2, 9, 29, 30, tzinfo=UTC))
     assert header("/api/imagery/render") == header(f"/api/imagery/tiles/swir/{GOOD}/12/1/2") == IMMUTABLE
     assert IMMUTABLE == "public, max-age=31536000, s-maxage=31536000, immutable"
-    for path in ("/api/health", "/api/agent/status", "/api/agent/ask", "/docs", "/openapi.json"):
+    for path in ("/api/health", "/api/agent/ask", "/docs", "/openapi.json"):
         assert header(path, "public, max-age=10") is None, path
+    # the live quota: browsers may keep it 10 s, the CDN never
+    assert header("/api/agent/status", "public, max-age=10") == "private, max-age=10"
     assert header("/api/fires", "no-store") is None  # a route's own no-store wins
+    assert header("/api/fires", "no-cache") is None
+    # a route that chose its own shared lifetime keeps it (a headline with a failed block)
+    assert header("/api/stats/headline", "public, max-age=30, s-maxage=60") is None
+
+
+def test_refresh_wakeups_share_the_hourly_clock() -> None:
+    """Every expiry point of every group but the bulletin's 02:30 is an HOURLY point, so one page
+    view refreshes every expired group in one database wake-up: at most 21 refresh points a day."""
+    from blindspot.api.cache import BULLETIN, DAILY, HOURLY, SIX_HOURLY, WEEKLY
+
+    hourly = {(h, HOURLY.minute) for h in HOURLY.hours}
+    points = set(hourly)
+    for clock in (SIX_HOURLY, DAILY, BULLETIN, WEEKLY):
+        mine = {(h, clock.minute) for h in clock.hours}
+        points |= mine
+        if clock is not BULLETIN:
+            assert mine <= hourly, clock.name
+    assert points - hourly == {(2, 30)}
+    assert len(points) == 21
+
+
+def test_every_clock_point_follows_its_cron() -> None:
+    """The expiry points are consistent with .github/workflows/data-jobs.yml: each comes after a
+    scheduled start of the jobs that feed the group."""
+    import yaml
+
+    from blindspot.api.cache import BULLETIN, DAILY, HOURLY, SIX_HOURLY
+
+    workflow = yaml.safe_load((Path(__file__).parents[3] / ".github/workflows/data-jobs.yml").read_text())
+    crons = [c["cron"] for c in workflow[True]["schedule"]]  # PyYAML reads the key `on` as True
+
+    def starts(cron: str) -> set[int]:
+        minute, hours = cron.split()[:2]
+        out: set[int] = set()
+        for part in hours.split(","):
+            lo, _, hi = part.partition("-")
+            out |= set(range(int(lo), int(hi or lo) + 1))
+        return {h * 60 + int(minute) for h in out}
+
+    text_ = (Path(__file__).parents[3] / ".github/workflows/data-jobs.yml").read_text()
+    for cron in crons:  # every slot picks its jobs, and the long-run timeout names a real slot
+        assert f'"{cron}"' in text_.split("case ", 1)[1].split("esac", 1)[0], cron
+    timeout_slot = text_.split("timeout-minutes:", 1)[1].split("\n", 1)[0]
+    assert any(f"'{cron}'" in timeout_slot for cron in crons), timeout_slot
+    hourly = starts(crons[0]) | starts(crons[1])
+    met = starts(crons[2])
+    sentinel = starts(crons[3])
+    bulletin = starts(crons[4]) | starts(crons[5])
+    for clock, fed_by in ((HOURLY, hourly), (SIX_HOURLY, met), (DAILY, sentinel), (BULLETIN, bulletin)):
+        for h in clock.hours:
+            point = h * 60 + clock.minute
+            before = [s for s in fed_by if 0 < (point - s) % 1440 <= 200]
+            assert before, (clock.name, h)
 
 
 def test_cdn_headers_on_real_routes(client: TestClient) -> None:
     r = client.get("/api/sources", headers={"Origin": "http://localhost:3000"})
     assert r.status_code == 200
-    assert r.headers["cache-control"] == "public, max-age=15, s-maxage=60, stale-while-revalidate=600"
-    assert "Origin" in r.headers["vary"]  # the CDN keeps one copy per origin
+    assert re.fullmatch(r"public, max-age=\d+, s-maxage=\d+, stale-while-revalidate=86400, stale-if-error=604800",
+                        r.headers["cache-control"]), r.headers["cache-control"]
+    assert r.headers["vary"].count("Origin") == 1  # the CDN keeps one copy per origin, listed once
     r = client.get("/api/sources")  # no Origin (a server-side fetch): still keyed by origin
     assert "Origin" in r.headers["vary"]
-    r = client.get("/api/geo/districts")
-    assert r.status_code == 200 and "s-maxage=3600" in r.headers["cache-control"]
-    for path, status in (("/api/health", 200), ("/api/agent/status", 200), ("/api/scars/999999999", 404),
+    for path, status in (("/api/health", 200), ("/api/scars/999999999", 404),
                          ("/api/smoke/back?hours=0", 422), ("/api/bulletin/latest?lang=xx", 422)):
         r = client.get(path)
         assert r.status_code == status, path
         assert "s-maxage" not in r.headers.get("cache-control", ""), path
+    r = client.get("/api/agent/status")
+    assert "s-maxage" not in r.headers.get("cache-control", "") and "public" not in r.headers.get("cache-control", "")
     assert "s-maxage" not in client.post("/api/agent/ask", json={}).headers.get("cache-control", "")
 
 
@@ -104,7 +183,7 @@ def test_an_agent_run_in_progress_is_never_cached() -> None:
         running = c.get("/api/agent/runs/running")
         done = c.get("/api/agent/runs/done")
     assert running.headers["cache-control"] == "no-store" and running.content == bodies["running"]
-    assert "s-maxage=60" in done.headers["cache-control"] and done.content == bodies["done"]
+    assert "s-maxage=" in done.headers["cache-control"] and done.content == bodies["done"]
 
 
 def test_cors_allows_website_deployments_by_pattern(monkeypatch: pytest.MonkeyPatch) -> None:

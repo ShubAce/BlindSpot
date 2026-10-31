@@ -50,6 +50,55 @@ def _ist(t: datetime) -> str:
     return t.astimezone(IST).isoformat(timespec="minutes")
 
 
+# --- freshness ----------------------------------------------------------------------------------
+# A rolling-window figure ("fires in the last 24 h") read from a table the jobs stopped filling
+# would quietly shrink towards zero. So each block names the job that feeds it, when that job last
+# succeeded, the time of the newest data behind the figure, and `stale` when the job has not
+# succeeded for longer than its schedule allows (.github/workflows/data-jobs.yml: the hourly group
+# runs at most 3 h apart at night, met every 6 h, Sentinel-2 and element sets daily) plus an hour
+# for a late start. Additive fields: the figures themselves are unchanged.
+
+FEEDS: dict[str, tuple[str, float]] = {  # block -> (job, hours after which it is stale)
+    "fires_24h": ("firms_nrt", 4),
+    "season": ("creams_daily", 4),
+    "unseen_burns": ("sentinel", 26),
+    "delhi": ("air", 4),
+    "passes": ("tle", 26),
+    "gk2a_evening": ("geostationary", 4),
+}
+
+
+def feed_status(session: Session) -> dict[str, dict[str, Any]]:
+    """Per job in FEEDS: when it last ran and last succeeded (job_run), in one small query."""
+    jobs = sorted({job for job, _ in FEEDS.values()})
+    rows = session.execute(
+        text(
+            "SELECT name, max(finished_at) FILTER (WHERE ok) AS ok_at, max(finished_at) AS ran_at "
+            "FROM job_run WHERE name = ANY(:jobs) GROUP BY name"
+        ),
+        {"jobs": jobs},
+    ).mappings()
+    return {r["name"]: {"last_success_at": r["ok_at"], "last_run_at": r["ran_at"]} for r in rows}
+
+
+def freshness(block: str, status: dict[str, dict[str, Any]], now: datetime,
+              newest_data_at: datetime | None) -> dict[str, Any]:
+    """The `freshness` object of a headline block (see FEEDS)."""
+    job, hours = FEEDS[block]
+    seen = status.get(job) or {}
+    ok_at = seen.get("last_success_at")
+    return {
+        "job": job,
+        "last_success_at": ok_at,
+        "last_run_at": seen.get("last_run_at"),
+        "newest_data_at": newest_data_at,
+        "stale_after_hours": hours,
+        "stale": ok_at is None or now - ok_at > timedelta(hours=hours),
+        "basis": "stale when the job has not succeeded within its schedule's longest gap plus an "
+        "hour (job_run); newest_data_at is the newest observation behind the figure",
+    }
+
+
 # --- fires --------------------------------------------------------------------------------------
 
 

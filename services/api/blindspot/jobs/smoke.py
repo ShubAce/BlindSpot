@@ -157,7 +157,13 @@ def _columns(session: Session, table: str) -> set[str]:
 
 
 def load_members(session: Session, at: datetime) -> tuple[list[Member], list[str]]:
-    """The newest wind grid of each ensemble member, as WindFields (primary first)."""
+    """The newest wind grid of each ensemble member, as WindFields (primary first).
+
+    When the met job stored that run in this process (smoke is chained after met), the grids come
+    from its memory (jobs.met.stored_level), not back from the database: the same values, ~1.5 MB
+    less database egress per member."""
+    from blindspot.jobs import met as met_job
+
     runs = latest_runs(session, MEMBER_ORDER)
     members, notes = [], []
     for model in MEMBER_ORDER:
@@ -165,13 +171,15 @@ def load_members(session: Session, at: datetime) -> tuple[list[Member], list[str
         if run is None:
             notes.append(f"{model}: no wind grid stored yet")
             continue
-        times, arrays = load_level(session, run, "bl", ("u", "v"))
+        held = met_job.stored_level(run.id)
+        times, arrays = held if held is not None else load_level(session, run, "bl", ("u", "v"))
         if times.size < 2:
             notes.append(f"{model}: run {run.id} has no boundary-layer wind rows")
             continue
         wind = tj.WindField.from_arrays(run.grid, times, arrays["u"], arrays["v"])
         member = Member(model, run, wind)
-        surface = row_at(session, run, "10m", at)
+        surface = met_job.stored_surface_at(run.id, at) if held is not None else None
+        surface = surface or row_at(session, run, "10m", at)
         if surface is not None and surface.blh is not None:
             member.blh_now = np.asarray(surface.blh, dtype=np.float64)
             member.blh_valid_at = surface.valid_at
@@ -230,16 +238,21 @@ def load_labels(
     """District/state raster from the boundary table, and which labels are the burn belt."""
     if not _table_exists(session, "boundary"):
         return None, None, "boundary table missing"
+    from blindspot.api.cache import fetch_binary
+
     params = {"w": bbox[0], "s": bbox[1], "e": bbox[2], "n": bbox[3]}
-    sql = text(
+    # Binary format: the WKB arrives as bytes, not hex text (half the database egress, ~1.2 MB a run).
+    rows = fetch_binary(
+        session,
         """
         SELECT level, name, state, code, ST_AsBinary(ST_SimplifyPreserveTopology(geom, 0.002)) AS wkb
         FROM boundary
-        WHERE level IN ('state', 'district') AND geom && ST_MakeEnvelope(:w, :s, :e, :n, 4326)
+        WHERE level IN ('state', 'district')
+          AND geom && ST_MakeEnvelope(%(w)s, %(s)s, %(e)s, %(n)s, 4326)
         ORDER BY level DESC, id
-        """
+        """,
+        params,
     )
-    rows = session.execute(sql, params).mappings().all()
     if not rows:
         return None, None, "boundaries not loaded yet: districts and the burn belt are unlabelled"
     states, districts = [], []
@@ -811,6 +824,25 @@ def method_params() -> dict[str, Any]:
     }
 
 
+def _forward_columns(forward: dict[str, Any], common: dict[str, Any]) -> dict[str, Any]:
+    """The jsonb columns of a forward row, as store() writes them."""
+    return {
+        "params": {**common["params"], "inputs": forward["inputs"], "members": forward["members"],
+                   "payload": forward["payload"], "t_end": forward["t_end"]},
+        "summary": {"inputs": forward["inputs"], "notes": common["notes"]},
+        "trails": forward["trails"], "receptors": forward["receptors"],
+    }
+
+
+def _back_columns(b: dict[str, Any], common: dict[str, Any]) -> dict[str, Any]:
+    """The jsonb columns of a back row, as store() writes them."""
+    return {
+        "params": common["params"],
+        "summary": {**b["summary"], "verdict_hint": b["verdict_hint"], "notes": common["notes"]},
+        "trails": b["trails"], "receptors": [b["receptor"]],
+    }
+
+
 def store(forward: dict[str, Any] | None, backs: list[dict[str, Any]], common: dict[str, Any], run_at: datetime) -> dict[str, Any]:
     """Write the run in one transaction, then clear old trails and old rows."""
     ids: dict[str, Any] = {}
@@ -818,11 +850,7 @@ def store(forward: dict[str, Any] | None, backs: list[dict[str, Any]], common: d
         if forward is not None:
             row = SmokeRun(
                 kind="forward", city=None, run_at=run_at, t0=forward["t0"], hours=forward["hours"],
-                met_run_ids=common["met_run_ids"],
-                params={**common["params"], "inputs": forward["inputs"], "members": forward["members"],
-                        "payload": forward["payload"], "t_end": forward["t_end"]},
-                summary={"inputs": forward["inputs"], "notes": common["notes"]},
-                trails=forward["trails"], receptors=forward["receptors"],
+                met_run_ids=common["met_run_ids"], **_forward_columns(forward, common),
             )
             session.add(row)
             session.flush()
@@ -832,15 +860,103 @@ def store(forward: dict[str, Any] | None, backs: list[dict[str, Any]], common: d
             row = SmokeRun(
                 kind="back", city=b["city"], run_at=run_at,
                 t0=run_at - timedelta(hours=BACK_H), hours=float(BACK_H),
-                met_run_ids=common["met_run_ids"], params=common["params"],
-                summary={**b["summary"], "verdict_hint": b["verdict_hint"], "notes": common["notes"]},
-                trails=b["trails"], receptors=[b["receptor"]],
+                met_run_ids=common["met_run_ids"], **_back_columns(b, common),
             )
             session.add(row)
             session.flush()
             ids["back"][b["city"]] = row.id
     prune()
     return ids
+
+
+# --- the website's answers, stored with the run (Neon egress) -----------------------------------------
+# GET /api/smoke/forward and /back read a run's whole trails column (12 MB for a forward run) to
+# answer; on serverless every cold instance would. Right after writing a run, this job renders the
+# answers the website asks for from the values it holds, and stores them (api/cache.store_payload),
+# so no request has to read the trails back. The route reads the row back as Postgres renders it,
+# so the values are rendered here the same way (api/cache.jsonb_text) and checked against
+# md5(column::text) of the stored row (a few bytes from the database): when anything differs,
+# that body is not stored and the first request computes and stores it instead.
+
+FORWARD_VARIANTS: tuple[tuple[int | None, int], ...] = ((600, 2), (None, 1))  # website, then full
+BACK_VARIANTS: tuple[tuple[int | None, int], ...] = ((None, 1),)  # the website asks ?city= only
+
+
+def _as_read_back(value: Any) -> tuple[Any, str]:
+    """(value as a route reads it back from jsonb, its jsonb text). Parsed from the text, so its
+    objects have jsonb's key order, as a value read from the database has."""
+    from blindspot.api.cache import jsonb_text
+    from blindspot.db import _json_dumps
+
+    rendered = jsonb_text(orjson.loads(_json_dumps(value)))
+    return orjson.loads(rendered), rendered
+
+
+def store_bodies(ids: dict[str, Any], forward: dict[str, Any] | None, backs: list[dict[str, Any]],
+                 common: dict[str, Any]) -> dict[str, Any]:
+    """Store the website's /forward and /back answers for the runs just written (see above)."""
+    wanted: list[tuple[int, str, dict[str, Any]]] = []
+    if forward is not None and ids.get("forward"):
+        wanted.append((ids["forward"], "forward", _forward_columns(forward, common)))
+    by_city = {b["city"]: b for b in backs}
+    for city, run_id in (ids.get("back") or {}).items():
+        wanted.append((run_id, "back", _back_columns(by_city[city], common)))
+    return _store_runs(wanted)
+
+
+def _store_runs(wanted: list[tuple[int, str, dict[str, Any]]]) -> dict[str, Any]:
+    """Store the answers of runs (id, kind, the jsonb columns written) after checking each column
+    against the database's md5 of its text."""
+    import hashlib
+
+    from blindspot.api.cache import store_payload
+    from blindspot.api.routers import smoke as routes
+
+    if not wanted:
+        return {"stored": 0}
+    with session_scope() as session:
+        rows = {r["id"]: r for r in session.execute(text(
+            "SELECT id, kind, city, run_at, t0, hours, met_run_ids, md5(params::text) AS params,"
+            " md5(summary::text) AS summary, md5(trails::text) AS trails, md5(receptors::text) AS receptors"
+            " FROM smoke_run WHERE id = ANY(:ids)"), {"ids": [w[0] for w in wanted]}).mappings()}
+    stamp = routes.body_stamp()
+    stored, mismatched = 0, []
+    for run_id, kind, columns in wanted:
+        row = rows.get(run_id)
+        if row is None:
+            continue
+        run = {k: row[k] for k in ("id", "kind", "city", "run_at", "t0", "hours", "met_run_ids")}
+        run["trails_json"] = None
+        same = True
+        for name, value in columns.items():
+            plain, rendered = _as_read_back(value)
+            if hashlib.md5(rendered.encode()).hexdigest() != row[name]:
+                same = False
+                mismatched.append(f"{kind} {run_id} {name}")
+                break
+            if name == "trails":
+                run["trails_json"] = rendered
+            else:
+                run[name] = plain
+        if not same:
+            continue
+        if kind == "validation":
+            payload, sources, max_age = routes.validation_payload(run)
+            stored += store_payload(routes.validation_key(run_id), stamp, payload, sources, max_age)
+        elif kind == "forward":
+            for max_trails, stride in FORWARD_VARIANTS:
+                payload, sources, max_age = routes.forward_payload(run, max_trails, stride)
+                stored += store_payload(routes.forward_key(run_id, max_trails, stride), stamp, payload,
+                                        sources, max_age)
+        else:
+            for max_trails, stride in BACK_VARIANTS:
+                payload, sources, max_age = routes.back_payload(run, BACK_H, BACK_H, max_trails, stride)
+                stored += store_payload(routes.back_key(run_id, BACK_H, BACK_H, max_trails, stride), stamp,
+                                        payload, sources, max_age)
+    out: dict[str, Any] = {"stored": stored}
+    if mismatched:
+        out["not_stored"] = mismatched[:10]
+    return out
 
 
 def prune() -> dict[str, int]:
@@ -897,8 +1013,14 @@ def smoke() -> dict[str, Any]:
     }
     common["params"]["runtime_ms"] = round((time.perf_counter() - started) * 1000)
     ids = store(forward, backs, common, run_at)
+    try:
+        bodies = store_bodies(ids, forward, backs, common)
+    except Exception as exc:  # noqa: BLE001  (an optimisation: the routes compute live without it)
+        log.warning("smoke: could not store the answers: %s", exc)
+        bodies = {"error": f"{type(exc).__name__}: {exc}"[:300]}
     verdicts = {b["city"]: b["verdict_hint"] for b in backs}
     return {
+        "bodies": bodies,
         "forward_id": ids.get("forward"),
         "back_runs": len(ids.get("back", {})),
         "members": [m.model for m in members],
@@ -1087,17 +1209,24 @@ def smoke_validate() -> dict[str, Any]:
         ),
         "notes": notes + [receptor_note, fire_note, scar_note],
     }
+    columns = {"params": {"method": method_params(), "sources": sources}, "summary": summary,
+               "receptors": series_out}
     with session_scope() as session:
         row = SmokeRun(kind="validation", city=None, run_at=run_at, t0=window[0],
                        hours=(t_end - t0) / 3600.0, met_run_ids=[m.run.id for m in members],
-                       params={"method": method_params(), "sources": sources}, summary=summary,
-                       trails=None, receptors=series_out)
+                       trails=None, **columns)
         session.add(row)
         session.flush()
         row_id = row.id
+    try:  # GET /api/smoke/validation's answer, stored now (see store_bodies)
+        bodies = _store_runs([(row_id, "validation", columns)])
+    except Exception as exc:  # noqa: BLE001
+        log.warning("smoke_validate: could not store the answer: %s", exc)
+        bodies = {"error": f"{type(exc).__name__}: {exc}"[:300]}
     delhi = next((e for e in results if e["city"] == "Delhi"), None)
     return {
         "id": row_id,
+        "bodies": bodies,
         "cities": len(results),
         "delhi": None if delhi is None else {
             "r_smoke_index": _lag0_r(delhi, "smoke_index"),

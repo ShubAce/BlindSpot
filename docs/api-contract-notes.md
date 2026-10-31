@@ -17,8 +17,13 @@ in-process cache) and "cold" is the first call. "Wire" is the gzip size.
   - 400: bad bbox or bad dates.
   - 404: unknown id or city. The body lists the valid values when there is a short list.
   - 422: validation. `detail` is a list of pydantic errors.
-  - 429: agent rate limit, with `Retry-After`.
+  - 429, always with `Retry-After` and `Cache-Control: no-store`: the per-client limits on agent
+    questions, live picture renders and live map tiles (see "Agent and bulletin" and "Imagery"),
+    and a never-answered heavy query variant past the per-instance allowance (see "Serverless
+    deployment").
   - 502: upstream failed. 503: upstream paused, with `Retry-After`.
+  - 503 from `/api/stats/headline` when no block could be computed (the database is down): the
+    same body, `no-store`, `Retry-After: 60` (see "Serverless deployment").
   - 503 with `missing_module`: a library this deployment lacks (imagery rendering on serverless).
   - 503 `database unavailable`.
 - **Times.** Every timestamp is UTC ISO-8601 with `Z`. Fields ending `_ist` are IST: either
@@ -201,8 +206,9 @@ Notes for the UI:
     `/api/orbits/validation`).
 - `gk2a_evening` is null-safe: `available: false` with `reason` before any scan is stored.
   `share_outside_polar_windows` is null when no FIRMS detections fall in the period.
-- Cadence: the inputs change every 30 min (fires, air, GK-2A), every 3 h (met, smoke) and every
-  6 h (scars). Polling every 60 s is plenty.
+- Cadence: the inputs change hourly 08:17-18:17 UTC and every ~3 h at night (fires, air, GK-2A),
+  every 6 h (met, smoke) and daily (scars). The CDN keeps the headline until :30 after each hourly
+  run, so polling every 60 s is plenty; each block's `freshness` says how old its data is.
 
 ---
 
@@ -237,7 +243,8 @@ Params:
 - `confidence` is `low|nominal|high`: VIIRS classes, and MODIS mapped from 0-100.
 - `frp_mw` is in MW. `scan_km` / `track_km` are the pixel size in km.
 - Features are ordered newest first. `truncated` is true when `count` exceeds `limit`.
-- Cadence: `firms_nrt` runs every 30 min. The NRT latency is about 3 h after overpass.
+- Cadence: `firms_nrt` runs hourly 08:17-18:17 UTC and at 00:17, 03:17, 06:17, 21:17. The NRT
+  latency is about 3 h after overpass.
 
 ### GET /api/fires/daily
 
@@ -293,7 +300,7 @@ Params: `since`, `until`, `region`.
 - `totals.count` is the AOI number. `layer_totals.events` covers every state and is not an AOI
   number.
 - `published: false` means CREAMS has not published that day yet (usually today).
-- Cadence: `creams_daily` runs hourly.
+- Cadence: `creams_daily` runs with `firms_nrt` (hourly in the afternoon and evening, ~3-hourly at night).
 
 ---
 
@@ -304,7 +311,7 @@ Params: `since`, `until`, `region`.
   last_fire_data_utc}], swath_sources}`.
   - 8 satellites: snpp, noaa20, noaa21, aqua, terra, s2a, s2b, s2c.
   - `line1`/`line2` feed satellite.js `twoline2satrec`; `omm` feeds `json2satrec`.
-  - Cadence: every 12 h. Skipped when CelesTrak was asked less than 2 h ago.
+  - Cadence: daily at 11:17 UTC. Skipped when CelesTrak was asked less than 2 h ago.
 - **GET /api/orbits/passes**: `lat`, `lon` (both or neither; the default is the Punjab
   centroid), `hours_back` (0..72, default 24), `hours_ahead` (0..168, default 48),
   `instruments=VIIRS,MODIS,MSI`.
@@ -361,7 +368,7 @@ There is no `hours` parameter. A pass counts when the site lies inside the instr
    "unseen_rule": "unseen = no FIRMS detection within max(1 km, pixel half-diagonal + 200 m) ..."}}
 ```
 
-  `res_m` is 20 in the hotspot districts and 40 elsewhere. Coverage grows every 6 h.
+  `res_m` is 20 in the hotspot districts and 40 elsewhere. Coverage grows daily (11:17 UTC).
 - **GET /api/scars/{id}** returns the case file:
   - `case` holds the properties plus `geometry`.
   - `imagery: {bbox, pre: {date, datetime, item_id, collection, cloud_pct, truecolor_url,
@@ -391,13 +398,59 @@ Params: `district`, `limit` (default 500), `min_score`, `bbox`.
  "reason": null}
 ```
 
-- `risk_score` runs from 0 to 100. It is a ranking, not a probability.
-- `risk_factors.neighbourhood.candidate_unseen_burns_7d` was renamed from `unseen_burns_7d`.
+- `risk_score` runs from 0 to 100. It is a relative index, not a probability (`method.scale`).
+- **risk-v3 (2026-10-31, the saturation fix).** risk-v2 turned counts into 1 - exp(-n/typical) and
+  combined the two neighbourhood views with a noisy-OR, so busy places hit 1.0: 500 fields scored
+  99.7-100.0 and 35 tied at exactly 100.0. v3 keeps the same factors and weights but uses
+  n / (n + typical) (0.5 at the typical count, never 1) and averages the two views. On the dev
+  database: top score 90.19 (one field), the top 500 hold 178 distinct scores (88.0-90.19), p50
+  53.7, p90 77.3. Same skill as v2 (no variant beat v2 on the 47 pass pairs after 24 Oct).
+  `risk_score` now has 2 decimals.
+- New per-field properties (additions): `risk_rank` (1 = highest of the run; equal scores share
+  a rank), `risk_rank_of` (fields scored), `risk_percentile` (share of the run's fields with a
+  lower score, %, 3 dp; the top field is 99.999, never 100), `risk_band` ("top 1%", "top 1-5%",
+  "top 5-10%", "top 10-25%", "top 25-50%", "bottom 50%"; the band in today's ordering by
+  `risk_score`), `burn_probability` and `burn_probability_ci95` (calibrated on the backtest: the
+  share of past fields in the same band of their pass that burnt by the next clear pass, 95%
+  tile-bootstrap interval) and `burn_probability_band` (addition, repair of 2026-10-31).
+  **The backtest tests the ordering by neighbourhood and history only** (timing and rain cannot be
+  reconstructed for past passes), so `burn_probability` is the calibration of the field's band in
+  THAT ordering (`burn_probability_band`, which can differ from `risk_band`), placed with the cuts
+  the risk job stores in `backtest.tested_order`. It is null until the stored backtest carries the
+  `tested_order` of the run that made today's scores. When a number is needed, show the probability
+  with its interval and say it is for the tested ordering, not the score.
+- `method` additions: `scale`, `fields` (what each new property means) and, while the stored
+  scores still come from an older model, `scores_model` (for example "risk-v2"). `method.note`
+  states how strong the ranking proved, with the backtest's numbers, once a v3 backtest exists.
+- `backtest` additions: `model`, `verdict` (one paragraph, every number from the report),
+  `strength` ("weak" / "modest" / "moderate", decided by the numbers), `calibration` (`bands`:
+  [{top_share_max, band, fields, burnt, burnt_share, burnt_share_ci95, lift}], `base_rate`,
+  `horizon`, `what`), `pairs_are`. `headline` adds `n`, `auc_ci95`, `precision_ci95`, `lift_ci95`,
+  `hits_at_k`, `ci_note`, `factors_used`. `all_pairs` adds `field_pairs`, `tiles`, `auc_ci95`,
+  `top_10pct` {burnt_share, burnt_share_ci95, lift, lift_ci95, base_rate},
+  `baselines_auc_weighted_mean`, `what`, `ci_method`; `auc_by_pair` items add `tile`. `windows`
+  is still the number of pass-pair windows.
+- Repair additions (2026-10-31): `all_pairs.auc_by_tile` [{tile, pairs, field_checks, auc}] (size-
+  weighted AUC per tile, most checks first); `backtest.tested_order` {run_id, what, fields, cuts:
+  [{band, min_tested_score}], spearman_with_risk_score, top_1pct_overlap}. `backtest.verdict` now
+  says the latest pair's interval is narrower than the truth and where its tile ranks among tiles
+  with over 100 checks (on the dev data 43REP was the best tile; 43REQ, 35% of the checks, scored
+  0.444). `method.note` says the tested part of the ordering is weak, that timing (40% of the
+  weight) is untested, and how closely today's score follows the tested ordering (dev database:
+  Spearman 0.754, 49.4% of today's top 1% also in the tested top 1%; reviewer's measurement).
+- Backtest, measured with risk-v3 on the dev database (148 pass pairs, 361,031 field checks, 12
+  tiles): AUC 0.560 (95% CI 0.491-0.663, resampling whole tiles), so **not clearly better than
+  chance**; fields in the top 10% of each pass burnt 1.42 times as often as the average field (95%
+  CI 1.24-1.73; 21.6% against 15.2%). Latest pair (43REP, 1,173 fields): AUC 0.701 (0.664-0.736,
+  field bootstrap, optimistic). Present it as `backtest.verdict` says: a weak ranking for choosing
+  where to look first, not a forecast. Never show a raw score as certainty ("score 100").
+- `risk_factors.neighbourhood.candidate_unseen_burns_7d` was renamed from `unseen_burns_7d`;
+  v3 adds `risk_factors.neighbourhood.scale`, and `combined` reads "mean of events and burnt hectares".
 - Village names come from census 2011 and are cut at 40 characters upstream (see the ranking
   sample).
-- Present the backtest honestly: the latest pass pair has AUC 0.687, but the weighted mean over
-  all 148 pairs (13 tiles) is **0.556**.
-- Cadence: every 3 h. The run now takes about 13 min for 172k fields.
+- Cadence: daily, after the 11:17 UTC Sentinel-2 run. The job now scores and backtests inside the
+  database and pulls about 0.05 MB from it (it pulled ~105 MB a run before, measured through a
+  byte-counting proxy on the dev database).
 
 ---
 
@@ -430,7 +483,8 @@ Params: `district`, `limit` (default 500), `min_score`, `bbox`.
   fire_input, sources}], unit, method_note, attribution}`. `stale` is true from midnight IST
   until DSS updates (about 10:20 IST). The outlook values are climatology-driven; label them as
   "outlook".
-- Cadence: `air` every 30 min; `air_dss` at 10:20, 14:20 and 20:20 IST.
+- Cadence: `air` hourly 08:17-18:17 UTC and at 00:17, 03:17, 06:17, 21:17; `air_dss` with `met`
+  at 03:17, 09:17, 15:17 and 21:17 UTC.
 
 ## Weather: `/api/met/*`
 
@@ -446,7 +500,8 @@ Params: `district`, `limit` (default 500), `min_score`, `bbox`.
   returns `{t, level, grid: {lon0: 70, lat0: 26, dlon: 0.5, dlat: 0.5, nx: 21, ny: 17},
   u: [357], v: [357], units, order, model, run_at, available, requested_t, attribution}`.
   The grid is row-major from the SW corner: `index = j*nx + i`.
-- Cadence: `met` every 3 h. It skips when the upstream model runs are unchanged.
+- Cadence: `met` every 6 h (03:17, 09:17, 15:17, 21:17 UTC). It skips when the upstream model
+  runs are unchanged.
 
 ## Smoke: `/api/smoke/*` (two-model ensemble)
 
@@ -480,7 +535,7 @@ Params: `district`, `limit` (default 500), `min_score`, `bbox`.
 - **GET /api/smoke/validation** returns the modelled smoke index against observed PM2.5 per
   city, with `r` and `n_eff`. Delhi now: r 0.65 at lag 0, 0.85 at a 4 h lag. n_eff is small:
   show it as indicative.
-- Cadence: `smoke` runs after each `met`; `smoke_validate` every 6 h.
+- Cadence: `smoke` runs after each `met`; `smoke_validate` daily at 11:17 UTC.
 
 ## Imagery: `/api/imagery/*`
 
@@ -491,6 +546,20 @@ Params: `district`, `limit` (default 500), `min_score`, `bbox`.
     hazy, blue_median, truecolor_url, swir_url, width: 1600, height: 1000}]`, four frames,
     oldest first.
   - `passes_considered`, `passes_clear`, `dropped`, `reason`, `built_at`, `stale`.
+  - Additions: `age_minutes` (minutes since `built_at`, as of `generated_at`; null if
+    `built_at` is missing) and `stale_after_hours`.
+  - `stale` is true once the frames are older than `stale_after_hours`. The frames are still
+    served, so show them with an "older pictures" note rather than hiding them.
+    - On Vercel this is 30 h. The `featured` job runs once a day on GitHub Actions, chained
+      after `sentinel` at 11:40 UTC. Add the chain's 150 min timeout and 3.5 h of slack, and you
+      get 30 h.
+    - In a long-lived process it is 6 h. That process rebuilds the frames itself in a background
+      thread.
+    - A Vercel instance never starts a thread or builds frames during a request.
+    - On Vercel, when no manifest is stored at all, the route returns 503 with `Retry-After: 300`.
+  - Measured on a local Vercel-like instance on 2026-10-31: a manifest 412 min old gave
+    `stale: false, stale_after_hours: 30` on Vercel and `stale: true, stale_after_hours: 6`
+    locally.
   - Live window: "Near Raipur Peerbakhshwala, Kapurthala district", 824 ha of scars since
     10 Oct, frames on 13-28 Oct.
 - **GET /api/imagery/render** (`collection`, `item`, `bbox`, `kind=truecolor|swir|nbr`, `w`,
@@ -498,17 +567,66 @@ Params: `district`, `limit` (default 500), `min_score`, `bbox`.
   - Cached on disk and immutable. The featured frames and the case-file chips are also kept in
     the database, so every serverless instance serves them at once (see "Serverless
     deployment").
-  - Errors are JSON: 400 for a bbox outside the AOI, 422 for a bad collection or size, 404 for a
-    missing item.
+  - **Tile restriction.** The item must lie on a Sentinel-2 MGRS tile that intersects the area
+    we watch (AOI bbox plus 0.25°: 48 tiles, worked out from the AOI in code rather than typed
+    in). Any other item returns 400, and the detail names its tile. The check reads only the
+    item id, so it makes no upstream call (a 10SEG item: 400 in about 12 ms, 0 `source_fetch`
+    rows). The same rule applies to `tiles/` and `tilejson/`.
+  - **Exact URLs are served as stored.** The URLs in `featured` frames and case-file chips are
+    served byte for byte with the same headers as before. Checked against the committed build:
+    152 of 152 stored URLs (8 frames and 144 chips) were identical, apart from the added
+    `X-Imagery-Bbox` header.
+  - **Snapping.** Other boxes are snapped to a grid before rendering. The grid step is the
+    power of two (in degrees) just under 1/32 of the box's longer side, so no edge moves more
+    than 1/64 of the side. As a result, requests a few metres apart share one picture.
+    `X-Imagery-Bbox` (an addition) gives the box actually drawn.
+  - **Live render limit, per client.** A picture that has to be drawn now counts against the
+    client's limit: 30 a minute and 300 a day (`IMAGERY_RENDER_PER_MINUTE`/`_PER_DAY`).
+    - Pictures already drawn (on disk or stored) never count.
+    - On Vercel the count is shared by every instance (the `client_hit` table), so a cold start
+      does not reset it.
+    - Past the limit the route returns 429 with `Retry-After` (seconds) and
+      `Cache-Control: no-store`. The body is the usual JSON error: `{detail, status, path,
+      generated_at, sources}`, for example "Too many new pictures from this address (at most 30
+      new pictures a minute); pictures already drawn are not limited. Try again in 57 s."
+    - The limit is checked before any database work that only a live render needs. A 512 x 512
+      box needs one query to tell whether it is a case-file chip (kept exact and stored); a client
+      already past its limit is refused before that query. Such a client gets 429 for a 512 x 512
+      box even when its snapped picture is on disk. The query returns only the scar whose extent
+      is centred on the box (at most one row was seen across all 20,000 chip boxes in the dev
+      database; before, it returned every cluster under the box, up to 50 geometries). Measured:
+      the reviewer's 12-request flood of 512 px boxes now gives 200, 200, 429 x 10 with 2
+      queries returning 0 rows (before: 12 queries of 50 rows, about 14 KB each).
+  - Errors are JSON: 400 for a bbox outside the AOI or an item off the watched tiles, 422 for a
+    bad collection or size, 404 for a missing item. An item id that upstream does not know is
+    remembered as missing for 1 h on each instance, so asking for it again makes no new call.
   - On a deployment without rasterio/pillow, it returns 503 with `missing_module` unless the
     picture is already stored. The Vercel build now ships both.
 - **GET /api/imagery/scenes** (`lon`, `lat`, required; `days=30`, `limit=10`) returns
   `{scenes: [{date, datetime, item_id, collection, mgrs_tile, platform, tile_cloud_pct,
   nodata_pct, status, note, usable, tiles: {truecolor, swir, nbr}, tilejson: {...}}]}`.
 - **GET /api/imagery/tilejson/{kind}/{item}** returns TileJSON 3.0.0. The first call costs
-  about 1.3 s upstream.
+  about 1.3 s upstream. Items off the watched tiles return 400 before the STAC lookup.
 - **GET /api/imagery/tiles/{kind}/{item}/{z}/{x}/{y}** returns image/png and is immutable. The
   first render of a tile takes about 6 s; after that it is served from disk.
+  - Items off the watched tiles return 400.
+  - **Live tile limit, per client.** A tile already drawn on this instance is served at once
+    and never counts. A tile that has to be drawn counts against a budget of its own, separate
+    from and larger than the live render limit, because one map view loads 30-60 tiles and
+    people behind one NAT share an address: 600 a minute and 6,000 a day
+    (`IMAGERY_TILES_PER_MINUTE`/`_PER_DAY`). On Vercel the count is shared by every instance, as
+    for renders.
+    - A client past the limit is refused before the STAC lookup. The 429 has the same shape as
+      for renders, for example "Too many new map tiles from this address (at most 600 new map
+      tiles a minute); map tiles already drawn are not limited. Try again in 60 s."
+    - Tiles are also bounded by the AOI, by the scene's footprint (404 outside it) and by the
+      per-instance render cap (503 when busy).
+    - Measured on two Vercel-like instances (renders 2 a minute, tiles 4 a minute): a client
+      refused on `/render` (200, 200, then 429 x 18) got 4 live tiles and then 429 x 6, across
+      both instances. A tile it had already drawn was still served (200).
+  - Item ids must match the Sentinel-2 id patterns exactly. An id with a trailing newline used
+    to pass the check and failed later with a 500 or a dropped connection; now it is a 400 with
+    no upstream call, on `render`, `tiles` and `tilejson`.
 
 ## Geography: `/api/geo/*`
 
@@ -551,7 +669,8 @@ Params: `district`, `limit` (default 500), `min_score`, `bbox`.
   - At night the newest scan usually has 0 features. Use `slot=2026-10-29T10:40:00Z` (49
     pixels) for the evening-peak demo.
   - An unknown slot returns 404.
-- Cadence: every 30 min. The backfill runs daily at 04:20 IST.
+- Cadence: hourly 08:17-18:17 UTC and at 00:17, 03:17, 06:17, 21:17. The backfill runs daily at
+  06:17 UTC (11:47 IST).
 
 ## Agent and bulletin
 
@@ -560,6 +679,38 @@ Params: `district`, `limit` (default 500), `min_score`, `bbox`.
   - A live run takes 8.4 s, 25 frames. The same question within 10 min replays from the
     stored run in about 140 ms, with `run.cached: true` and `done.replayed: true`.
   - Bad body: 422. Per-IP limit: 429 with `Retry-After`.
+  - **Per-client limit:** 3 new questions a minute and 40 a day
+    (`AGENT_IP_PER_MINUTE`/`AGENT_IP_PER_DAY`).
+    - Only questions that start a new run count. A replay of a stored run and a join of the
+      same question already running never count. Measured on 2026-10-31: 5 replays and 4
+      simultaneous identical questions (1 run) counted 0 and 1.
+    - Joins work within one instance only (the runs in flight are kept in process memory). On
+      Vercel the same new question arriving at two instances at the same moment starts two runs,
+      and each is counted for its own client. Measured: 2 instances, 2 runs; 1 instance, 1 run.
+    - Replays are not limited, but each instance reads a stored run's events (about 11-20 KB)
+      from Postgres at most once per 2 minutes (and never past the run's 10 min replay window).
+      Measured: 8 replays alternating over two instances read the run twice, once per instance.
+    - On Vercel the client is the address Vercel puts in `X-Forwarded-For`. Vercel overwrites
+      that header, so a client cannot spoof it there.
+    - Elsewhere the API ignores `X-Forwarded-For` and `X-Real-IP` and counts the socket peer, as
+      uvicorn reports it. uvicorn itself rewrites the peer from `X-Forwarded-For` when the
+      connection comes from an address it trusts: 127.0.0.1 by default, and every address with
+      `--forwarded-allow-ips='*'` (as in the Dockerfile). Run off Vercel with
+      `--no-proxy-headers`, or name only the real proxy's address, or a client can choose its own
+      address. Measured with 5 different forged addresses from one socket: 200, 200, 200, 429, 429
+      with proxy headers off; 200 x 5 with uvicorn's defaults behind 127.0.0.1.
+    - A client the shared count refused is remembered by that instance until `Retry-After`
+      runs out, so further requests from it are refused without a database query.
+    - IPv6 addresses count per /64.
+    - On Vercel the count is also kept in Postgres (`client_hit`, which stores only a salted
+      HMAC of the address, never the address), so every instance shares it. Measured across two
+      instances: 200, 200, 200, 429.
+    - If that table cannot be read, the in-memory limit still applies.
+  - **429 shape:** the usual JSON error `{detail, status: 429, path, generated_at, sources: []}`
+    with `Retry-After` in seconds and `Cache-Control: no-store`. Example `detail`: "Too many
+    questions from this address (at most 3 questions a minute). Try again in 51 s." Today
+    `sse.ts` marks a 429 retryable and shows a fixed "try again in a minute"; it could show
+    `detail` or `Retry-After` instead.
 
 ```
 run          {"type":"run","run_id":"97c49cde-...","model":"gemini-3.5-flash-lite","lang":"en"}
@@ -584,7 +735,8 @@ done         {"type":"done","run_id":"97c49cde-...","duration_ms":8228,"ok":true
   events]}`. It lists only verified runs that cite sources.
 - **GET /api/agent/status** returns `{key_configured, quota_day_started_at, reserve_share,
   models: [{model, used_today, daily_limit, new_questions_stop_at, cooling_down_until, ...}],
-  per_ip_limits}`.
+  per_ip_limits: {per_minute, per_day, shared_across_instances}}`. `shared_across_instances` is
+  an addition: it is true when the limit is counted in Postgres (on Vercel).
 - **GET /api/bulletin/latest** (`lang=en|hi|pa`; anything else gives 422) returns `{date, lang,
   model, run_id, title, summary, sections: [{heading, body}], citations: [{marker, source}],
   verification: {passed, checked, verified, unverified, uncited, bad_markers,
@@ -601,6 +753,28 @@ done         {"type":"done","run_id":"97c49cde-...","duration_ms":8228,"ok":true
     only the missing or flagged language, from the stored English. The 2026-10-31 Punjabi
     bulletin passed after a re-run at 05:37 IST (gemini-3.6-flash, 30/30 numbers verified).
   - Hindi uses Devanagari digits; Punjabi uses 0-9.
+  - **Honesty check (2026-10-31, addition `verification.honesty`).** Every language is checked
+    by its numbers (agent/verifier.py `check_honesty`): a sentence that gives the candidate unseen
+    share or area must call them candidate unseen burns, and its section must give the audit
+    precision with both ends of its 95% interval (taken from /api/scars/summary
+    `method.audit.candidate_unseen`, never typed); raw burn-risk scores are rejected; FIRMS counts
+    may not be called crop fires ("crop-residue fires", "crop fires", "stubble-burning incidents",
+    and in Hindi/Punjabi a FIRMS count with a crop word and a fire/case word but no word for
+    "detection"); an AUC of one pass pair, of the village ranking or of a baseline may not be given
+    (only the all-pairs AUC, with its interval when there is one). Repair of 2026-10-31: an unseen
+    figure is only a claim when its sentence says it is about burns no satellite saw (or repeats an
+    unseen figure to its last decimal), audit numbers are never taken for unseen shares, and a
+    number that counts fields or villages is not a score, so true sentences are no longer replaced.
+    A rejected English draft is retried once; whatever still fails is rewritten from the tool
+    outputs: the season's figure by the candidate sentence with the audit, a district's figure kept
+    with "(candidate unseen burns)" and one audit sentence, a single-pair AUC by the all-pairs one,
+    a score by the top-ranked village. The investigator's check adds the audit to the
+    get_burn_scars output first, so its candidate figures are qualified instead of dropped. `verification.honesty` is
+    `{passed, first_pass_issues, retried, after_retry_issues, fallback_sentences}`. The same rule
+    runs on investigator answers (`verification.honesty` on the `verification` SSE event:
+    `{passed, first_pass_issues, fallback_sentences}`). Stored rows keep their old keys.
+  - The 2026-10-31 bulletin was regenerated on the dev database at 07:10 UTC with this check (all
+    three languages passed on the first draft).
 
 ## Core
 
@@ -621,27 +795,66 @@ above. The only differences are the additions listed here.
 A CDN sits in front of the function. It keeps a response only when `Cache-Control` has
 `s-maxage`. Every successful (200) GET gets:
 
-`public, max-age=<route's own max-age, at most the CDN lifetime>, s-maxage=<ttl>, stale-while-revalidate=<swr>`
+`public, max-age=<route's own max-age, at most 300 s and the CDN lifetime>, s-maxage=<seconds to the group's next expiry>, stale-while-revalidate=<swr>, stale-if-error=604800`
 
-| Paths | `s-maxage` | `stale-while-revalidate` |
-| --- | --- | --- |
-| `/api/fires*`, `/api/stats/headline`, `/api/sources`, `/api/scars*`, `/api/risk`, `/api/air/latest`, `/api/air/series`, `/api/met/*`, `/api/smoke/forward`, `/api/smoke/back`, `/api/smoke/receptors`, `/api/geostationary/*`, `/api/orbits/passes`, `/api/agent/examples`, `/api/agent/runs/{id}` (finished runs only) | 60 | 600 |
-| `/api/orbits/tle`, `/api/orbits/clock`, `/api/orbits/validation`, `/api/air/stubble-share`, `/api/smoke/validation`, `/api/bulletin/latest`, `/api/imagery/featured`, `/api/imagery/scenes` | 300 | 3600 |
-| `/api/geo/*`, `/api/imagery/tilejson/*` | 3600 | 86400 |
-| `/api/imagery/render`, `/api/imagery/tiles/*` (pictures) | `public, max-age=31536000, s-maxage=31536000, immutable` | |
+The CDN keeps an answer until the job group that feeds it has next run, on a clock (times UTC;
+`blindspot/api/cache.py`, `docs/neon-budget.md`). Every answer of a group expires at the same
+moments, so `s-maxage` varies with the time of the request (never under 60 s):
 
+| Group | Paths | Expires (UTC) | `stale-while-revalidate` |
+| --- | --- | --- | --- |
+| HOURLY | `/api/fires*`, `/api/stats/headline`, `/api/sources`, `/api/scars/summary`, `/api/air/latest`, `/api/air/series`, `/api/geostationary/*`, `/api/orbits/passes`, `/api/agent/examples`, everything else under `/api/` | :30 of 08-19 and 00, 01, 03, 04, 06, 07, 21, 22 | 86400 |
+| SIX_HOURLY | `/api/smoke/*` (not validation), `/api/met/*`, `/api/air/stubble-share`, `/api/orbits/validation` | :30 of 04, 10, 16, 22 (the hour after met) and 06, 11, 17, 00 (late start) | 86400 |
+| DAILY | `/api/scars`, `/api/scars/{id}`, `/api/risk`, `/api/smoke/validation`, `/api/orbits/tle`, `/api/orbits/clock`, `/api/imagery/featured`, `/api/imagery/scenes`, `/api/agent/runs/{id}` (finished runs only) | 13:30, 14:30 | 172800 |
+| BULLETIN | `/api/bulletin/*` | :30 of 02, 03, 04, 06, 07 | 86400 |
+| WEEKLY | `/api/geo/*`, `/api/imagery/tilejson/*` | 03:30 every day | 604800 |
+| pictures | `/api/imagery/render`, `/api/imagery/tiles/*` | `public, max-age=31536000, s-maxage=31536000, immutable` | |
+
+- Every expiry point except the bulletin's 02:30 is also an HOURLY point, so one page view
+  refreshes every expired group at once (one database wake-up): at most 21 a day.
 - **Never cached by the CDN:**
   - errors (any status other than 200);
+  - the headline when no block could be computed (the database is down): **503** with the same
+    body, `no-store` and `Retry-After: 60`, so the CDN's `stale-if-error` keeps serving the last
+    good headline;
   - `/api/health`;
   - `POST /api/agent/ask` (the SSE stream);
-  - `/api/agent/status`;
+  - `/api/agent/status`: sent `private, max-age=10` (the browser may keep it 10 s);
   - an agent run that is still in progress. `GET /api/agent/runs/{id}` with `finished_at: null`
     is sent with `no-store`.
-- Every CDN-cached answer has `Vary: Origin`, because the CORS headers differ per origin.
-- Lifetimes add up. A response can be up to `s-maxage` old at the CDN, then up to `max-age` in
-  the browser. With `stale-while-revalidate`, the first request after expiry may get the old
-  copy while the CDN refreshes it. `generated_at` always says when the body was built.
+- Every answer has `Vary: Origin` once (CORS adds it), because the CORS headers differ per origin.
+- Lifetimes add up. A response can be as old as its group's last expiry point at the CDN, then
+  up to `max-age` in the browser. With `stale-while-revalidate`, the first request after expiry
+  gets the old copy while the CDN refreshes it; with `stale-if-error`, the CDN keeps answering
+  for a week if the API or the database fails. `generated_at` always says when the body was built,
+  and each headline block's `freshness` says how old its data is.
+- A headline with some (not all) blocks that could not be computed is sent
+  `public, max-age=30, s-maxage=60`: retried within a minute, but not by every visitor's poll.
 - The in-process cache (30-300 s per warm instance) is unchanged.
+- Heavy answers (smoke trails, scar lists, boundaries, smoke validation) are kept finished in the
+  database (`response_body`) until their data changes, and sent byte for byte as a live
+  computation would send them; only `generated_at` is fresh. A scar list stays valid while the
+  rows it selects are unchanged in the columns it shows, so each season-replay day (`until=`)
+  keeps its answer when newer scars arrive. `until` on or after today is the plain list.
+  `max_trails` / `stride` / `hours` variants of a smoke run are derived from the stored full
+  answer, never from the run's trails again.
+- **429 for new heavy variants (addition).** A heavy query whose exact parameters were never
+  answered before (a smoke forward variant, a scar list with `limit` over 200 other than the live
+  map's list with one `until` or `district`, a whole boundary level) counts against an allowance
+  of 20 per 10 minutes per server instance; past it the answer is 429 with `Retry-After` and
+  `no-store`, and no database read. Parameters the website uses are stored after their first
+  answer and are never refused; neither is a known query whose data changed.
+
+### Headline freshness (addition)
+
+Each block of `GET /api/stats/headline` (`fires_24h`, `season`, `unseen_burns`, `delhi`, `passes`,
+`gk2a_evening`) gains `freshness: {job, last_success_at, last_run_at, newest_data_at,
+stale_after_hours, stale, basis}`. `stale` is true when the job that feeds the block has not
+succeeded within its schedule's longest gap plus an hour (4 h for fires, CREAMS, air and GK-2A;
+26 h for Sentinel-2 and element sets). `newest_data_at` is the newest observation behind the figure
+(the newest FIRMS acquisition for `fires_24h`, the newest Delhi reading, the newest GK-2A scan,
+the last Sentinel-2 pass); null where a block has none. Show "as of" and a stale badge from it: a
+rolling 24 h count from a stopped feed otherwise just shrinks.
 
 ### CORS
 
@@ -672,7 +885,7 @@ Vercel caps a function response at 4.5 MB. Every default response was measured o
 | GET /api/scars (no filters: 5000 features) | 4,546,077 | 616,368 |
 | GET /api/geo/boundaries | 1,370,856 | 380,987 |
 | GET /api/smoke/back | 1,364,849 | 265,300 |
-| GET /api/risk | 956,324 | 79,551 |
+| GET /api/risk (risk-v3 fields; re-measured 2026-10-31 13:40 IST on the dev database; `limit=1000`, the live map's query: 2,039,862 / 155,401) | 1,041,233 | 81,349 |
 | GET /api/smoke/validation | 430,653 | 60,588 |
 | GET /api/imagery/render (featured frame, JPEG) | 283,975 | (jpeg) |
 | GET /api/geo/tiles/6/45/26.pbf | 142,441 | 81,699 |
@@ -693,12 +906,15 @@ Vercel caps a function response at 4.5 MB. Every default response was measured o
 
 - Each function instance starts with an empty `/tmp`. Pictures are therefore looked up in three
   places, in order: the instance's disk, the `rendered_asset` table, then a live render.
-- The `featured` job (every 6 h, after `sentinel`) stores three things in `rendered_asset`:
+- The `featured` job (daily, after `sentinel`) stores three things in `rendered_asset`:
   - the featured frames (8 JPEGs);
   - the before/after chips of the 24 largest candidate unseen burns (144 pictures);
   - the `/api/imagery/featured` payload itself.
 - The job deletes stored pictures that nothing references and nobody used for 7 days.
   Live: 153 assets, 7.8 MB.
+- Stored API answers live in their own table (`response_body`, see "Caching headers"), so this
+  pruning never removes one; the daily `prune` job deletes stored answers nobody read for 3 days
+  (the next request stores them again).
 - A picture served from the database has the same bytes and the same headers as a fresh render:
   `ETag`, `X-Imagery-Source`, `X-Imagery-Collection`, `X-Imagery-Item`, `X-Fetch-Id`,
   `X-Rendered-At`, `X-Imagery-Note`. 14/14 frames and chips served by an instance with an empty

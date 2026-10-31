@@ -25,10 +25,17 @@ from sqlalchemy.orm import Session
 
 from blindspot.analytics.burnscar import RULE, audit_summary
 from blindspot.api import BBoxDep, SessionDep, respond
-from blindspot.api.cache import cached_route
+from blindspot.api.cache import (
+    cached_route,
+    canonical_key,
+    code_version,
+    content_stamp,
+    stored_response,
+)
 from blindspot.api.responses import ORJSONResponse
 from blindspot.config import get_settings
-from blindspot.provenance import SourceRef, latest_refs, ref_for_fetch
+from blindspot.geo import parse_bbox
+from blindspot.provenance import SourceRef, latest_refs, ref_for_fetch, utcnow
 
 router = APIRouter(prefix="/api/scars", tags=["scars"])
 
@@ -141,6 +148,67 @@ def scars(
 
     `unseen` is true when no fire detection explains the scar, false when one does, and null while
     no fire records cover its window. Totals count all matching scars even when `limit` cuts the list."""
+    if until is not None and until >= utcnow().date():
+        # Every scar was seen by today, so this answer is the one without `until` (the payload
+        # does not echo it): one stored key instead of one per future date.
+        until = None
+    key = canonical_key("scars", bbox=bbox, since=since, until=until,
+                        district=district.strip().lower() if district else None, unseen=unseen,
+                        limit=limit, min_confidence=min_confidence)
+    return stored_response(
+        session, key, scars_stamp(session, since, until, district, unseen, bbox, min_confidence),
+        lambda: _scars_payload(session, bbox, since, until, district, unseen, limit, min_confidence),
+        live_sources=lambda: _sources(session),
+        guard=limit > GUARD_LIMIT and not _website_family(bbox, since, until, district, unseen, limit,
+                                                          min_confidence))
+
+
+# The live map's list (data.ts SCAR_QUERY) with one replay day or one clicked district: a family
+# the website walks through (Play steps a day every 1.4 s), so it is never refused as novel. Its
+# keys are bounded: `until` up to today (later dates are the plain list), real district names.
+WEBSITE_LIST = {"limit": 2500, "min_confidence": 0.5}
+
+
+def _website_family(
+    bbox: tuple[float, float, float, float] | None, since: dt.date | None, until: dt.date | None,
+    district: str | None, unseen: bool | None, limit: int, min_confidence: float | None,
+) -> bool:
+    return (limit == WEBSITE_LIST["limit"] and min_confidence == WEBSITE_LIST["min_confidence"]
+            and tuple(bbox or ()) == tuple(parse_bbox(None)) and since is None and unseen is None
+            and not (until and district))
+
+
+# Scar lists run to megabytes of polygons (the live map's 2,500: 1.4 MB of rows for 2.4 MB of JSON),
+# so the finished answer is stored (api/cache.stored_response) until a row the query selects
+# changes in a column the answer shows, or the code that renders it does. The stamp is computed by
+# Postgres over exactly those rows and columns (cache.content_stamp), not over the whole table:
+# the sentinel job rewrites every row's matched_at daily and adds new scars, but a season-replay
+# day (`until=`) keeps its stored answer for as long as its own scars and verdicts are unchanged.
+# Sources are added per request (the newest FIRMS fetch changes hourly; the polygons do not).
+_SCAR_RENDERERS = ("blindspot.api.routers.scars", "blindspot.analytics.burnscar")
+# Every column _FEATURE_COLUMNS and the totals read, and the outline.
+_STAMP_COLUMNS = ("id, area_ha, burn_after, burn_before, gap_days, district, subdistrict, village, "
+                  "village_km, state, centroid, dnbr, nbr_post, confidence, unseen, fire_matches, "
+                  "nearest_fire_m, scene_pre, scene_post, collection, res_m, mgrs_tile, hazy, "
+                  "model_version, geom")
+GUARD_LIMIT = 200  # lists longer than this are costly: a never-stored variant counts as novel
+
+
+def scars_stamp(
+    session: Session, since: dt.date | None = None, until: dt.date | None = None,
+    district: str | None = None, unseen: bool | None = None,
+    bbox: tuple[float, float, float, float] | None = None, min_confidence: float | None = None,
+) -> str:
+    where, params = _filters(since, until, district, unseen, bbox, min_confidence)
+    return (f"{content_stamp(session, 'burn_cluster', _STAMP_COLUMNS, where, params)}"
+            f"|{code_version(*_SCAR_RENDERERS)}")
+
+
+def _scars_payload(
+    session: Session, bbox: tuple[float, float, float, float] | None, since: dt.date | None,
+    until: dt.date | None, district: str | None, unseen: bool | None, limit: int,
+    min_confidence: float | None,
+) -> tuple[dict[str, Any], list[SourceRef], int]:
     where, params = _filters(since, until, district, unseen, bbox, min_confidence)
     totals = session.execute(text(f"""
         SELECT count(*) AS clusters, coalesce(sum(area_ha), 0) AS area_ha,
@@ -172,7 +240,7 @@ def scars(
         "method": _method(),
         "features": {"type": "FeatureCollection", "features": features},
     }
-    return respond(payload, _sources(session), max_age=60)
+    return payload, _sources(session), 60
 
 
 def _method() -> dict[str, Any]:
@@ -384,17 +452,74 @@ def _bilinear(values: list[float] | None, nx: int, fx: float, fy: float) -> floa
     return total / weight if weight else None
 
 
+class _Corners:
+    """The four grid cells around a point, standing in for a whole row-major grid in _bilinear:
+    its length is the grid's, and only the corner indices are held."""
+
+    __slots__ = ("items", "n")
+
+    def __init__(self, n: int, items: dict[int, float | None]) -> None:
+        self.n, self.items = n, items
+
+    def __len__(self) -> int:
+        return self.n
+
+    def __getitem__(self, k: int) -> float | None:
+        return self.items[k]
+
+
+_GRID_FIELDS = ("u", "v", "blh", "t", "precip")
+
+
+def _grid_corners(
+    session: Session, row: dict[str, Any], valid_at: dt.datetime | None = None, whole: bool = False
+) -> list[dict[str, Any]]:
+    """The newest best_match 10 m grid of each hour of the burn window, with only the four cells
+    around the scar: a case file used to read 72 whole grids (~535 KB) for one point.
+
+    Postgres works out the cell (floor of the same IEEE double division as _weather) and returns
+    the four values of each field; an index outside the grid comes back NULL, as _bilinear skips
+    it. `whole` reads the full arrays of one hour instead (a fallback that never triggers)."""
+    if whole:
+        out = session.execute(text("""
+            SELECT valid_at, run_at, lon0, lat0, dlon, dlat, nx, ny, u, v, blh, t, precip, fetch_id
+            FROM met_grid WHERE level = '10m' AND model = 'best_match' AND valid_at = :t
+            ORDER BY run_at DESC LIMIT 1"""), {"t": valid_at}).mappings().all()
+        return [dict(r) for r in out]
+    corners = ("k00", "k10", "k01", "k11")
+    picks = ", ".join(f"cardinality(g.{f}) AS n_{f}, " + ", ".join(f"g.{f}[c.{k} + 1] AS {f}_{k}" for k in corners)
+                      for f in _GRID_FIELDS)
+    rows = session.execute(text(f"""
+        SELECT DISTINCT ON (g.valid_at) g.valid_at, g.run_at, g.lon0, g.lat0, g.dlon, g.dlat, g.nx, g.ny,
+               g.fetch_id, c.i0, c.j0, c.k00, c.k10, c.k01, c.k11, {picks}
+        FROM met_grid g
+        CROSS JOIN LATERAL (
+            SELECT floor((CAST(:lon AS double precision) - g.lon0) / g.dlon)::int AS i0,
+                   floor((CAST(:lat AS double precision) - g.lat0) / g.dlat)::int AS j0) ij
+        CROSS JOIN LATERAL (
+            SELECT ij.i0, ij.j0, ij.j0 * g.nx + ij.i0 AS k00, ij.j0 * g.nx + ij.i0 + 1 AS k10,
+                   (ij.j0 + 1) * g.nx + ij.i0 AS k01, (ij.j0 + 1) * g.nx + ij.i0 + 1 AS k11) c
+        WHERE g.level = '10m' AND g.model = 'best_match' AND g.valid_at >= :a AND g.valid_at <= :b
+        ORDER BY g.valid_at, g.run_at DESC"""),
+        {"lon": row["lon"], "lat": row["lat"], "a": row["burn_after"], "b": row["burn_before"]}).mappings().all()
+    out = []
+    for r in rows:
+        g = {k: r[k] for k in ("valid_at", "run_at", "lon0", "lat0", "dlon", "dlat", "nx", "ny", "fetch_id",
+                               "i0", "j0")}
+        for f in _GRID_FIELDS:
+            n = r[f"n_{f}"]
+            g[f] = None if n is None else _Corners(n, {r[k]: r[f"{f}_{k}"] for k in corners})
+        out.append(g)
+    return out
+
+
 def _weather(session: Session, row: dict[str, Any]) -> dict[str, Any]:
     """10 m wind, boundary-layer height, temperature and rain at the scar while it could have burnt,
     from the met module's grids (best_match model). Says so when no grid covers the window."""
     window = {"from": row["burn_after"], "to": row["burn_before"]}
     if not _table_exists(session, "met_grid"):
         return {"available": False, "reason": "no weather grids stored yet (met job)", "window": window}
-    grids = session.execute(text("""
-        SELECT DISTINCT ON (valid_at) valid_at, run_at, lon0, lat0, dlon, dlat, nx, ny, u, v, blh, t, precip, fetch_id
-        FROM met_grid
-        WHERE level = '10m' AND model = 'best_match' AND valid_at >= :a AND valid_at <= :b
-        ORDER BY valid_at, run_at DESC"""), {"a": row["burn_after"], "b": row["burn_before"]}).mappings().all()
+    grids = _grid_corners(session, row)
     if not grids:
         return {"available": False, "reason": "no stored weather grid covers this burn window", "window": window}
     series = []
@@ -403,6 +528,8 @@ def _weather(session: Session, row: dict[str, Any]) -> dict[str, Any]:
         fy = (row["lat"] - g["lat0"]) / g["dlat"]
         if not (0 <= fx <= g["nx"] - 1 and 0 <= fy <= g["ny"] - 1):
             continue
+        if (int(math.floor(fx)), int(math.floor(fy))) != (g["i0"], g["j0"]):  # never in IEEE arithmetic
+            g = _grid_corners(session, row, valid_at=g["valid_at"], whole=True)[0]
         u = _bilinear(g["u"], g["nx"], fx, fy)
         v = _bilinear(g["v"], g["nx"], fx, fy)
         speed = None if u is None or v is None else 3.6 * math.hypot(u, v)

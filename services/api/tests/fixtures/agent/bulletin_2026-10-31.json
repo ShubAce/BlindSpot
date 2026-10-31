@@ -1,0 +1,2563 @@
+{
+"note": "The bulletin of 2026-10-31 as written live (run 55c79279, 30 Oct 23:28 UTC, local dev database): the fact blocks the tools returned, the source of every citation marker, and the stored English (gemini-3.5-flash-lite), Hindi (gemini-3.5-flash-lite; the number check had removed 5 sentences) and Punjabi (gemini-3.6-flash) texts. scars_summary_audit is the burn-scar audit as /api/scars/summary served it the same morning. Recorded for the honesty tests.",
+"run_id": "55c79279-5d72-4c80-b992-c988b38d5082",
+"facts": {
+"air_quality_delhi": {
+"output": {
+"now": {
+"pm10": 100.0,
+"pm25": 68.0,
+"method": "median of the city's stations that reported in the last 2 hours",
+"observed": "2026-10-31 03:00 IST",
+"provider": "openaq",
+"stations_stale": 9,
+"stations_reporting": 30
+},
+"city": "Delhi",
+"unit": "µg/m³",
+"sources": [
+{
+"marker": "[1]",
+"source": "Copernicus CAMS via Open-Meteo air quality",
+"fetched": "2026-10-31 03:30 IST"
+},
+{
+"marker": "[2]",
+"source": "data.gov.in CPCB real-time AQI",
+"fetched": "2026-10-31 04:23 IST"
+},
+{
+"marker": "[3]",
+"source": "OpenAQ v3 (CPCB stations)",
+"fetched": "2026-10-31 04:26 IST"
+},
+{
+"marker": "[4]",
+"source": "CPCB National Ambient Air Quality Standards (2009)"
+},
+{
+"marker": "[5]",
+"source": "WHO Global Air Quality Guidelines (2021)"
+}
+],
+"cpcb_aqi_now": {
+"aqi": 95,
+"category": "Satisfactory",
+"observed": "2026-10-31 03:00 IST",
+"stations": 56
+},
+"last_24_hours": {
+"max": {
+"pm25": 71.8,
+"hour_ending": "2026-10-31 02:00 IST"
+},
+"min": {
+"pm25": 7.4,
+"hour_ending": "2026-10-30 07:00 IST"
+},
+"as_of": "2026-10-31 04:00 IST",
+"hourly_last_24": [
+[
+"2026-10-30 05:00 IST",
+10.3
+],
+[
+"2026-10-30 06:00 IST",
+9.6
+],
+[
+"2026-10-30 07:00 IST",
+7.4
+],
+[
+"2026-10-30 08:00 IST",
+10.8
+],
+[
+"2026-10-30 09:00 IST",
+17.3
+],
+[
+"2026-10-30 10:00 IST",
+21.8
+],
+[
+"2026-10-30 11:00 IST",
+23.1
+],
+[
+"2026-10-30 12:00 IST",
+29.0
+],
+[
+"2026-10-30 13:00 IST",
+30.1
+],
+[
+"2026-10-30 14:00 IST",
+31.8
+],
+[
+"2026-10-30 15:00 IST",
+34.2
+],
+[
+"2026-10-30 16:00 IST",
+40.5
+],
+[
+"2026-10-30 17:00 IST",
+44.3
+],
+[
+"2026-10-30 18:00 IST",
+44.0
+],
+[
+"2026-10-30 19:00 IST",
+44.0
+],
+[
+"2026-10-30 20:00 IST",
+52.3
+],
+[
+"2026-10-30 21:00 IST",
+60.5
+],
+[
+"2026-10-30 22:00 IST",
+67.8
+],
+[
+"2026-10-30 23:00 IST",
+68.6
+],
+[
+"2026-10-31 02:00 IST",
+71.8
+],
+[
+"2026-10-31 03:00 IST",
+68.0
+]
+],
+"hours_with_data": 21
+},
+"pm25_24h_mean": 37.5,
+"cams_model_now": {
+"note": "model estimate, not a measurement",
+"pm25": 42.1,
+"valid": "2026-10-31 04:30 IST"
+},
+"other_cities_now": [
+{
+"city": "Ghaziabad",
+"pm25": 66.0,
+"cpcb_aqi": 76,
+"observed": "2026-10-31 03:00 IST",
+"cpcb_category": "Satisfactory",
+"pm25_24h_mean": 33.9
+},
+{
+"city": "Noida",
+"pm25": 42.5,
+"cpcb_aqi": 104,
+"observed": "2026-10-31 03:00 IST",
+"cpcb_category": "Moderate",
+"pm25_24h_mean": 28.4
+},
+{
+"city": "Gurugram",
+"pm25": 33.0,
+"cpcb_aqi": 66,
+"observed": "2026-10-31 03:00 IST",
+"cpcb_category": "Satisfactory",
+"pm25_24h_mean": 31.1
+},
+{
+"city": "Faridabad",
+"pm25": 44.2,
+"cpcb_aqi": 82,
+"observed": "2026-10-31 03:00 IST",
+"cpcb_category": "Satisfactory",
+"pm25_24h_mean": 37.4
+},
+{
+"city": "Chandigarh",
+"pm25": 36.6,
+"cpcb_aqi": 62,
+"observed": "2026-10-31 03:00 IST",
+"cpcb_category": "Satisfactory",
+"pm25_24h_mean": 32.0
+},
+{
+"city": "Bhiwadi",
+"pm25": 57.4,
+"cpcb_aqi": 83,
+"observed": "2026-10-31 03:00 IST",
+"cpcb_category": "Satisfactory",
+"pm25_24h_mean": 33.7
+},
+{
+"city": "Greater Noida",
+"pm25": 45.4,
+"cpcb_aqi": 86,
+"observed": "2026-10-31 03:00 IST",
+"cpcb_category": "Satisfactory",
+"pm25_24h_mean": 25.1
+},
+{
+"city": "Ambala",
+"cpcb_aqi": 121,
+"cpcb_category": "Moderate",
+"pm25_24h_mean": 48.8
+},
+{
+"city": "Amritsar",
+"pm25": 62.6,
+"cpcb_aqi": 149,
+"observed": "2026-10-31 03:00 IST",
+"cpcb_category": "Moderate",
+"pm25_24h_mean": 74.7
+},
+{
+"city": "Baddi",
+"cpcb_aqi": 155,
+"cpcb_category": "Moderate",
+"pm25_24h_mean": 75.2
+},
+{
+"city": "Baghpat",
+"pm25": 74.0,
+"cpcb_aqi": 68,
+"observed": "2026-10-31 03:00 IST",
+"cpcb_category": "Satisfactory"
+},
+{
+"city": "Bahadurgarh",
+"pm25": 49.5,
+"cpcb_aqi": 63,
+"observed": "2026-10-31 03:00 IST",
+"cpcb_category": "Satisfactory",
+"pm25_24h_mean": 29.9
+}
+],
+"stations_in_city": {
+"count": 39,
+"highest_pm25": [
+{
+"name": "DTU, New Delhi - CPCB",
+"pm10": 171.0,
+"pm25": 149.0,
+"stale": false,
+"observed": "2026-10-31 03:00 IST"
+},
+{
+"name": "Rohini, Delhi - DPCC",
+"pm10": 178.0,
+"pm25": 141.0,
+"stale": false,
+"observed": "2026-10-31 03:00 IST"
+},
+{
+"name": "Punjabi Bagh, Delhi - DPCC",
+"pm10": 143.0,
+"pm25": 134.0,
+"stale": false,
+"observed": "2026-10-31 03:00 IST"
+},
+{
+"name": "Jahangirpuri, Delhi - DPCC",
+"pm10": 164.0,
+"pm25": 125.0,
+"stale": false,
+"observed": "2026-10-31 03:00 IST"
+},
+{
+"name": "Sonia Vihar, Delhi - DPCC",
+"pm10": 168.0,
+"pm25": 96.0,
+"stale": false,
+"observed": "2026-10-31 03:00 IST"
+}
+]
+},
+"cams_model_series": {
+"max": {
+"pm25": 68.7,
+"time": "2026-10-30 22:30 IST"
+},
+"note": "Copernicus CAMS model estimate, not a measurement",
+"latest": {
+"pm25": 42.1,
+"time": "2026-10-31 04:30 IST"
+}
+},
+"pm25_24h_mean_hours": 21,
+"reference_24h_limits": {
+"who_2021_pm10": 45,
+"who_2021_pm25": 15,
+"india_naaqs_pm10": 100,
+"india_naaqs_pm25": 60
+},
+"pm25_24h_naqi_category": "Satisfactory"
+}
+},
+"smoke_origin_delhi": {
+"output": {
+"city": "Delhi",
+"sources": [
+{
+"marker": "[7]",
+"source": "Open-Meteo forecast API (winds at 10 m/950/925/850 hPa, boundary layer; CC BY 4.0)",
+"fetched": "2026-10-31 03:15 IST"
+},
+{
+"marker": "[8]",
+"source": "NASA FIRMS active fires (VIIRS 375 m, MODIS 1 km; NRT)",
+"fetched": "2026-10-31 04:22 IST"
+},
+{
+"marker": "[9]",
+"source": "Sentinel-2 L2A pixels (Earth Search COGs on AWS)",
+"fetched": "2026-10-31 04:41 IST"
+},
+{
+"marker": "[10]",
+"source": "Survey of India states + LGD/Bharatmaps districts (DataMeet / ramSeraph mirror)",
+"fetched": "2026-10-31 04:20 IST"
+},
+{
+"marker": "[11]",
+"source": "GeoNames cities15000 (CC BY 4.0)",
+"fetched": "2026-10-31 04:22 IST"
+},
+{
+"marker": "[12]",
+"source": "IITM Decision Support System for Delhi (stubble-burning share of PM2.5)",
+"fetched": "2026-10-31 04:26 IST"
+}
+],
+"back_trajectories": {
+"start": "2026-10-28 04:57 IST",
+"method": "particles carried backwards by Open-Meteo winds; a share is the fraction of particles that passed over the Punjab/Haryana burn belt",
+"summary": {
+"models": [
+"best_match",
+"gfs_seamless"
+],
+"blh_m_now": 77.0,
+"wind_basis": "boundary-layer mean wind (10 m to 850 hPa), best_match",
+"top_districts": [
+{
+"state": "Uttarakhand",
+"district": "Uttarkashi",
+"share_pct": 14.4
+},
+{
+"state": "Uttarakhand",
+"district": "Tehri Garhwal",
+"share_pct": 9.3
+},
+{
+"state": "Uttarakhand",
+"district": "Pauri Garhwal",
+"share_pct": 7.0
+},
+{
+"state": "Uttarakhand",
+"district": "Haridwar",
+"share_pct": 6.0
+},
+{
+"state": "Uttar Pradesh",
+"district": "Muzaffarnagar",
+"share_pct": 5.4
+}
+],
+"verdict_reason": "the model runs disagree, or the air passed only a little burning",
+"left_grid_share": 0.0,
+"wind_from_deg_now": 312.0,
+"wind_speed_kmh_now": 6.5,
+"exposure_from_scars": 0.0,
+"fire_exposure_index": 0.33,
+"fire_exposure_range": [
+0.08,
+0.33
+],
+"top_source_districts": [
+{
+"state": "Himachal Pradesh",
+"district": "Sirmaur",
+"share_pct": 63.0
+},
+{
+"state": "Uttar Pradesh",
+"district": "Saharanpur",
+"share_pct": 18.3
+},
+{
+"state": "Haryana",
+"district": "Yamunanagar",
+"share_pct": 11.9
+},
+{
+"state": "Haryana",
+"district": "Ambala",
+"share_pct": 2.7
+},
+{
+"state": "Haryana",
+"district": "Kurukshetra",
+"share_pct": 1.9
+}
+],
+"share_over_burn_belt_pct": {
+"h24": 55.3,
+"h48": 28.1,
+"h72": 19.0
+},
+"exposure_unattributed_share": 0.0
+},
+"model_run": "2026-10-31 04:57 IST",
+"hours_back": 72,
+"trajectories": 200,
+"verdict_hint": "mixed"
+},
+"iitm_dss_official_estimate": {
+"what": "% of Delhi's daily mean PM2.5",
+"stale": true,
+"today": {
+"date": "2026-10-30",
+"stubble_pct": 1.75
+},
+"outlook": [
+{
+"date": "2026-10-30",
+"fire_input": "viirs_previous_evening",
+"stubble_pct": 1.7
+},
+{
+"date": "2026-10-31",
+"fire_input": "climatology",
+"stubble_pct": 19.2
+},
+{
+"date": "2026-11-01",
+"fire_input": "climatology",
+"stubble_pct": 33.5
+},
+{
+"date": "2026-11-02",
+"fire_input": "climatology",
+"stubble_pct": 13.4
+}
+],
+"run_date": "2026-10-30",
+"method_note": "Please note that the contribution of stubble burning to Delhi's PM2.5 concentration for a particular day is determined using active fire count data from the VIIRS satellite-based instrument received on the evening of the previous day. The uncertainty especially related to the detection of fire event",
+"recent_days": [
+{
+"date": "2026-10-26",
+"stubble_pct": 4.68
+},
+{
+"date": "2026-10-27",
+"stubble_pct": 1.56
+},
+{
+"date": "2026-10-28",
+"stubble_pct": 0.98
+},
+{
+"date": "2026-10-29",
+"stubble_pct": 0.98
+},
+{
+"date": "2026-10-30",
+"stubble_pct": 1.75
+}
+]
+}
+}
+},
+"weather_delhi": {
+"output": {
+"city": "Delhi",
+"time": "2026-10-31 04:30 IST",
+"model": "best_match",
+"meaning": "wind 'from' is the direction the wind blows from; transport wind is the mean through the mixing layer, which carries smoke; a low mixing height traps it",
+"sources": [
+{
+"marker": "[7]",
+"source": "Open-Meteo forecast API (winds at 10 m/950/925/850 hPa, boundary layer; CC BY 4.0)",
+"fetched": "2026-10-31 03:15 IST"
+}
+],
+"wind_10m": {
+"from": "NW",
+"from_deg": 308,
+"speed_kmh": 5.8
+},
+"inversion": {
+"basis": "925 hPa (about 580 m above the plains) minus 2 m temperature, same model",
+"present": false,
+"t925_minus_t2m_c": -3.4
+},
+"temp_2m_c": 18.6,
+"wind_925hpa": {
+"from": "NNW",
+"from_deg": 341,
+"speed_kmh": 12.1
+},
+"second_model": {
+"gfs_seamless": {
+"blh_m": 263,
+"wind_10m": {
+"from": "NNW",
+"from_deg": 330,
+"speed_kmh": 6.7
+},
+"transport_wind": {
+"from": "NNW",
+"from_deg": 333,
+"speed_kmh": 8.8
+}
+}
+},
+"transport_wind": {
+"from": "NW",
+"from_deg": 311,
+"speed_kmh": 6.9
+},
+"mixing_height_m": 77,
+"rain_mm_last_24h": 10.1,
+"ventilation_m2_s": 147
+}
+},
+"fires_last_24_hours": {
+"output": {
+"note": "Detections are 375 m (VIIRS) or 1 km (MODIS) pixels seen at overpass times, not fields; overlapping satellites can see one fire more than once.",
+"region": "all",
+"window": "2026-10-30 04:58 IST to 2026-10-31 04:58 IST",
+"sources": [
+{
+"marker": "[22]",
+"source": "NASA FIRMS active fires (VIIRS 375 m, MODIS 1 km; NRT)",
+"fetched": "2026-10-31 04:23 IST"
+},
+{
+"marker": "[23]",
+"source": "CREAMS, ICAR-IARI: official residue-burning events",
+"fetched": "2026-10-31 04:23 IST"
+}
+],
+"by_state": {
+"Punjab": 232
+},
+"strongest": [
+{
+"id": 2846,
+"time": "2026-10-30 14:24 IST",
+"frp_mw": 23.4,
+"district": "Ferozepur",
+"satellite": "NOAA-21",
+"confidence": "nominal"
+},
+{
+"id": 4318,
+"time": "2026-10-30 13:20 IST",
+"frp_mw": 21.5,
+"district": "Kapurthala",
+"satellite": "Suomi NPP",
+"confidence": "high"
+},
+{
+"id": 2847,
+"time": "2026-10-30 14:24 IST",
+"frp_mw": 21.5,
+"district": "Ferozepur",
+"satellite": "NOAA-21",
+"confidence": "high"
+},
+{
+"id": 2794,
+"time": "2026-10-30 12:44 IST",
+"frp_mw": 16.1,
+"district": "Gurdaspur",
+"satellite": "NOAA-21",
+"confidence": "high"
+},
+{
+"id": 1386,
+"time": "2026-10-30 13:39 IST",
+"frp_mw": 11.8,
+"district": "Tarn Taran",
+"satellite": "NOAA-20",
+"confidence": "nominal"
+}
+],
+"clipped_to": "india",
+"detections": 232,
+"by_satellite": {
+"NOAA-20": 127,
+"NOAA-21": 43,
+"Suomi NPP": 62
+},
+"season_daily": {
+"since": "2026-09-15",
+"peak_day": {
+"date": "2026-10-29",
+"detections": 534
+},
+"last_7_days": [
+{
+"date": "2026-10-25",
+"complete": true,
+"detections": 178
+},
+{
+"date": "2026-10-26",
+"complete": true,
+"detections": 333
+},
+{
+"date": "2026-10-27",
+"complete": true,
+"detections": 267
+},
+{
+"date": "2026-10-28",
+"complete": true,
+"detections": 477
+},
+{
+"date": "2026-10-29",
+"complete": false,
+"detections": 534
+},
+{
+"date": "2026-10-30",
+"complete": false,
+"detections": 227
+},
+{
+"date": "2026-10-31",
+"complete": false,
+"detections": 6
+}
+],
+"frp_mw_total": 26848.1,
+"complete_days": 43,
+"detections_total": 4782
+},
+"window_hours": 24,
+"top_districts": [
+{
+"state": "Punjab",
+"district": "Tarn Taran",
+"detections": 54,
+"frp_mw_sum": 268.6
+},
+{
+"state": "Punjab",
+"district": "Gurdaspur",
+"detections": 51,
+"frp_mw_sum": 203.6
+},
+{
+"state": "Punjab",
+"district": "Amritsar",
+"detections": 25,
+"frp_mw_sum": 88.2
+},
+{
+"state": "Punjab",
+"district": "Kapurthala",
+"detections": 21,
+"frp_mw_sum": 112.9
+},
+{
+"state": "Punjab",
+"district": "Ferozepur",
+"detections": 17,
+"frp_mw_sum": 121.1
+},
+{
+"state": "Punjab",
+"district": "Jalandhar",
+"detections": 14,
+"frp_mw_sum": 62.7
+},
+{
+"state": "Punjab",
+"district": "Ludhiana",
+"detections": 12,
+"frp_mw_sum": 51.1
+},
+{
+"state": "Punjab",
+"district": "Hoshiarpur",
+"detections": 7,
+"frp_mw_sum": 23.3
+},
+{
+"state": "Punjab",
+"district": "Fazilka",
+"detections": 6,
+"frp_mw_sum": 43.3
+},
+{
+"state": "Punjab",
+"district": "Bathinda",
+"detections": 5,
+"frp_mw_sum": 18.5
+}
+],
+"first_detection": "2026-10-30 12:44 IST",
+"latest_detection": "2026-10-31 01:44 IST",
+"satellites_with_none": [
+"Aqua",
+"Terra"
+],
+"official_counts_creams": {
+"note": "All events in the CREAMS layers, every state CREAMS monitors.",
+"what": "fire events in the official CREAMS (IARI) rice-residue layers",
+"since": "2026-09-15",
+"total": 1043,
+"by_state": {
+"Delhi": 1,
+"Punjab": 1019,
+"Haryana": 23
+},
+"last_7_days": [
+{
+"date": "2026-10-25",
+"events": 8,
+"published": true
+},
+{
+"date": "2026-10-26",
+"events": 105,
+"published": true
+},
+{
+"date": "2026-10-27",
+"events": 33,
+"published": true
+},
+{
+"date": "2026-10-28",
+"events": 102,
+"published": true
+},
+{
+"date": "2026-10-29",
+"events": 195,
+"published": true
+},
+{
+"date": "2026-10-30",
+"events": 40,
+"published": true
+},
+{
+"date": "2026-10-31",
+"events": 0,
+"published": false
+}
+],
+"by_satellite": {
+"Aqua": 351,
+"Suomi NPP": 692
+},
+"top_districts": [
+{
+"count": 390,
+"state": "Punjab",
+"district": "Tarn Taran"
+},
+{
+"count": 177,
+"state": "Punjab",
+"district": "Amritsar"
+},
+{
+"count": 105,
+"state": "Punjab",
+"district": "Ferozepur"
+},
+{
+"count": 79,
+"state": "Punjab",
+"district": "Gurdaspur"
+},
+{
+"count": 62,
+"state": "Punjab",
+"district": "Kapurthala"
+},
+{
+"count": 31,
+"state": "Punjab",
+"district": "Bathinda"
+},
+{
+"count": 27,
+"state": "Punjab",
+"district": "Fazilka"
+},
+{
+"count": 23,
+"state": "Punjab",
+"district": "Jalandhar"
+},
+"... 17 more"
+]
+},
+"time_of_day_last_7_days": {
+"total": 2165,
+"unobserved_span_ist": {
+"end": "01:06",
+"rule": "from the end of the last daytime window to the next window",
+"hours": 8.53,
+"share": 0.0005,
+"start": "16:34",
+"share_pct": 0.1,
+"detections": 1,
+"after_daytime": true
+},
+"observed_windows_ist": [
+{
+"end": "02:59",
+"count": 34,
+"minor": false,
+"start": "01:06",
+"daynight": "N",
+"share_pct": 1.6,
+"satellites": [
+"NOAA-20",
+"NOAA-21",
+"Suomi NPP"
+]
+},
+{
+"end": "09:42",
+"count": 10,
+"minor": true,
+"start": "09:40",
+"daynight": "D",
+"share_pct": 0.5,
+"satellites": [
+"Terra"
+]
+},
+{
+"end": "14:37",
+"count": 1824,
+"minor": false,
+"start": "12:35",
+"daynight": "D",
+"share_pct": 84.2,
+"satellites": [
+"NOAA-20",
+"NOAA-21",
+"Suomi NPP"
+]
+},
+{
+"end": "16:34",
+"count": 296,
+"minor": false,
+"start": "15:19",
+"daynight": "D",
+"share_pct": 13.7,
+"satellites": [
+"Aqua"
+]
+},
+{
+"end": "20:56",
+"count": 1,
+"minor": true,
+"start": "20:56",
+"daynight": "N",
+"share_pct": 0.1,
+"satellites": [
+"Terra"
+]
+}
+],
+"detections_by_ist_hour": {
+"1": 13,
+"2": 21,
+"9": 10,
+"12": 146,
+"13": 1382,
+"14": 296,
+"15": 122,
+"16": 174,
+"20": 1
+}
+}
+}
+},
+"smoke_forecast": {
+"output": {
+"hours": 72.0,
+"until": "2026-11-02 04:30 IST",
+"cities": [
+{
+"city": "Amritsar",
+"arrival": "2026-10-30 13:30 IST",
+"peak_time": "2026-10-31 02:30 IST",
+"from_state_pct": {
+"Punjab": 21.7,
+"Jammu And Kashmir": 0.1
+},
+"peak_smoke_index": 135.9,
+"peak_range_across_models": [
+60.9,
+135.9
+]
+},
+{
+"city": "Ludhiana",
+"arrival": "2026-10-30 13:30 IST",
+"peak_time": "2026-10-31 14:30 IST",
+"from_state_pct": {
+"Punjab": 41.0,
+"Jammu And Kashmir": 0.1
+},
+"peak_smoke_index": 110.3,
+"peak_range_across_models": [
+81.3,
+110.3
+]
+},
+{
+"city": "Jalandhar",
+"arrival": "2026-10-30 13:30 IST",
+"peak_time": "2026-10-31 07:30 IST",
+"from_state_pct": {
+"Punjab": 45.0,
+"Jammu And Kashmir": 0.2
+},
+"peak_smoke_index": 109.6,
+"peak_range_across_models": [
+65.4,
+109.6
+]
+},
+{
+"city": "Saharanpur",
+"arrival": "2026-10-31 15:30 IST",
+"peak_time": "2026-11-02 01:30 IST",
+"from_state_pct": {
+"Punjab": 49.1,
+"Jammu And Kashmir": 0.2
+},
+"peak_smoke_index": 99.3,
+"peak_range_across_models": [
+5.0,
+99.3
+]
+},
+{
+"city": "Patiala",
+"arrival": "2026-10-30 23:30 IST",
+"peak_time": "2026-11-01 00:30 IST",
+"from_state_pct": {
+"Punjab": 45.5,
+"Jammu And Kashmir": 0.1
+},
+"peak_smoke_index": 96.1,
+"peak_range_across_models": [
+90.5,
+96.1
+]
+},
+{
+"city": "Chandigarh",
+"arrival": "2026-10-30 22:30 IST",
+"peak_time": "2026-11-01 04:30 IST",
+"from_state_pct": {
+"Punjab": 42.6,
+"Jammu And Kashmir": 0.5
+},
+"peak_smoke_index": 88.8,
+"peak_range_across_models": [
+17.1,
+88.8
+]
+},
+{
+"city": "Karnal",
+"arrival": "2026-10-31 10:30 IST",
+"peak_time": "2026-11-01 01:30 IST",
+"from_state_pct": {
+"Punjab": 59.5,
+"Jammu And Kashmir": 0.1
+},
+"peak_smoke_index": 83.4,
+"peak_range_across_models": [
+24.0,
+83.4
+]
+},
+{
+"city": "Meerut",
+"arrival": "2026-10-31 21:30 IST",
+"peak_time": "2026-11-01 12:30 IST",
+"from_state_pct": {
+"Punjab": 63.6,
+"Haryana": 0.0,
+"Jammu And Kashmir": 0.1
+},
+"peak_smoke_index": 69.8,
+"peak_range_across_models": [
+4.7,
+69.8
+]
+},
+{
+"city": "Panipat",
+"arrival": "2026-10-31 13:30 IST",
+"peak_time": "2026-11-01 02:30 IST",
+"from_state_pct": {
+"Punjab": 63.5,
+"Haryana": 0.0,
+"Jammu And Kashmir": 0.0
+},
+"peak_smoke_index": 69.1,
+"peak_range_across_models": [
+21.3,
+69.1
+]
+},
+{
+"city": "Bathinda",
+"arrival": "2026-10-30 14:30 IST",
+"peak_time": "2026-10-31 15:30 IST",
+"from_state_pct": {
+"Punjab": 38.6,
+"Rajasthan": 0.0
+},
+"peak_smoke_index": 60.4,
+"peak_range_across_models": [
+19.6,
+60.4
+]
+}
+],
+"inputs": {
+"fires": 572,
+"scars": 0,
+"scars_kind": "candidate_unseen_burns",
+"fire_tonnes": 1850.2,
+"scar_tonnes": 0,
+"fires_by_state": {
+"Punjab": 234,
+"Haryana": 1,
+"Rajasthan": 20,
+"outside India": 316,
+"Jammu And Kashmir": 1
+},
+"particles_per_source": 40
+},
+"limits": "2-D; no deposition or rain-out; no terrain blocking over the Himalaya",
+"models": [
+"best_match",
+"gfs_seamless"
+],
+"sources": [
+{
+"marker": "[7]",
+"source": "Open-Meteo forecast API (winds at 10 m/950/925/850 hPa, boundary layer; CC BY 4.0)",
+"fetched": "2026-10-31 03:15 IST"
+},
+{
+"marker": "[8]",
+"source": "NASA FIRMS active fires (VIIRS 375 m, MODIS 1 km; NRT)",
+"fetched": "2026-10-31 04:22 IST"
+},
+{
+"marker": "[9]",
+"source": "Sentinel-2 L2A pixels (Earth Search COGs on AWS)",
+"fetched": "2026-10-31 04:41 IST"
+},
+{
+"marker": "[10]",
+"source": "Survey of India states + LGD/Bharatmaps districts (DataMeet / ramSeraph mirror)",
+"fetched": "2026-10-31 04:20 IST"
+},
+{
+"marker": "[11]",
+"source": "GeoNames cities15000 (CC BY 4.0)",
+"fetched": "2026-10-31 04:22 IST"
+}
+],
+"model_run": "2026-10-31 04:57 IST",
+"trajectories": 2000,
+"released_from": "2026-10-30 04:30 IST",
+"release_window": [
+"2026-10-30 04:30 IST",
+"2026-10-31 04:57 IST"
+],
+"smoke_index_unit": "tonnes of crop residue (dry matter) burnt whose smoke is within 30 km"
+}
+},
+"burn_scars_season": {
+"output": {
+"filter": {},
+"method": {
+"status": "candidates: tillage can look like a burn",
+"summary": "Sentinel-2 L2A, cropland only: NIR and SWIR darkened since the previous clear pass (dB8A>0.07, dB11>0.07, dB12>0.03) and the field now looks charred (BAIS2>=0.78, brightness<=0.34); passes at most 6 days apart; clusters of at least 0.52 ha whose mean post-burn NBR is below 0.0 (drops flooded fields and cloud shadows). Candidates: tillage can look similar.",
+"unseen_rule": "unseen = no FIRMS detection within max(1 km, pixel half-diagonal + 200 m) of the scar between the clear pass before it and 3 h after the pass that shows it"
+},
+"season": {
+"since": "2026-10-01",
+"area_ha": 104476.3,
+"clusters": 67854,
+"last_pass": "2026-10-30 11:10 IST",
+"unseen_area_ha": 86303.0,
+"checked_area_ha": 104476.3,
+"fire_detections": 4319,
+"unseen_share_pct": 82.6,
+"fire_detections_scope": "FIRMS detections in the districts listed in by_district (addition)"
+},
+"sources": [
+{
+"marker": "[28]",
+"source": "Earth Search STAC: Sentinel-2 L2A Collection 1",
+"fetched": "2026-10-31 04:57 IST"
+},
+{
+"marker": "[29]",
+"source": "Sentinel-2 L2A pixels (Earth Search COGs on AWS)",
+"fetched": "2026-10-31 04:42 IST"
+},
+{
+"marker": "[30]",
+"source": "ESA WorldCover 2021 v200 cropland (Planetary Computer)",
+"fetched": "2026-10-31 04:41 IST"
+},
+{
+"marker": "[22]",
+"source": "NASA FIRMS active fires (VIIRS 375 m, MODIS 1 km; NRT)",
+"fetched": "2026-10-31 04:23 IST"
+},
+{
+"marker": "[10]",
+"source": "Survey of India states + LGD/Bharatmaps districts (DataMeet / ramSeraph mirror)",
+"fetched": "2026-10-31 04:20 IST"
+}
+],
+"clusters": [
+{
+"id": 42623,
+"hazy": false,
+"area_ha": 0.8,
+"village": "Karail",
+"district": "Sangrur",
+"confidence": 0.59,
+"subdistrict": "Moonak",
+"fire_matches": 0,
+"burnt_between": [
+"2026-10-28 11:20 IST",
+"2026-10-30 11:10 IST"
+],
+"candidate_unseen": true,
+"centroid_lon_lat": [
+75.8385,
+29.7991
+]
+},
+{
+"id": 42626,
+"hazy": false,
+"area_ha": 0.7,
+"village": "Ramgarh Gujran",
+"district": "Sangrur",
+"confidence": 0.74,
+"subdistrict": "Moonak",
+"fire_matches": 0,
+"burnt_between": [
+"2026-10-28 11:20 IST",
+"2026-10-30 11:10 IST"
+],
+"candidate_unseen": true,
+"centroid_lon_lat": [
+76.0005,
+29.7841
+]
+},
+{
+"id": 42624,
+"hazy": false,
+"area_ha": 0.6,
+"village": "Bazidpur",
+"district": "Sangrur",
+"confidence": 0.49,
+"subdistrict": "Moonak",
+"fire_matches": 0,
+"burnt_between": [
+"2026-10-28 11:20 IST",
+"2026-10-30 11:10 IST"
+],
+"candidate_unseen": true,
+"centroid_lon_lat": [
+75.8548,
+29.8262
+]
+},
+{
+"id": 42625,
+"hazy": false,
+"area_ha": 0.6,
+"village": "Bazidpur",
+"district": "Sangrur",
+"confidence": 0.68,
+"subdistrict": "Moonak",
+"fire_matches": 0,
+"burnt_between": [
+"2026-10-28 11:20 IST",
+"2026-10-30 11:10 IST"
+],
+"candidate_unseen": true,
+"centroid_lon_lat": [
+75.8608,
+29.8075
+]
+},
+{
+"id": 5418,
+"hazy": false,
+"area_ha": 6.4,
+"village": "Rasulpur Chhanna",
+"district": "Sangrur",
+"confidence": 1.0,
+"subdistrict": "Sangrur",
+"fire_matches": 0,
+"burnt_between": [
+"2026-10-28 11:20 IST",
+"2026-10-30 11:10 IST"
+],
+"nearest_fire_m": 4367,
+"candidate_unseen": true,
+"centroid_lon_lat": [
+75.9788,
+30.3249
+]
+}
+],
+"coverage": {
+"tiles": [
+"43RCP",
+"43RDP",
+"43RDQ",
+"43REN",
+"43REP",
+"... 7 more"
+],
+"failed": 0,
+"skipped": 32,
+"processed": 142,
+"catalogued": 251,
+"latest_processed_pass": "2026-10-30 11:10 IST"
+},
+"matching": {
+"area_ha": 104476.3,
+"clusters": 67854,
+"unseen_area_ha": 86303.0,
+"unseen_clusters": 59465,
+"checked_clusters": 67854
+},
+"by_district": [
+{
+"res_m": 20,
+"scope": [
+"hotspots"
+],
+"state": "Punjab",
+"area_ha": 14318.4,
+"clusters": 9269,
+"district": "Amritsar",
+"unseen_area_ha": 10715.3,
+"fire_detections": 658,
+"unseen_share_pct": 74.8
+},
+{
+"res_m": 20,
+"scope": [
+"hotspots"
+],
+"state": "Punjab",
+"area_ha": 13965.8,
+"clusters": 7877,
+"district": "Tarn Taran",
+"unseen_area_ha": 8311.0,
+"fire_detections": 1274,
+"unseen_share_pct": 59.5
+},
+{
+"res_m": 20,
+"scope": [
+"hotspots"
+],
+"state": "Punjab",
+"area_ha": 9822.6,
+"clusters": 7214,
+"district": "Patiala",
+"unseen_area_ha": 9259.8,
+"fire_detections": 101,
+"unseen_share_pct": 94.3
+},
+{
+"res_m": 20,
+"scope": [
+"hotspots"
+],
+"state": "Punjab",
+"area_ha": 9500.2,
+"clusters": 6993,
+"district": "Ludhiana",
+"unseen_area_ha": 9277.3,
+"fire_detections": 73,
+"unseen_share_pct": 97.7
+},
+{
+"res_m": 40,
+"scope": [
+"punjab"
+],
+"state": "Punjab",
+"area_ha": 9000.6,
+"clusters": 5176,
+"district": "Gurdaspur",
+"unseen_area_ha": 6706.6,
+"fire_detections": 325,
+"unseen_share_pct": 74.5
+},
+{
+"res_m": 40,
+"scope": [
+"punjab"
+],
+"state": "Punjab",
+"area_ha": 8631.2,
+"clusters": 3946,
+"district": "Kapurthala",
+"unseen_area_ha": 5755.8,
+"fire_detections": 309,
+"unseen_share_pct": 66.7
+},
+{
+"res_m": 20,
+"scope": [
+"hotspots"
+],
+"state": "Punjab",
+"area_ha": 8471.2,
+"clusters": 5623,
+"district": "Fatehgarh Sahib",
+"unseen_area_ha": 7953.8,
+"fire_detections": 64,
+"unseen_share_pct": 93.9
+},
+{
+"res_m": 40,
+"scope": [
+"punjab"
+],
+"state": "Punjab",
+"area_ha": 5860.2,
+"clusters": 4016,
+"district": "Jalandhar",
+"unseen_area_ha": 5435.2,
+"fire_detections": 123,
+"unseen_share_pct": 92.8
+},
+{
+"res_m": 40,
+"scope": [
+"haryana"
+],
+"state": "Haryana",
+"area_ha": 3755.8,
+"clusters": 2266,
+"district": "Karnal",
+"unseen_area_ha": 3746.4,
+"fire_detections": 11,
+"unseen_share_pct": 99.8
+},
+{
+"res_m": 40,
+"scope": [
+"punjab"
+],
+"state": "Punjab",
+"area_ha": 3702.7,
+"clusters": 2176,
+"district": "Hoshiarpur",
+"unseen_area_ha": 2539.8,
+"fire_detections": 65,
+"unseen_share_pct": 68.6
+}
+],
+"passes_window": {
+"last_pass": "2026-10-30 11:10 IST",
+"first_pass": "2026-10-02 11:10 IST"
+}
+}
+},
+"burn_risk": {
+"output": {
+"as_of": "2026-10-31 04:43 IST",
+"method": {
+"note": "A transparent ranking, not a probability: it orders today's fields by how likely they are to burn next. See `backtest` for how well that ordering worked on this season.",
+"formula": "risk = 100 x dryness x (0.4 timing + 0.4 neighbourhood + 0.2 history)"
+},
+"status": "172130 of 172130 harvested-but-unburnt fields have a risk score",
+"totals": {
+"scored": 172130,
+"area_ha": 333050.0,
+"clusters": 172130,
+"scored_area_ha": 333050.0
+},
+"sources": [
+{
+"marker": "[28]",
+"source": "Earth Search STAC: Sentinel-2 L2A Collection 1",
+"fetched": "2026-10-31 04:57 IST"
+},
+{
+"marker": "[22]",
+"source": "NASA FIRMS active fires (VIIRS 375 m, MODIS 1 km; NRT)",
+"fetched": "2026-10-31 04:23 IST"
+},
+{
+"marker": "[31]",
+"source": "Open-Meteo forecast API (winds at 10 m/950/925/850 hPa, boundary layer; CC BY 4.0)",
+"fetched": "2026-10-31 04:46 IST"
+}
+],
+"backtest": {
+"method": "How well would the score have ranked fields that really burned?\n For every pair of consecutive clear passes (t0 -> t1) of a tile with burn scars: - burnt (label",
+"reason": null,
+"windows": 175,
+"headline": {
+"t0": "2026-10-28 11:20 IST",
+"t1": "2026-10-30 11:10 IST",
+"auc": 0.69,
+"tile": "43REP",
+"burnt": 182,
+"unburnt": 991,
+"gap_days": 2.0,
+"villages": {
+"auc": 0.79,
+"villages": 239,
+"base_rate": 0.42,
+"with_a_burn": 100,
+"precision_at_k": {
+"5": 1.0,
+"10": 0.9,
+"20": 0.9,
+"50": 0.76
+},
+"unnamed_fields": 5,
+"baseline_area_only": {
+"auc": 0.71,
+"precision_at_k": {
+"5": 0.8,
+"10": 0.7,
+"20": 0.75,
+"50": 0.62
+}
+}
+},
+"base_rate": 0.15,
+"baselines": {
+"random": {
+"auc": 0.5,
+"precision": 0.15
+},
+"history_only": {
+"auc": 0.5,
+"precision_at_k": {
+"10": 0.1,
+"25": 0.18,
+"50": 0.18,
+"100": 0.19,
+"250": 0.17
+}
+},
+"fires_7d_only": {
+"auc": 0.57,
+"precision_at_k": {
+"10": 0.03,
+"25": 0.19,
+"50": 0.24,
+"100": 0.24,
+"250": 0.23
+}
+},
+"burned_ha_7d_only": {
+"auc": 0.7,
+"precision_at_k": {
+"10": 0.5,
+"25": 0.24,
+"50": 0.24,
+"100": 0.28,
+"250": 0.27
+}
+},
+"neighbourhood_only": {
+"auc": 0.7,
+"precision_at_k": {
+"10": 0.1,
+"25": 0.26,
+"50": 0.22,
+"100": 0.24,
+"250": 0.28
+}
+}
+},
+"lift_at_k": {
+"10": 0.65,
+"25": 1.03,
+"50": 1.16,
+"100": 1.61,
+"250": 1.68
+},
+"why_this_pair": "the latest pass pair (the cleanest unburnt control group)",
+"precision_at_k": {
+"10": 0.1,
+"25": 0.16,
+"50": 0.18,
+"100": 0.25,
+"250": 0.26
+}
+},
+"all_pairs": {
+"pairs": 148,
+"auc_by_pair": [
+{
+"t0": "2026-10-03 11:20 IST",
+"t1": "2026-10-05 11:10 IST",
+"auc": 0.69,
+"burnt": 288,
+"unburnt": 15,
+"base_rate": 0.95
+},
+{
+"t0": "2026-10-05 11:10 IST",
+"t1": "2026-10-08 11:20 IST",
+"auc": 0.94,
+"burnt": 7,
+"unburnt": 46,
+"base_rate": 0.13
+},
+{
+"t0": "2026-10-05 11:10 IST",
+"t1": "2026-10-08 11:20 IST",
+"auc": 0.68,
+"burnt": 19,
+"unburnt": 54,
+"base_rate": 0.26
+},
+{
+"t0": "2026-10-05 11:10 IST",
+"t1": "2026-10-08 11:20 IST",
+"auc": 0.63,
+"burnt": 101,
+"unburnt": 648,
+"base_rate": 0.14
+},
+{
+"t0": "2026-10-05 11:10 IST",
+"t1": "2026-10-08 11:20 IST",
+"auc": 0.4,
+"burnt": 13,
+"unburnt": 1245,
+"base_rate": 0.01
+},
+{
+"t0": "2026-10-05 11:10 IST",
+"t1": "2026-10-10 11:10 IST",
+"auc": 0.56,
+"burnt": 31,
+"unburnt": 1245,
+"base_rate": 0.02
+},
+{
+"t0": "2026-10-05 11:11 IST",
+"t1": "2026-10-10 11:11 IST",
+"auc": 0.52,
+"burnt": 125,
+"unburnt": 357,
+"base_rate": 0.26
+},
+{
+"t0": "2026-10-08 11:20 IST",
+"t1": "2026-10-13 11:20 IST",
+"auc": 0.94,
+"burnt": 250,
+"unburnt": 122,
+"base_rate": 0.67
+},
+"... 140 more"
+],
+"auc_weighted_mean": 0.56
+},
+"computed_at": "2026-10-31 04:43 IST",
+"timing_note": "timing is not backtested: burn_cluster has no harvested_after/harvested_before, so the harvest date of a field that burnt is unknown",
+"timing_tested": false,
+"latest_attempt": null
+},
+"top_fields": [
+{
+"id": 76599,
+"area_ha": 2.6,
+"village": "Khem Karan",
+"district": "Tarn Taran",
+"risk_score": 100.0,
+"risk_factors": {
+"as_of": "2026-10-31 04:43 IST",
+"model": "risk-v2",
+"score": 99.99,
+"points": {
+"timing": 40.0,
+"history": 20.0,
+"neighbourhood": 39.99
+},
+"timing": {
+"value": 1.0,
+"days_range": [
+2.7,
+12.7
+],
+"window_days": [
+10.0,
+30.0
+],
+"days_since_harvest": 7.7
+},
+"dryness": {
+"value": 1.0,
+"reason": null,
+"source": "Open-Meteo best_match",
+"missing": false,
+"rain_next_72h_mm": 0.0,
+"rain_past_24h_mm": 0.2
+},
+"history": {
+"value": 1.0,
+"reason": null,
+"season": "2025-09-15/2025-11-30",
+"source": "NASA FIRMS VIIRS_SNPP_SP",
+"missing": false,
+"radius_km": 5.0,
+"typical_fires": 6.0,
+"clipped_to_india": true,
+"fires_last_season": 50
+},
+"weights": {
+"timing": 0.4,
+"history": 0.2,
+"neighbourhood": 0.4
+},
+"fetch_ids": {
+"rain": [
+4516
+],
+"history": [
+2910,
+2911,
+2912,
+2913,
+"... 12 more"
+]
+},
+"neighbourhood": {
+"days": 7,
+"value": 1.0,
+"combined": "noisy-or of events and burnt hectares",
+"fires_7d": 17,
+"radius_km": 5.0,
+"burned_ha_7d": 379.4,
+"typical_events": 30.0,
+"typical_burned_ha": 81.2,
+"candidate_unseen_burns_7d": 92
+}
+},
+"centroid_lon_lat": [
+74.5608,
+31.1605
+],
+"village_inferred": false,
+"harvested_between": [
+"2026-10-18 11:20 IST",
+"2026-10-28 11:20 IST"
+],
+"days_since_harvest": 7.7
+},
+{
+"id": 76586,
+"area_ha": 3.4,
+"village": "Khem Karan",
+"district": "Tarn Taran",
+"risk_score": 100.0,
+"risk_factors": {
+"as_of": "2026-10-31 04:43 IST",
+"model": "risk-v2",
+"score": 99.98,
+"points": {
+"timing": 40.0,
+"history": 19.99,
+"neighbourhood": 39.99
+},
+"timing": {
+"value": 1.0,
+"days_range": [
+2.7,
+12.7
+],
+"window_days": [
+10.0,
+30.0
+],
+"days_since_harvest": 7.7
+},
+"dryness": {
+"value": 1.0,
+"reason": null,
+"source": "Open-Meteo best_match",
+"missing": false,
+"rain_next_72h_mm": 0.0,
+"rain_past_24h_mm": 0.2
+},
+"history": {
+"value": 1.0,
+"reason": null,
+"season": "2025-09-15/2025-11-30",
+"source": "NASA FIRMS VIIRS_SNPP_SP",
+"missing": false,
+"radius_km": 5.0,
+"typical_fires": 6.0,
+"clipped_to_india": true,
+"fires_last_season": 45
+},
+"weights": {
+"timing": 0.4,
+"history": 0.2,
+"neighbourhood": 0.4
+},
+"fetch_ids": {
+"rain": [
+4516
+],
+"history": [
+2910,
+2911,
+2912,
+2913,
+"... 12 more"
+]
+},
+"neighbourhood": {
+"days": 7,
+"value": 1.0,
+"combined": "noisy-or of events and burnt hectares",
+"fires_7d": 17,
+"radius_km": 5.0,
+"burned_ha_7d": 399.5,
+"typical_events": 30.0,
+"typical_burned_ha": 81.2,
+"candidate_unseen_burns_7d": 93
+}
+},
+"centroid_lon_lat": [
+74.5651,
+31.1674
+],
+"village_inferred": false,
+"harvested_between": [
+"2026-10-18 11:20 IST",
+"2026-10-28 11:20 IST"
+],
+"days_since_harvest": 7.7
+},
+{
+"id": 76606,
+"area_ha": 3.2,
+"village": "Khem Karan",
+"district": "Tarn Taran",
+"risk_score": 100.0,
+"risk_factors": {
+"as_of": "2026-10-31 04:43 IST",
+"model": "risk-v2",
+"score": 99.98,
+"points": {
+"timing": 40.0,
+"history": 19.99,
+"neighbourhood": 39.98
+},
+"timing": {
+"value": 1.0,
+"days_range": [
+2.7,
+12.7
+],
+"window_days": [
+10.0,
+30.0
+],
+"days_since_harvest": 7.7
+},
+"dryness": {
+"value": 1.0,
+"reason": null,
+"source": "Open-Meteo best_match",
+"missing": false,
+"rain_next_72h_mm": 0.0,
+"rain_past_24h_mm": 0.2
+},
+"history": {
+"value": 1.0,
+"reason": null,
+"season": "2025-09-15/2025-11-30",
+"source": "NASA FIRMS VIIRS_SNPP_SP",
+"missing": false,
+"radius_km": 5.0,
+"typical_fires": 6.0,
+"clipped_to_india": true,
+"fires_last_season": 48
+},
+"weights": {
+"timing": 0.4,
+"history": 0.2,
+"neighbourhood": 0.4
+},
+"fetch_ids": {
+"rain": [
+4516
+],
+"history": [
+2910,
+2911,
+2912,
+2913,
+"... 12 more"
+]
+},
+"neighbourhood": {
+"days": 7,
+"value": 1.0,
+"combined": "noisy-or of events and burnt hectares",
+"fires_7d": 21,
+"radius_km": 5.0,
+"burned_ha_7d": 347.4,
+"typical_events": 30.0,
+"typical_burned_ha": 81.2,
+"candidate_unseen_burns_7d": 85
+}
+},
+"centroid_lon_lat": [
+74.5606,
+31.1544
+],
+"village_inferred": false,
+"harvested_between": [
+"2026-10-18 11:20 IST",
+"2026-10-28 11:20 IST"
+],
+"days_since_harvest": 7.7
+},
+{
+"id": 76601,
+"area_ha": 2.5,
+"village": "Khem Karan",
+"district": "Tarn Taran",
+"risk_score": 100.0,
+"risk_factors": {
+"as_of": "2026-10-31 04:43 IST",
+"model": "risk-v2",
+"score": 99.98,
+"points": {
+"timing": 40.0,
+"history": 19.99,
+"neighbourhood": 39.98
+},
+"timing": {
+"value": 1.0,
+"days_range": [
+2.7,
+12.7
+],
+"window_days": [
+10.0,
+30.0
+],
+"days_since_harvest": 7.7
+},
+"dryness": {
+"value": 1.0,
+"reason": null,
+"source": "Open-Meteo best_match",
+"missing": false,
+"rain_next_72h_mm": 0.0,
+"rain_past_24h_mm": 0.2
+},
+"history": {
+"value": 1.0,
+"reason": null,
+"season": "2025-09-15/2025-11-30",
+"source": "NASA FIRMS VIIRS_SNPP_SP",
+"missing": false,
+"radius_km": 5.0,
+"typical_fires": 6.0,
+"clipped_to_india": true,
+"fires_last_season": 49
+},
+"weights": {
+"timing": 0.4,
+"history": 0.2,
+"neighbourhood": 0.4
+},
+"fetch_ids": {
+"rain": [
+4516
+],
+"history": [
+2910,
+2911,
+2912,
+2913,
+"... 12 more"
+]
+},
+"neighbourhood": {
+"days": 7,
+"value": 1.0,
+"combined": "noisy-or of events and burnt hectares",
+"fires_7d": 17,
+"radius_km": 5.0,
+"burned_ha_7d": 353.9,
+"typical_events": 30.0,
+"typical_burned_ha": 81.2,
+"candidate_unseen_burns_7d": 84
+}
+},
+"centroid_lon_lat": [
+74.5579,
+31.158
+],
+"village_inferred": false,
+"harvested_between": [
+"2026-10-18 11:20 IST",
+"2026-10-28 11:20 IST"
+],
+"days_since_harvest": 7.7
+},
+{
+"id": 76602,
+"area_ha": 2.1,
+"village": "Khem Karan",
+"district": "Tarn Taran",
+"risk_score": 100.0,
+"risk_factors": {
+"as_of": "2026-10-31 04:43 IST",
+"model": "risk-v2",
+"score": 99.98,
+"points": {
+"timing": 40.0,
+"history": 19.99,
+"neighbourhood": 39.99
+},
+"timing": {
+"value": 1.0,
+"days_range": [
+2.7,
+12.7
+],
+"window_days": [
+10.0,
+30.0
+],
+"days_since_harvest": 7.7
+},
+"dryness": {
+"value": 1.0,
+"reason": null,
+"source": "Open-Meteo best_match",
+"missing": false,
+"rain_next_72h_mm": 0.0,
+"rain_past_24h_mm": 0.2
+},
+"history": {
+"value": 1.0,
+"reason": null,
+"season": "2025-09-15/2025-11-30",
+"source": "NASA FIRMS VIIRS_SNPP_SP",
+"missing": false,
+"radius_km": 5.0,
+"typical_fires": 6.0,
+"clipped_to_india": true,
+"fires_last_season": 47
+},
+"weights": {
+"timing": 0.4,
+"history": 0.2,
+"neighbourhood": 0.4
+},
+"fetch_ids": {
+"rain": [
+4516
+],
+"history": [
+2910,
+2911,
+2912,
+2913,
+"... 12 more"
+]
+},
+"neighbourhood": {
+"days": 7,
+"value": 1.0,
+"combined": "noisy-or of events and burnt hectares",
+"fires_7d": 19,
+"radius_km": 5.0,
+"burned_ha_7d": 356.6,
+"typical_events": 30.0,
+"typical_burned_ha": 81.2,
+"candidate_unseen_burns_7d": 92
+}
+},
+"centroid_lon_lat": [
+74.5645,
+31.1579
+],
+"village_inferred": false,
+"harvested_between": [
+"2026-10-18 11:20 IST",
+"2026-10-28 11:20 IST"
+],
+"days_since_harvest": 7.7
+}
+],
+"ranking_order": "risk_weighted_ha = sum over a village's fields of risk_score/100 x area_ha",
+"village_ranking": [
+{
+"area_ha": 498.0,
+"village": "Chamar Tibbi, Moranwali, Model Town ( R",
+"centroid": [
+75.7529,
+30.1408
+],
+"clusters": 147,
+"district": "Sangrur",
+"risk_score": 86.2,
+"max_risk_score": 90.8,
+"risk_weighted_ha": 429.5,
+"village_inferred": true
+},
+{
+"area_ha": 418.8,
+"village": "Karamgarh",
+"centroid": [
+75.6115,
+30.4141
+],
+"clusters": 95,
+"district": "Barnala",
+"risk_score": 70.6,
+"max_risk_score": 84.5,
+"risk_weighted_ha": 295.8,
+"village_inferred": true
+},
+{
+"area_ha": 376.8,
+"village": "Namol",
+"centroid": [
+75.754,
+30.1781
+],
+"clusters": 111,
+"district": "Sangrur",
+"risk_score": 75.7,
+"max_risk_score": 88.2,
+"risk_weighted_ha": 285.1,
+"village_inferred": true
+},
+{
+"area_ha": 390.2,
+"village": "Shekha",
+"centroid": [
+75.6473,
+30.3562
+],
+"clusters": 163,
+"district": "Barnala",
+"risk_score": 69.1,
+"max_risk_score": 87.2,
+"risk_weighted_ha": 269.8,
+"village_inferred": true
+},
+{
+"area_ha": 493.8,
+"village": "Tharajwala",
+"centroid": [
+74.6168,
+30.1754
+],
+"clusters": 92,
+"district": "Sri Muktsar Sahib",
+"risk_score": 52.9,
+"max_risk_score": 58.1,
+"risk_weighted_ha": 261.4,
+"village_inferred": true
+},
+"... 45 more"
+]
+}
+}
+},
+"refs": {
+"1": {
+"key": "cams",
+"label": "Copernicus CAMS via Open-Meteo air quality",
+"url": "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=30.3796%2C31.6200%2C30.9439%2C28.9649%2C28.6701%2C28.3419%2C29.0996%2C30.2330%2C28.2011%2C28.8062%2C30.7356%2C28.5939%2C28.2961%2C28.6363%2C28.2068%2C28.3907%2C29.5037%2C28.6854%2C28.5249%2C28.4251%2C29.6107%2C29.1406%2C31.3219%2C28.1090%2C29.3078%2C29.8006%2C29.6953%2C27.8016%2C30.7361%2C28.6112%2C29.9669%2C30.9028%2C30.6500%2C27.9002%2C28.3607%2C28.9727%2C28.7982%2C29.4689%2C28.0602%2C28.5692%2C28.1486%2C30.7058%2C29.4339%2C30.3494%2C28.6996%2C31.0325%2C29.4604%2C27.6089%2C29.5364%2C29.0272%2C29.9316%2C30.1481&longitude=76.7783%2C74.8765%2C76.8020%2C77.2788%2C76.9254%2C77.3197%2C77.2623%2C74.9078%2C76.8458%2C76.1411%2C76.7629%2C76.2707%2C74.9617%2C77.1843%2C76.7997%2C77.3157%2C75.4679%2C77.3577%2C77.4820%2C77.1066%2C74.2836%2C75.7449%2C75.5789%2C75.3866%2C76.3376%2C76.4155%2C77.0027%2C76.6365%2C76.2097%2C77.3421%2C76.8759%2C75.8086%2C76.3314%2C76.9938%2C76.9361%2C77.6410%2C77.5402%2C77.6684%2C76.1131%2C77.3577%2C77.3321%2C76.8532%2C76.9741%2C76.3666%2C76.4961%2C76.5623%2C77.3410%2C75.1533%2C75.0158%2C77.0621%2C73.8645%2C77.2893&hourly=pm2_5%2Cpm10&past_days=7&forecast_days=5&timeformat=unixtime&timezone=GMT&domains=cams_global&cell_selection=nearest",
+"fetched_at": "2026-10-30T22:00:10.335615Z",
+"fetch_id": 4223
+},
+"2": {
+"key": "datagov_aqi",
+"label": "data.gov.in CPCB real-time AQI",
+"url": "https://api.data.gov.in/resource/3b01bcb8-0b14-4abf-b6f2-c1bfd384ba69?api-key=***&format=json&limit=1000&sort%5Bstation%5D=asc&offset=3000",
+"fetched_at": "2026-10-30T22:53:20.215539Z",
+"fetch_id": 4283
+},
+"3": {
+"key": "openaq",
+"label": "OpenAQ v3 (CPCB stations)",
+"url": "https://api.openaq.org/v3/sensors/12238640/measurements/hourly?datetime_from=2026-10-30T15%3A30%3A00Z&datetime_to=2026-10-30T22%3A53%3A20Z&limit=1000",
+"fetched_at": "2026-10-30T22:56:36.494915Z",
+"fetch_id": 4479
+},
+"6": {
+"key": "openaq",
+"label": "OpenAQ v3 (CPCB stations)",
+"url": "https://api.openaq.org/v3/sensors/12236376/measurements/hourly?datetime_from=2026-10-30T15%3A30%3A00Z&datetime_to=2026-10-30T22%3A53%3A20Z&limit=1000",
+"fetched_at": "2026-10-30T22:56:31.275302Z",
+"fetch_id": 4469
+},
+"4": {
+"key": "naaqs_2009",
+"label": "CPCB National Ambient Air Quality Standards (2009)",
+"url": "https://cpcb.nic.in/uploads/National_Ambient_Air_Quality_Standards.pdf",
+"fetched_at": null,
+"fetch_id": null
+},
+"5": {
+"key": "who_aqg_2021",
+"label": "WHO Global Air Quality Guidelines (2021)",
+"url": "https://www.who.int/publications/i/item/9789240034228",
+"fetched_at": null,
+"fetch_id": null
+},
+"13": {
+"key": "openmeteo",
+"label": "Open-Meteo forecast API (winds at 10 m/950/925/850 hPa, boundary layer; CC BY 4.0)",
+"url": "https://api.open-meteo.com/v1/forecast",
+"fetched_at": "2026-10-30T21:44:41.510846Z",
+"fetch_id": 3220
+},
+"7": {
+"key": "openmeteo",
+"label": "Open-Meteo forecast API (winds at 10 m/950/925/850 hPa, boundary layer; CC BY 4.0)",
+"url": "https://api.open-meteo.com/v1/forecast",
+"fetched_at": "2026-10-30T21:45:48.771973Z",
+"fetch_id": 3299
+},
+"8": {
+"key": "firms",
+"label": "NASA FIRMS active fires (VIIRS 375 m, MODIS 1 km; NRT)",
+"url": "https://firms.modaps.eosdis.nasa.gov/data/active_fire/suomi-npp-viirs-c2/csv/SUOMI_VIIRS_C2_South_Asia_24h.csv",
+"fetched_at": "2026-10-30T22:52:51.982659Z",
+"fetch_id": 4269
+},
+"14": {
+"key": "firms",
+"label": "NASA FIRMS active fires (VIIRS 375 m, MODIS 1 km; NRT)",
+"url": "https://firms.modaps.eosdis.nasa.gov/api/area/csv/***/VIIRS_NOAA21_NRT/73.8,27.6,77.7,32.6/2/2026-10-29",
+"fetched_at": "2026-10-30T21:44:45.097909Z",
+"fetch_id": 3226
+},
+"15": {
+"key": "firms",
+"label": "NASA FIRMS active fires (VIIRS 375 m, MODIS 1 km; NRT)",
+"url": "https://firms.modaps.eosdis.nasa.gov/data/active_fire/modis-c6.1/csv/MODIS_C6_1_South_Asia_7d.csv",
+"fetched_at": "2026-10-30T18:01:46.994382Z",
+"fetch_id": 2464
+},
+"16": {
+"key": "firms",
+"label": "NASA FIRMS active fires (VIIRS 375 m, MODIS 1 km; NRT)",
+"url": "https://firms.modaps.eosdis.nasa.gov/data/active_fire/suomi-npp-viirs-c2/csv/SUOMI_VIIRS_C2_South_Asia_7d.csv",
+"fetched_at": "2026-10-30T18:01:45.118791Z",
+"fetch_id": 2462
+},
+"17": {
+"key": "firms",
+"label": "NASA FIRMS active fires (VIIRS 375 m, MODIS 1 km; NRT)",
+"url": "https://firms.modaps.eosdis.nasa.gov/data/active_fire/noaa-21-viirs-c2/csv/J2_VIIRS_C2_South_Asia_7d.csv",
+"fetched_at": "2026-10-30T18:01:43.170618Z",
+"fetch_id": 2460
+},
+"18": {
+"key": "firms",
+"label": "NASA FIRMS active fires (VIIRS 375 m, MODIS 1 km; NRT)",
+"url": "https://firms.modaps.eosdis.nasa.gov/data/active_fire/noaa-20-viirs-c2/csv/J1_VIIRS_C2_South_Asia_7d.csv",
+"fetched_at": "2026-10-30T18:01:40.779139Z",
+"fetch_id": 2457
+},
+"9": {
+"key": "s2_cog",
+"label": "Sentinel-2 L2A pixels (Earth Search COGs on AWS)",
+"url": "https://earth-search.aws.element84.com/v1/collections/sentinel-2-c1-l2a/items?grid:code=MGRS-43RFN",
+"fetched_at": "2026-10-30T23:11:05.309437Z",
+"fetch_id": 4513
+},
+"19": {
+"key": "s2_cog",
+"label": "Sentinel-2 L2A pixels (Earth Search COGs on AWS)",
+"url": "https://earth-search.aws.element84.com/v1/collections/sentinel-2-c1-l2a/items?grid:code=MGRS-43RCP",
+"fetched_at": "2026-10-30T23:07:55.440832Z",
+"fetch_id": 4508
+},
+"20": {
+"key": "s2_cog",
+"label": "Sentinel-2 L2A pixels (Earth Search COGs on AWS)",
+"url": "https://earth-search.aws.element84.com/v1/collections/sentinel-2-c1-l2a/items?grid:code=MGRS-43SDR",
+"fetched_at": "2026-10-30T23:06:55.513954Z",
+"fetch_id": 4506
+},
+"21": {
+"key": "s2_cog",
+"label": "Sentinel-2 L2A pixels (Earth Search COGs on AWS)",
+"url": "https://earth-search.aws.element84.com/v1/collections/sentinel-2-c1-l2a/items?grid:code=MGRS-43REP",
+"fetched_at": "2026-10-30T23:05:00.160963Z",
+"fetch_id": 4502
+},
+"10": {
+"key": "boundaries",
+"label": "Survey of India states + LGD/Bharatmaps districts (DataMeet / ramSeraph mirror)",
+"url": "https://github.com/ramSeraph/indian_admin_boundaries/releases/download/subdistricts/LGD_Subdistricts.parquet",
+"fetched_at": "2026-10-30T22:50:07.553075Z",
+"fetch_id": 4257
+},
+"11": {
+"key": "geonames",
+"label": "GeoNames cities15000 (CC BY 4.0)",
+"url": "https://download.geonames.org/export/dump/cities15000.zip",
+"fetched_at": "2026-10-30T22:52:41.150124Z",
+"fetch_id": 4263
+},
+"12": {
+"key": "iitm_dss",
+"label": "IITM Decision Support System for Delhi (stubble-burning share of PM2.5)",
+"url": "https://ews.tropmet.res.in/dss/",
+"fetched_at": "2026-10-30T22:56:42.049592Z",
+"fetch_id": 4481
+},
+"22": {
+"key": "firms",
+"label": "NASA FIRMS active fires (VIIRS 375 m, MODIS 1 km; NRT)",
+"url": "https://firms.modaps.eosdis.nasa.gov/api/area/csv/***/MODIS_NRT/73.8,27.6,77.7,32.6/2/2026-10-29",
+"fetched_at": "2026-10-30T22:53:03.239924Z",
+"fetch_id": 4276
+},
+"24": {
+"key": "firms",
+"label": "NASA FIRMS active fires (VIIRS 375 m, MODIS 1 km; NRT)",
+"url": "https://firms.modaps.eosdis.nasa.gov/api/area/csv/***/MODIS_NRT/73.8,27.6,77.7,32.6/5/2026-10-20",
+"fetched_at": "2026-10-30T18:03:46.147691Z",
+"fetch_id": 2525
+},
+"25": {
+"key": "firms",
+"label": "NASA FIRMS active fires (VIIRS 375 m, MODIS 1 km; NRT)",
+"url": "https://firms.modaps.eosdis.nasa.gov/api/area/csv/***/VIIRS_NOAA20_NRT/73.8,27.6,77.7,32.6/5/2026-10-20",
+"fetched_at": "2026-10-30T18:02:46.037701Z",
+"fetch_id": 2494
+},
+"23": {
+"key": "creams",
+"label": "CREAMS, ICAR-IARI: official residue-burning events",
+"url": "https://creams.iari.res.in/geokrishi/geoserver/wfs?service=WFS&version=2.0.0&request=GetFeature&typeNames=geokrishi_v%3A30_october_2026_rice&outputFormat=application%2Fjson",
+"fetched_at": "2026-10-30T22:53:07.353372Z",
+"fetch_id": 4278
+},
+"26": {
+"key": "creams",
+"label": "CREAMS, ICAR-IARI: official residue-burning events",
+"url": "https://creams.iari.res.in/geokrishi/geoserver/wfs?service=WFS&version=2.0.0&request=GetFeature&typeNames=geokrishi_v%3A29_october_2026_rice&outputFormat=application%2Fjson",
+"fetched_at": "2026-10-30T21:44:04.433334Z",
+"fetch_id": 3208
+},
+"27": {
+"key": "creams",
+"label": "CREAMS, ICAR-IARI: official residue-burning events",
+"url": "https://creams.iari.res.in/geokrishi/geoserver/wfs?service=WFS&version=2.0.0&request=GetFeature&typeNames=geokrishi_v%3A15_september_2026_rice&outputFormat=application%2Fjson",
+"fetched_at": "2026-10-30T18:06:13.433387Z",
+"fetch_id": 2759
+},
+"28": {
+"key": "stac_e84",
+"label": "Earth Search STAC: Sentinel-2 L2A Collection 1",
+"url": "https://earth-search.aws.element84.com/v1/collections/sentinel-2-c1-l2a/items/S2C_T43RDQ_20261013T054458_L2A",
+"fetched_at": "2026-10-30T23:27:35.747157Z",
+"fetch_id": 4802
+},
+"29": {
+"key": "s2_cog",
+"label": "Sentinel-2 L2A pixels (Earth Search COGs on AWS)",
+"url": "https://earth-search.aws.element84.com/v1/collections/sentinel-2-c1-l2a/items?grid:code=MGRS-43RFM",
+"fetched_at": "2026-10-30T23:12:46.483279Z",
+"fetch_id": 4515
+},
+"30": {
+"key": "worldcover",
+"label": "ESA WorldCover 2021 v200 cropland (Planetary Computer)",
+"url": "https://planetarycomputer.microsoft.com/api/stac/v1/search?collections=esa-worldcover&bbox=76.0172,28.0102,77.0514,28.9240",
+"fetched_at": "2026-10-30T23:11:07.303195Z",
+"fetch_id": 4514
+},
+"31": {
+"key": "openmeteo",
+"label": "Open-Meteo forecast API (winds at 10 m/950/925/850 hPa, boundary layer; CC BY 4.0)",
+"url": "https://api.open-meteo.com/v1/forecast",
+"fetched_at": "2026-10-30T23:16:18.940882Z",
+"fetch_id": 4516
+},
+"32": {
+"key": "firms",
+"label": "NASA FIRMS active fires (VIIRS 375 m, MODIS 1 km; NRT)",
+"url": "https://firms.modaps.eosdis.nasa.gov/api/area/csv/***/VIIRS_SNPP_SP/73.8,27.6,77.7,32.6/5/2025-09-15",
+"fetched_at": "2026-10-30T18:10:12.373983Z",
+"fetch_id": 2910
+},
+"33": {
+"key": "firms",
+"label": "NASA FIRMS active fires (VIIRS 375 m, MODIS 1 km; NRT)",
+"url": "https://firms.modaps.eosdis.nasa.gov/api/area/csv/***/VIIRS_SNPP_SP/73.8,27.6,77.7,32.6/5/2025-09-20",
+"fetched_at": "2026-10-30T18:10:12.885238Z",
+"fetch_id": 2911
+},
+"34": {
+"key": "firms",
+"label": "NASA FIRMS active fires (VIIRS 375 m, MODIS 1 km; NRT)",
+"url": "https://firms.modaps.eosdis.nasa.gov/api/area/csv/***/VIIRS_SNPP_SP/73.8,27.6,77.7,32.6/5/2025-09-25",
+"fetched_at": "2026-10-30T18:10:13.371737Z",
+"fetch_id": 2912
+},
+"35": {
+"key": "firms",
+"label": "NASA FIRMS active fires (VIIRS 375 m, MODIS 1 km; NRT)",
+"url": "https://firms.modaps.eosdis.nasa.gov/api/area/csv/***/VIIRS_SNPP_SP/73.8,27.6,77.7,32.6/5/2025-09-30",
+"fetched_at": "2026-10-30T18:10:13.864481Z",
+"fetch_id": 2913
+},
+"36": {
+"key": "firms",
+"label": "NASA FIRMS active fires (VIIRS 375 m, MODIS 1 km; NRT)",
+"url": "https://firms.modaps.eosdis.nasa.gov/api/area/csv/***/VIIRS_SNPP_SP/73.8,27.6,77.7,32.6/5/2025-10-05",
+"fetched_at": "2026-10-30T18:10:14.363225Z",
+"fetch_id": 2914
+},
+"37": {
+"key": "firms",
+"label": "NASA FIRMS active fires (VIIRS 375 m, MODIS 1 km; NRT)",
+"url": "https://firms.modaps.eosdis.nasa.gov/api/area/csv/***/VIIRS_SNPP_SP/73.8,27.6,77.7,32.6/5/2025-10-10",
+"fetched_at": "2026-10-30T18:10:14.829705Z",
+"fetch_id": 2915
+},
+"38": {
+"key": "firms",
+"label": "NASA FIRMS active fires (VIIRS 375 m, MODIS 1 km; NRT)",
+"url": "https://firms.modaps.eosdis.nasa.gov/api/area/csv/***/VIIRS_SNPP_SP/73.8,27.6,77.7,32.6/5/2025-10-15",
+"fetched_at": "2026-10-30T18:10:15.571413Z",
+"fetch_id": 2916
+},
+"39": {
+"key": "firms",
+"label": "NASA FIRMS active fires (VIIRS 375 m, MODIS 1 km; NRT)",
+"url": "https://firms.modaps.eosdis.nasa.gov/api/area/csv/***/VIIRS_SNPP_SP/73.8,27.6,77.7,32.6/5/2025-10-20",
+"fetched_at": "2026-10-30T18:10:16.300529Z",
+"fetch_id": 2917
+},
+"40": {
+"key": "firms",
+"label": "NASA FIRMS active fires (VIIRS 375 m, MODIS 1 km; NRT)",
+"url": "https://firms.modaps.eosdis.nasa.gov/api/area/csv/***/VIIRS_SNPP_SP/73.8,27.6,77.7,32.6/5/2025-10-25",
+"fetched_at": "2026-10-30T18:10:18.222306Z",
+"fetch_id": 2918
+},
+"41": {
+"key": "firms",
+"label": "NASA FIRMS active fires (VIIRS 375 m, MODIS 1 km; NRT)",
+"url": "https://firms.modaps.eosdis.nasa.gov/api/area/csv/***/VIIRS_SNPP_SP/73.8,27.6,77.7,32.6/5/2025-10-30",
+"fetched_at": "2026-10-30T18:10:18.903362Z",
+"fetch_id": 2919
+},
+"42": {
+"key": "firms",
+"label": "NASA FIRMS active fires (VIIRS 375 m, MODIS 1 km; NRT)",
+"url": "https://firms.modaps.eosdis.nasa.gov/api/area/csv/***/VIIRS_SNPP_SP/73.8,27.6,77.7,32.6/5/2025-11-04",
+"fetched_at": "2026-10-30T18:10:19.615582Z",
+"fetch_id": 2920
+},
+"43": {
+"key": "firms",
+"label": "NASA FIRMS active fires (VIIRS 375 m, MODIS 1 km; NRT)",
+"url": "https://firms.modaps.eosdis.nasa.gov/api/area/csv/***/VIIRS_SNPP_SP/73.8,27.6,77.7,32.6/5/2025-11-09",
+"fetched_at": "2026-10-30T18:10:20.030607Z",
+"fetch_id": 2921
+},
+"44": {
+"key": "firms",
+"label": "NASA FIRMS active fires (VIIRS 375 m, MODIS 1 km; NRT)",
+"url": "https://firms.modaps.eosdis.nasa.gov/api/area/csv/***/VIIRS_SNPP_SP/73.8,27.6,77.7,32.6/5/2025-11-14",
+"fetched_at": "2026-10-30T18:10:20.468737Z",
+"fetch_id": 2922
+},
+"45": {
+"key": "firms",
+"label": "NASA FIRMS active fires (VIIRS 375 m, MODIS 1 km; NRT)",
+"url": "https://firms.modaps.eosdis.nasa.gov/api/area/csv/***/VIIRS_SNPP_SP/73.8,27.6,77.7,32.6/5/2025-11-19",
+"fetched_at": "2026-10-30T18:10:20.912432Z",
+"fetch_id": 2923
+},
+"46": {
+"key": "firms",
+"label": "NASA FIRMS active fires (VIIRS 375 m, MODIS 1 km; NRT)",
+"url": "https://firms.modaps.eosdis.nasa.gov/api/area/csv/***/VIIRS_SNPP_SP/73.8,27.6,77.7,32.6/5/2025-11-24",
+"fetched_at": "2026-10-30T18:10:21.380306Z",
+"fetch_id": 2924
+},
+"47": {
+"key": "firms",
+"label": "NASA FIRMS active fires (VIIRS 375 m, MODIS 1 km; NRT)",
+"url": "https://firms.modaps.eosdis.nasa.gov/api/area/csv/***/VIIRS_SNPP_SP/73.8,27.6,77.7,32.6/2/2025-11-29",
+"fetched_at": "2026-10-30T18:10:21.806785Z",
+"fetch_id": 2925
+}
+},
+"replies": {
+"en": {
+"title": "Delhi Air Quality And Punjab Crop Residue Burning Update",
+"summary": "Delhi recorded a satisfactory air quality index of 95 on 31 Oct [2]. Satellite data shows 232 fire detections across Punjab in the last 24 hours [22].",
+"sections": [
+{
+"body": "Delhi recorded a median PM2.5 level of 68.0 µg/m³ as of 31 Oct 03:00 IST [3]. The CPCB AQI was 95, placing the city in the satisfactory category [2]. This is based on data from 30 reporting stations [3].",
+"heading": "Air quality now"
+},
+{
+"body": "Satellite systems detected 232 crop-residue fires between 30 Oct 04:58 IST and 31 Oct 04:58 IST [22]. All detected fires occurred in Punjab [22]. The highest number of detections was recorded in Tarn Taran with 54 fires, followed by Gurdaspur with 51 fires [22].",
+"heading": "Fires in the last 24 hours"
+},
+{
+"body": "Surface winds in Delhi were blowing from the northwest at 5.8 km/h as of 31 Oct 04:30 IST [7]. The mixing height was low at 77 m, which can trap pollutants near the surface [7]. Smoke forecasts estimate peak smoke index values reaching 135.9 in Amritsar [7].",
+"heading": "Wind and smoke outlook"
+},
+{
+"body": "Risk scores have been calculated for 172130 harvested but unburnt fields as of 31 Oct 04:43 IST [31]. Specific fields in Khem Karan village located in Tarn Taran district show high risk scores of 100.0 [31].",
+"heading": "Fields at risk of burning"
+},
+{
+"body": "Cumulative burn scar mapping indicates an unseen area of 86303.0 ha, accounting for 82.6% of total mapped burn scar areas as of 30 Oct 11:10 IST [28]. These candidate unseen burns were not detected by active fire sensors during satellite overpasses [28].",
+"heading": "What satellites missed"
+}
+],
+"model": "gemini-3.5-flash-lite",
+"removed_sentences": []
+},
+"hi": {
+"title": "दिल्ली वायु गुणवत्ता और पंजाब फसल अवशेष जलाने का अपडेट",
+"summary": "उपग्रह डेटा से पता चलता है कि पिछले 24 घंटों में पंजाब में 232 आग की घटनाएं दर्ज की गईं [22]।",
+"sections": [
+{
+"body": "CPCB AQI 95 था, जिससे शहर संतोषजनक श्रेणी में आ गया [2]। यह 30 रिपोर्टिंग स्टेशनों के डेटा पर आधारित है [3]।",
+"heading": "अब वायु गुणवत्ता"
+},
+{
+"body": "पहचानी गई सभी आग पंजाब में हुईं [22]। सबसे अधिक 54 आग Tarn Taran में दर्ज की गईं, इसके बाद Gurdaspur में 51 आग दर्ज की गईं [22]।",
+"heading": "पिछले 24 घंटों में आग"
+},
+{
+"body": "मिश्रण ऊँचाई 77 m कम थी, जो प्रदूषकों को सतह के पास फंसा सकती है [7]। धुआं पूर्वानुमान अमृतसर में 135.9 तक पहुंचने वाले पीक स्मोक इंडेक्स मानों का अनुमान लगाते हैं [7]।",
+"heading": "हवा और धुएं का दृष्टिकोण"
+},
+{
+"body": "Tarn Taran जिले में स्थित Khem Karan गांव के विशिष्ट खेत 100.0 के उच्च जोखिम स्कोर दिखाते हैं [31]।",
+"heading": "जलने के जोखिम वाले खेत"
+},
+{
+"body": "संचयी बर्न स्कार मैपिंग 30 अक्टू 11:10 IST [28] तक 86303.0 ha के अनदेखे क्षेत्र का संकेत देती है, जो कुल मैप किए गए बर्न स्कार क्षेत्रों का 82.6% है। उपग्रह के ऊपर से गुजरने के दौरान सक्रिय अग्नि सेंसर द्वारा इन संभावित अनदेखी आग का पता नहीं लगाया गया था [28]।",
+"heading": "उपग्रह क्या चूक गए"
+}
+],
+"model": "gemini-3.5-flash-lite",
+"removed_sentences": [
+"31 अक्टू [2] को दिल्ली ने 95 का संतोषजनक वायु गुणवत्ता सूचकांक दर्ज किया।",
+"31 अक्टू 03:00 IST [3] तक दिल्ली में PM2.5 का औसत स्तर 68.0 µg/m³ दर्ज किया गया।",
+"उपग्रह प्रणालियों ने 30 अक्टू 04:58 IST और 31 अक्टू 04:58 IST के बीच 232 फसल अवशेष जलाने की घटनाओं का पता लगाया [22]।",
+"31 अक्टू 04:30 IST [7] तक दिल्ली में सतही हवाएँ उत्तर-पश्चिम से 5.8 km/h की गति से चल रही थीं।",
+"31 अक्टू 04:43 IST [31] तक 172130 काटे गए लेकिन बिना जलाए गए खेतों के लिए जोखिम स्कोर की गणना की गई है।"
+]
+},
+"pa": {
+"title": "ਦਿੱਲੀ ਦੀ ਹਵਾ ਦੀ ਗੁਣਵੱਤਾ ਅਤੇ ਪੰਜਾਬ ਵਿੱਚ ਫਸਲ ਦੇ ਰਹਿੰਦ-ਖੂੰਹਦ ਨੂੰ ਸਾੜਨ ਬਾਰੇ ਅਪਡੇਟ",
+"summary": "ਦਿੱਲੀ ਵਿੱਚ 31 Oct ਨੂੰ 95 ਦਾ ਸੰਤੋਖਜਨਕ ਏਅਰ ਕੁਆਲਿਟੀ ਇੰਡੈਕਸ ਦਰਜ ਕੀਤਾ ਗਿਆ [2]। ਸੈਟੇਲਾਈਟ ਡੇਟਾ ਪਿਛਲੇ 24 ਘੰਟਿਆਂ ਵਿੱਚ ਪੰਜਾਬ ਵਿੱਚ 232 ਅੱਗ ਦੇ ਮਾਮਲੇ ਦਿਖਾਉਂਦਾ ਹੈ [22]।",
+"sections": [
+{
+"body": "ਦਿੱਲੀ ਵਿੱਚ 31 Oct 03:00 IST ਤੱਕ PM2.5 ਦਾ ਔਸਤ ਪੱਧਰ 68.0 µg/m³ ਦਰਜ ਕੀਤਾ ਗਿਆ [3]। CPCB AQI 95 ਸੀ, ਜੋ ਸ਼ਹਿਰ ਨੂੰ ਸੰਤੋਖਜਨਕ ਸ਼੍ਰੇਣੀ ਵਿੱਚ ਰੱਖਦਾ ਹੈ [2]। ਇਹ 30 ਰਿਪੋਰਟਿੰਗ ਸਟੇਸ਼ਨਾਂ ਦੇ ਡੇਟਾ 'ਤੇ ਅਧਾਰਤ ਹੈ [3]।",
+"heading": "ਹੁਣ ਹਵਾ ਦੀ ਗੁਣਵੱਤਾ"
+},
+{
+"body": "ਸੈਟੇਲਾਈਟ ਸਿਸਟਮਾਂ ਨੇ 30 Oct 04:58 IST ਅਤੇ 31 Oct 04:58 IST ਦਰਮਿਆਨ ਫਸਲ ਦੇ ਰਹਿੰਦ-ਖੂੰਹਦ ਨੂੰ ਅੱਗ ਲਗਾਉਣ ਦੇ 232 ਮਾਮਲਿਆਂ ਦਾ ਪਤਾ ਲਗਾਇਆ [22]। ਅੱਗ ਦੇ ਸਾਰੇ ਮਾਮਲੇ ਪੰਜਾਬ ਵਿੱਚ ਵਾਪਰੇ [22]। ਸਭ ਤੋਂ ਵੱਧ 54 ਮਾਮਲੇ ਤਰਨ ਤਾਰਨ ਵਿੱਚ ਦਰਜ ਕੀਤੇ ਗਏ, ਇਸ ਤੋਂ ਬਾਅਦ ਗੁਰਦਾਸਪੁਰ ਵਿੱਚ 51 ਮਾਮਲੇ ਦਰਜ ਕੀਤੇ ਗਏ [22]।",
+"heading": "ਪਿਛਲੇ 24 ਘੰਟਿਆਂ ਵਿੱਚ ਅੱਗ ਦੇ ਮਾਮਲੇ"
+},
+{
+"body": "ਦਿੱਲੀ ਵਿੱਚ 31 Oct 04:30 IST ਤੱਕ ਉੱਤਰ-ਪੱਛਮ ਤੋਂ 5.8 km/h ਦੀ ਰਫ਼ਤਾਰ ਨਾਲ ਸਤਹ ਦੀਆਂ ਹਵਾਵਾਂ ਚੱਲ ਰਹੀਆਂ ਸਨ [7]। ਮਿਕਸਿੰਗ ਦੀ ਉਚਾਈ 77 m ਘੱਟ ਸੀ, ਜੋ ਸਤਹ ਦੇ ਨੇੜੇ ਪ੍ਰਦੂਸ਼ਕਾਂ ਨੂੰ ਫਸਾ ਸਕਦੀ ਹੈ [7]। ਧੂੰਏਂ ਦੇ ਪੂਰਵ-ਅਨੁਮਾਨ ਅਨੁਸਾਰ ਅੰਮ੍ਰਿਤਸਰ ਵਿੱਚ ਸਿਖਰ ਧੂੰਆਂ ਇੰਡੈਕਸ ਮੁੱਲ 135.9 ਤੱਕ ਪਹੁੰਚਣ ਦਾ ਅਨੁਮਾਨ ਹੈ [7]।",
+"heading": "ਹਵਾ ਅਤੇ ਧੂੰਏਂ ਦੀ ਸਥਿਤੀ"
+},
+{
+"body": "31 Oct 04:43 IST ਤੱਕ ਵਢਾਈ ਕੀਤੇ ਪਰ ਅਣ-ਸੜੇ 172130 ਖੇਤਾਂ ਲਈ ਜੋਖਮ ਸਕੋਰ ਦੀ ਗਣਨਾ ਕੀਤੀ ਗਈ ਹੈ [31]। ਤਰਨ ਤਾਰਨ ਜ਼ਿਲ੍ਹੇ ਵਿੱਚ ਸਥਿਤ ਖੇਮ ਕਰਨ ਪਿੰਡ ਦੇ ਵਿਸ਼ੇਸ਼ ਖੇਤ 100.0 ਦਾ ਉੱਚ ਜੋਖਮ ਸਕੋਰ ਦਿਖਾਉਂਦੇ ਹਨ [31]।",
+"heading": "ਅੱਗ ਲੱਗਣ ਦੇ ਜੋਖਮ ਵਾਲੇ ਖੇਤ"
+},
+{
+"body": "ਕੁੱਲ ਬਰਨ ਸਕਾਰ ਮੈਪਿੰਗ 30 Oct 11:10 IST ਤੱਕ 86303.0 ha ਦਾ ਇੱਕ ਅਣਦੇਖਿਆ ਖੇਤਰ ਦਰਸਾਉਂਦੀ ਹੈ, ਜੋ ਕਿ ਕੁੱਲ ਮੈਪ ਕੀਤੇ ਬਰਨ ਸਕਾਰ ਖੇਤਰਾਂ ਦਾ 82.6% ਹੈ [28]। ਇਹ ਸੰਭਾਵੀ ਅਣਦੇਖੀਆਂ ਅੱਗਾਂ ਸੈਟੇਲਾਈਟ ਲੰਘਣ ਦੌਰਾਨ ਐਕਟਿਵ ਫਾਇਰ ਸੈਂਸਰਾਂ ਦੁਆਰਾ ਨਹੀਂ ਫੜੀਆਂ ਗਈਆਂ ਸਨ [28]।",
+"heading": "ਸੈਟੇਲਾਈਟ ਤੋਂ ਕੀ ਛੁੱਟ ਗਿਆ"
+}
+],
+"model": "gemini-3.6-flash",
+"removed_sentences": []
+}
+},
+"scars_summary_audit": {
+"recorded": "GET https://blindspot-api-azure.vercel.app/api/scars/summary, 2026-10-31 ~06:50 UTC, method.audit",
+"candidate_unseen": {
+"audited": 23,
+"burnt": 20,
+"precision": 0.87,
+"precision_ci95": [
+0.679,
+0.955
+]
+},
+"method": "random clusters, pre/post true colour + SWIR chips judged by eye; no field visits"
+}
+}

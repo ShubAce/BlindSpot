@@ -23,6 +23,7 @@ from blindspot.agent import runner
 from blindspot.api import SessionDep, respond
 from blindspot.config import get_settings
 from blindspot.models.agent import AgentRun
+from blindspot.models.client_quota import client_address, shared_limits_enabled
 from blindspot.provenance import SourceRef, latest_refs, ref_for_fetch
 
 router = APIRouter(prefix="/api/agent", tags=["agent"])
@@ -62,15 +63,17 @@ async def ask(body: AskBody, request: Request) -> EventSourceResponse:
     """Investigate a question. Streams `run`, `thought`, `tool_call`, `map`, `tool_result`,
     `answer_delta`, `answer`, `verification`, `error` and finally `done`, one JSON object per
     `data:` line (its `type` repeats the SSE event name)."""
-    client = request.client.host if request.client else "unknown"
+    # The real client address (Vercel's forwarded address on Vercel, the socket peer elsewhere);
+    # on serverless the limit is also counted in Postgres under a salted hash of it.
+    client = client_address(request.headers, request.client.host if request.client else None)
     try:
         run = await runner.ask(body.question, body.lang, client)
     except runner.RateLimited as exc:
         wait = int(exc.retry_after_s) + 1
-        raise HTTPException(
+        raise HTTPException(  # the API's JSON error shape; Retry-After says when to come back
             status_code=429,
             detail=f"Too many questions from this address ({exc}). Try again in {wait} s.",
-            headers={"Retry-After": str(wait)},
+            headers={"Retry-After": str(wait), "Cache-Control": "no-store"},
         ) from None
 
     async def events():  # noqa: ANN202 - async generator of SSE frames
@@ -185,7 +188,8 @@ def status(session: SessionDep):  # noqa: ANN201
             "quota_day_started_at": runner.quota_day_start(),
             "reserve_share": settings.reserve,
             "models": runner.model_status(),
-            "per_ip_limits": {"per_minute": settings.ip_per_minute, "per_day": settings.ip_per_day},
+            "per_ip_limits": {"per_minute": settings.ip_per_minute, "per_day": settings.ip_per_day,
+                              "shared_across_instances": shared_limits_enabled()},
             "answer_cache_minutes": settings.cache_minutes,
         },
         latest_refs(session, ["gemini"]),

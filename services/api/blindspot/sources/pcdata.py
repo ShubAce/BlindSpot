@@ -76,8 +76,9 @@ register_source(
 )
 
 # Item ids. Validated before use, so a request can never smuggle a path or a query into a URL.
-PC_ID = re.compile(r"^(S2[A-D])_MSIL2A_(\d{8})T(\d{6})_R(\d{3})_T(\d{2}[A-Z]{3})_(\d{8})T(\d{6})$")
-E84_ID = re.compile(r"^(S2[A-D])_T(\d{2}[A-Z]{3})_(\d{8})T(\d{6})_L2A$")
+# \Z, not $: `$` also matches before a trailing newline, which then reached a URL and a header.
+PC_ID = re.compile(r"^(S2[A-D])_MSIL2A_(\d{8})T(\d{6})_R(\d{3})_T(\d{2}[A-Z]{3})_(\d{8})T(\d{6})\Z")
+E84_ID = re.compile(r"^(S2[A-D])_T(\d{2}[A-Z]{3})_(\d{8})T(\d{6})_L2A\Z")
 
 # Earth Search asset names for the Sentinel-2 bands we draw.
 E84_ASSET = {"B02": "blue", "B03": "green", "B04": "red", "B8A": "nir08", "B11": "swir16",
@@ -154,9 +155,118 @@ def pc_id_from_product_uri(product_uri: str | None) -> str | None:
     return text if PC_ID.match(text) else None
 
 
+# --- the MGRS tiles of the area we watch -------------------------------------------------------------
+# A Sentinel-2 item covers one MGRS tile. The picture routes serve only items on the tiles that
+# intersect the area we watch, checked from the item id alone, so a request for any other scene on
+# Earth is refused before any upstream call. The tile list is derived from the AOI here (not typed
+# in): it follows AOI_BBOX if that ever changes.
+#
+# Sentinel-2's tiling: each tile is a 100 km MGRS grid square of one UTM zone, extended to 109.8 km
+# east and south of the square's north-west corner. Its name is zone + latitude band + the square's
+# two letters. A square that crosses a latitude band boundary (8 degree bands; 32N runs through our
+# AOI) appears under the band its top lies in (43SER covers 31.5-32.5N), so every band the square
+# touches is accepted. Pure Python (Snyder's UTM series), because pyproj is not in the serverless bundle.
+
+_WGS84_A = 6378137.0
+_WGS84_F = 1 / 298.257223563
+_UTM_K0 = 0.9996
+_MGRS_BANDS = "CDEFGHJKLMNPQRSTUVWX"  # 8 degree latitude bands from 80S (X spans 72-84N)
+_MGRS_COLUMNS = ("ABCDEFGH", "JKLMNPQR", "STUVWXYZ")  # column letter sets, zone 1, 2, 3, then repeat
+_MGRS_ROWS = "ABCDEFGHJKLMNPQRSTUV"  # 20 row letters, repeating every 2,000 km of northing
+S2_TILE_M = 109_800.0  # a Sentinel-2 tile's side
+MGRS_SQUARE_M = 100_000.0
+
+
+def utm_forward(lon: float, lat: float, zone: int) -> tuple[float, float]:
+    """WGS84 lon/lat to UTM easting/northing (metres) in `zone` (Snyder 1987, eq. 8-9 to 8-10; better
+    than a metre within a few degrees of the zone, which is all the tile test needs)."""
+    e2 = _WGS84_F * (2 - _WGS84_F)
+    ep2 = e2 / (1 - e2)
+    phi = math.radians(lat)
+    lam = math.radians(lon - ((zone - 1) * 6 - 180 + 3))
+    sin, cos, tan = math.sin(phi), math.cos(phi), math.tan(phi)
+    n = _WGS84_A / math.sqrt(1 - e2 * sin * sin)
+    t, c, a = tan * tan, ep2 * cos * cos, cos * lam
+    m = _WGS84_A * ((1 - e2 / 4 - 3 * e2**2 / 64 - 5 * e2**3 / 256) * phi
+                    - (3 * e2 / 8 + 3 * e2**2 / 32 + 45 * e2**3 / 1024) * math.sin(2 * phi)
+                    + (15 * e2**2 / 256 + 45 * e2**3 / 1024) * math.sin(4 * phi)
+                    - (35 * e2**3 / 3072) * math.sin(6 * phi))
+    x = _UTM_K0 * n * (a + (1 - t + c) * a**3 / 6 + (5 - 18 * t + t * t + 72 * c - 58 * ep2) * a**5 / 120)
+    y = _UTM_K0 * (m + n * tan * (a * a / 2 + (5 - t + 9 * c + 4 * c * c) * a**4 / 24
+                                  + (61 - 58 * t + t * t + 600 * c - 330 * ep2) * a**6 / 720))
+    return 500_000.0 + x, y if lat >= 0 else y + 10_000_000.0
+
+
+def _projected_box(zone: int, bbox: tuple[float, float, float, float], steps: int = 64) -> Any:
+    """A lon/lat box as a polygon in UTM `zone`, its edges densified (they curve in UTM)."""
+    from shapely.geometry import Polygon
+
+    w, s, e, n = bbox
+    edge = [i / steps for i in range(steps)]
+    ring = ([(w + (e - w) * f, s) for f in edge] + [(e, s + (n - s) * f) for f in edge]
+            + [(e - (e - w) * f, n) for f in edge] + [(w, n - (n - s) * f) for f in edge])
+    return Polygon([utm_forward(lon, lat, zone) for lon, lat in ring])
+
+
+def mgrs_tiles(bbox: tuple[float, float, float, float]) -> frozenset[str]:
+    """Every Sentinel-2 tile name (e.g. 43REQ) whose 109.8 km footprint intersects `bbox`.
+
+    A square exists in a zone (and a band) when it overlaps that zone's 6 degree strip (within that
+    band); zones on either side of the box are tried, since a square at a zone's edge reaches past it.
+    """
+    from shapely.geometry import box as shapely_box
+
+    w, s, e, n = bbox
+    out: set[str] = set()
+    zones = range(max(1, int((w + 180) // 6)), min(60, int((e + 180) // 6) + 2) + 1)
+    bands = [(i, -80 + 8 * i) for i in range(len(_MGRS_BANDS)) if -80 + 8 * i < n + 1 and -80 + 8 * i + 8 > s - 1]
+    for zone in zones:
+        area = _projected_box(zone, bbox)
+        strip_w = (zone - 1) * 6 - 180
+        cells = {i: _projected_box(zone, (strip_w, lat0, strip_w + 6, lat0 + 8)) for i, lat0 in bands}
+        minx, miny, maxx, maxy = area.bounds
+        for col in range(int(minx // MGRS_SQUARE_M) - 1, int(maxx // MGRS_SQUARE_M) + 1):
+            for row in range(int(miny // MGRS_SQUARE_M), int(maxy // MGRS_SQUARE_M) + 2):
+                x0, y0 = col * MGRS_SQUARE_M, row * MGRS_SQUARE_M
+                if not 1 <= col <= 8:
+                    continue
+                footprint = shapely_box(x0, y0 + MGRS_SQUARE_M - S2_TILE_M, x0 + S2_TILE_M, y0 + MGRS_SQUARE_M)
+                if not footprint.intersects(area):
+                    continue
+                square = shapely_box(x0, y0, x0 + MGRS_SQUARE_M, y0 + MGRS_SQUARE_M)
+                letters = (_MGRS_COLUMNS[(zone - 1) % 3][col - 1]
+                           + _MGRS_ROWS[(row + (5 if zone % 2 == 0 else 0)) % 20])
+                for i, cell in cells.items():
+                    if square.intersection(cell).area > 0:
+                        out.add(f"{zone:02d}{_MGRS_BANDS[i]}{letters}")
+    return frozenset(out)
+
+
+_watched: dict[tuple[float, float, float, float], frozenset[str]] = {}
+
+
+def watched_tiles(bbox: tuple[float, float, float, float] | None = None, margin: float = 0.25) -> frozenset[str]:
+    """The tiles of the area we watch (AOI_BBOX plus `margin` degrees, the picture routes' margin)."""
+    if bbox is None:
+        bbox = get_settings().aoi_bbox
+    grown = (bbox[0] - margin, bbox[1] - margin, bbox[2] + margin, bbox[3] + margin)
+    if grown not in _watched:
+        _watched[grown] = mgrs_tiles(grown)
+    return _watched[grown]
+
+
+def item_tile(item_id: str) -> str | None:
+    sid = scene_id(item_id)
+    return sid.tile if sid else None
+
+
 _item_cache: dict[tuple[str, str], tuple[float, dict[str, Any]]] = {}
 _item_lock = threading.Lock()
 ITEM_TTL_S = 24 * 3600
+# An item id that upstream does not know is remembered for an hour, so asking for it again (a typo,
+# or someone cycling made-up ids) costs no further STAC call on this instance.
+MISSING_TTL_S = 3600
+_missing: dict[tuple[str, str], tuple[float, FetchError]] = {}
 
 
 def get_item(collection: str, item_id: str) -> dict[str, Any]:
@@ -169,12 +279,23 @@ def get_item(collection: str, item_id: str) -> dict[str, Any]:
         hit = _item_cache.get(key)
         if hit and time.monotonic() - hit[0] < ITEM_TTL_S:
             return hit[1]
-    if collection == PC_S2:
-        result = fetch("stac_pc", f"{PC_STAC}/collections/{PC_S2}/items/{item_id}")
-    elif collection == E84_S2:
-        result = fetch("stac_e84", f"{E84_STAC}/collections/{E84_S2}/items/{item_id}")
-    else:
-        raise ValueError(f"unknown collection {collection!r}")
+        gone = _missing.get(key)
+        if gone and time.monotonic() - gone[0] < MISSING_TTL_S:
+            raise gone[1]
+    try:
+        if collection == PC_S2:
+            result = fetch("stac_pc", f"{PC_STAC}/collections/{PC_S2}/items/{item_id}")
+        elif collection == E84_S2:
+            result = fetch("stac_e84", f"{E84_STAC}/collections/{E84_S2}/items/{item_id}")
+        else:
+            raise ValueError(f"unknown collection {collection!r}")
+    except FetchError as exc:
+        if exc.status_code == 404:
+            with _item_lock:
+                if len(_missing) > 5000:
+                    _missing.clear()
+                _missing[key] = (time.monotonic(), exc)
+        raise
     set_fetch_records(result.fetch_id, 1)
     with _item_lock:
         _item_cache[key] = (time.monotonic(), result.data)
@@ -937,19 +1058,34 @@ def _single_flight(key: str) -> Iterator[None]:
             _flights.pop(key, None)
 
 
-def render(req: RenderRequest, *, min_valid_fraction: float = 0.0, persist: str | None = None) -> Rendered:
+def lookup(req: RenderRequest, *, stored: bool = True) -> Rendered | None:
+    """The picture for `req` if it is already drawn: on this instance's disk, else (`stored`, crops
+    only) in rendered_asset, copied to disk on the way. Never renders, never calls upstream."""
+    cache = image_cache()
+    key = req.cache_key()
+    hit = cache.get(key)
+    if hit is None and stored and req.tile is None:
+        hit = load_stored(key)
+        if hit is not None:
+            cache.put(key, hit)
+    return hit
+
+
+def render(req: RenderRequest, *, min_valid_fraction: float = 0.0, persist: str | None = None,
+           stored_lookup: bool = True) -> Rendered:
     """The picture for `req`: from the disk cache, else the database (rendered_asset), else
     rendered, checked and cached on disk.
 
     `persist` ("frame" or "chip") also keeps the picture in the database, so every serverless
     instance can serve it without rendering; map tiles are never looked up or stored there.
+    `stored_lookup=False` skips the database lookup (the caller just looked, see lookup()).
     Raises RenderError when every renderer failed (the message lists each attempt), or
     SourceUnavailable when the only upstream that could serve it is paused.
     """
     cache = image_cache()
     key = req.cache_key()
     hit = cache.get(key)
-    if hit is None and req.tile is None:
+    if hit is None and req.tile is None and stored_lookup:
         hit = load_stored(key)
         if hit is not None:
             cache.put(key, hit)

@@ -32,7 +32,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.dialects.postgresql import JSONB, insert
 from sqlalchemy.orm import Mapped, mapped_column
 
 from blindspot.db import Base, session_scope
@@ -65,18 +65,19 @@ class RenderedAsset(Base):
 
 
 def load_asset(key: str) -> dict[str, Any] | None:
-    """The stored asset as a dict (data included), or None. Marks it used (at most once a day)."""
+    """The stored asset as a dict (data included), or None. Marks it used (at most once a day).
+
+    Read in binary format: in the text format a bytea comes back hex-encoded, twice its size,
+    and every byte Neon sends counts against its egress allowance."""
+    columns = ("key", "role", "media_type", "data", "source_key", "collection", "item", "url",
+               "fetch_id", "rendered_at", "note", "last_used_at")
     with session_scope() as session:
-        row = session.execute(
-            text("""
-                SELECT key, role, media_type, data, source_key, collection, item, url, fetch_id,
-                       rendered_at, note, last_used_at
-                FROM rendered_asset WHERE key = :key
-            """), {"key": key},
-        ).mappings().first()
-        if row is None:
+        with session.connection().connection.driver_connection.cursor(binary=True) as cur:
+            cur.execute(f"SELECT {', '.join(columns)} FROM rendered_asset WHERE key = %s", (key,))
+            found = cur.fetchone()
+        if found is None:
             return None
-        out = dict(row)
+        out = dict(zip(columns, found, strict=True))
         out["data"] = bytes(out["data"])
         if out["rendered_at"] is not None:  # the session time zone must not leak into headers
             out["rendered_at"] = out["rendered_at"].astimezone(UTC)
@@ -132,4 +133,124 @@ def prune_assets(keep: Collection[str], keep_days: int = KEEP_DAYS) -> dict[str,
             "stored": int(left[0]), "stored_bytes": int(left[1])}
 
 
-__all__ = ["KEEP_DAYS", "RenderedAsset", "load_asset", "prune_assets", "save_asset", "stored_keys"]
+# --- response_body: finished API answers kept for serverless instances (Neon egress budget) -------
+#
+# Why: a cold request on Vercel (CDN expiry, a new region, a new instance) recomputes its answer
+# from Neon, and some answers pull megabytes of rows for a few hundred KB of JSON (smoke trails,
+# scar polygons, boundaries). Neon's free plan has 5 GB of egress a month. So the job that changes
+# the data (or the first request after it changed) stores the finished body here, xz-compressed,
+# and later cold requests read ~10-25 % of the bytes. A separate table from rendered_asset, so
+# imagery's pruning of unreferenced pictures can never delete a stored body.
+#
+# A row is valid only while its `stamp` equals what the route computes now (the data version plus
+# a hash of the code that renders it); otherwise the route computes live and replaces it.
+# `body` is the JSON payload without `generated_at` and `sources` (the request-time parts); the
+# route adds them, so the bytes sent are exactly what a live computation sends.
+
+RESPONSE_KEEP_DAYS = 3  # prune: rows nobody read for this long go (the next request re-stores)
+
+
+class ResponseBody(Base):
+    __tablename__ = "response_body"
+
+    key: Mapped[str] = mapped_column(String(512), primary_key=True)  # route + canonical query
+    stamp: Mapped[str] = mapped_column(Text)  # data version + code hash it was rendered for
+    codec: Mapped[str] = mapped_column(String(8))  # xz
+    body: Mapped[bytes] = mapped_column(LargeBinary)  # compressed payload JSON (no generated_at/sources)
+    sources: Mapped[bytes | None] = mapped_column(LargeBinary)  # JSON array, when stored with the body
+    headers: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True))
+    raw_bytes: Mapped[int] = mapped_column(BigInteger)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_used_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+def load_body(session: Any, key: str, stamp: str) -> dict[str, Any] | None:
+    """The stored body under `key` if it was rendered for `stamp`, else None (see probe_body)."""
+    return probe_body(session, key, stamp)[0]
+
+
+def probe_body(session: Any, key: str, stamp: str) -> tuple[dict[str, Any] | None, bool | None]:
+    """(the stored body under `key` if it was rendered for `stamp`, whether any row is stored
+    under `key`); the second is None when the store cannot be read.
+
+    The body and sources are sent only when the stamp matches: a stale row costs a few bytes of
+    egress, not the body it would throw away. Fetched in binary format: bytea in the text
+    protocol would come back hex-encoded, doubling the bytes Neon sends. Never raises for a
+    missing table (a deployment older than the table): the caller then computes live."""
+    connection = session.connection()
+    raw = connection.connection.driver_connection
+    fresh = "stamp = %(stamp)s"
+    try:
+        with connection.begin_nested(), raw.cursor(binary=True) as cur:
+            cur.execute(
+                f"SELECT {fresh}, CASE WHEN {fresh} THEN codec END, CASE WHEN {fresh} THEN body END,"
+                f" CASE WHEN {fresh} THEN sources END, CASE WHEN {fresh} THEN headers END,"
+                " raw_bytes, last_used_at FROM response_body WHERE key = %(key)s",
+                {"key": key, "stamp": stamp})
+            row = cur.fetchone()
+    except Exception:  # noqa: BLE001  (table missing, or the store is unreadable: compute live)
+        return None, None
+    if row is None:
+        return None, False
+    matches, codec, body, sources, headers, raw_bytes, last_used_at = row
+    if not matches:
+        return None, True
+    if last_used_at is not None and last_used_at < datetime.now(UTC) - TOUCH_EVERY:
+        _touch(key)
+    return ({"codec": codec, "body": bytes(body), "sources": None if sources is None else bytes(sources),
+             "headers": headers if isinstance(headers, dict) else None, "raw_bytes": raw_bytes}, True)
+
+
+def _touch(key: str) -> None:
+    """Mark a body used (at most once a day), in its own transaction: the route's session stays
+    read-only."""
+    try:
+        with session_scope() as session:
+            session.execute(text("UPDATE response_body SET last_used_at = now() WHERE key = :k"), {"k": key})
+    except Exception:  # noqa: BLE001  (not worth failing a read for)
+        pass
+
+
+def save_body(key: str, stamp: str, codec: str, body: bytes, raw_bytes: int, *,
+              sources: bytes | None = None, headers: dict[str, str] | None = None) -> bool:
+    """Insert or replace one stored body (own transaction). False when it could not be written."""
+    stmt = insert(ResponseBody).values(key=key, stamp=stamp, codec=codec, body=body, sources=sources,
+                                       headers=headers, raw_bytes=raw_bytes)
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["key"],
+        set_={k: stmt.excluded[k] for k in ("stamp", "codec", "body", "sources", "headers", "raw_bytes")}
+        | {"created_at": func.now(), "last_used_at": func.now()},
+    )
+    try:
+        with session_scope() as session:
+            session.execute(stmt)
+        return True
+    except Exception:  # noqa: BLE001  (missing table on an old schema: serving still works)
+        return False
+
+
+def prune_bodies(keep_days: int = RESPONSE_KEEP_DAYS, dry_run: bool = False) -> dict[str, Any]:
+    """Delete stored bodies nobody read for `keep_days` days (one-off queries, old variants)."""
+    where = "last_used_at < now() - make_interval(days => :days)"
+    with session_scope() as session:
+        if session.execute(text("SELECT to_regclass('public.response_body')")).scalar() is None:
+            return {"removed": 0, "removed_bytes": 0, "stored": 0, "stored_bytes": 0, "dry_run": dry_run}
+        if dry_run:
+            removed = session.execute(
+                text(f"SELECT octet_length(body) FROM response_body WHERE {where}"), {"days": keep_days}
+            ).scalars().all()
+        else:
+            removed = session.execute(
+                text(f"DELETE FROM response_body WHERE {where} RETURNING octet_length(body)"),
+                {"days": keep_days},
+            ).scalars().all()
+        left = session.execute(
+            text("SELECT count(*), coalesce(sum(octet_length(body)), 0) FROM response_body")
+        ).one()
+    return {"removed": len(removed), "removed_bytes": int(sum(removed)),
+            "stored": int(left[0]), "stored_bytes": int(left[1]), "dry_run": dry_run}
+
+
+__all__ = ["KEEP_DAYS", "RESPONSE_KEEP_DAYS", "RenderedAsset", "ResponseBody", "load_asset",
+           "load_body", "probe_body", "prune_assets", "prune_bodies", "save_asset", "save_body",
+           "stored_keys"]

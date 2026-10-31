@@ -99,9 +99,11 @@ restart an interval job waits until it is next due instead of running again stra
 | Piece | Where | Notes |
 | --- | --- | --- |
 | Web API (`blindspot.api.main:app`) | Vercel Hobby, one Python function, region `sin1` (Singapore) | reads Neon; no scheduler, no table creation; `maxDuration` 60 s, body cap 4.5 MB |
-| CDN | Vercel, in front of the function | keeps 200 GETs per `s-maxage` (`api/cache.py`, contract notes "Serverless deployment") |
-| Database | Neon free tier (0.5 GB), Postgres 18 + PostGIS, `aws ap-southeast-1` | the API and the jobs use the **direct** host (NEON_DB without `-pooler`) |
-| Jobs | GitHub Actions (`.github/workflows/data-jobs.yml`), writing to Neon | schedules in the workflow; secrets set by `infra/set_github_secrets.py` |
+| CDN | Vercel, in front of the function | keeps 200 GETs until the job group feeding them next runs (expiry clocks in `api/cache.py`; contract notes "Serverless deployment") |
+| Stored answers | `response_body` in Neon | finished bodies of heavy routes (smoke trails, scar polygons, boundaries), xz-compressed; the smoke jobs write theirs ahead of any request. Budget and cadence: `docs/neon-budget.md` |
+| Database | Neon free tier (sized for 0.5 GB of storage; the plan's compute, egress and storage limits are in `docs/neon-budget.md`), Postgres 18 + PostGIS, `aws ap-southeast-1` | the API and the jobs use the **direct** host (NEON_DB without `-pooler`) |
+| Jobs | GitHub Actions (`.github/workflows/data-jobs.yml`), writing to Neon | fires, CREAMS, air and GK-2A hourly 08:17-18:17 UTC and at 00:17, 03:17, 06:17, 21:17 (air runs beside the other three); met (-> smoke) 03:17, 09:17, 15:17, 21:17; Sentinel-2 (-> risk, featured), smoke check and element sets 11:17; bulletin 02:00 with retries 03:17, 06:17; backfills and prune 06:17; boundaries Monday 03:17 (every group shares a wake-up with an hourly run: `docs/neon-budget.md`); secrets set by `infra/set_github_secrets.py` |
+| Per-client limits | `client_hit` in Neon (salted address hashes, a few rows a minute) | agent questions, live picture renders and live map tiles are counted across every instance; until the table exists the count fails open (each instance's in-memory limit only). Contract notes, "Agent" and "Imagery" |
 | Pictures | `rendered_asset` in Neon, written by the `featured` job | frames, the 24 largest scars' chips and the featured manifest; any instance reads them |
 
 The function runs in Singapore beside Neon: from Vercel's default region (`iad1`) every database
@@ -133,7 +135,7 @@ Remove-Item Env:DATABASE_URL                               # before anything els
   `create_all` adds missing tables and never alters existing ones.
 - Never run `pytest` with `DATABASE_URL` pointing at Neon: conftest would create a test database
   there.
-- Size: 348 MB after the load and three risk runs (cap 512 MB). The daily `prune` job and the
+- Size: 348 MB after the load and three risk runs; 333 MB on 2026-10-31 (sized for a 0.5 GB cap; see `docs/neon-budget.md`). The daily `prune` job and the
   `risk` job's changed-rows-only update keep it there; `docs/build-logs/deploy-data.md` has the
   per-table sizes and the egress of each endpoint.
 
@@ -162,6 +164,7 @@ Environment it sets on Vercel:
 | `CACHE_DIR` | `/tmp/blindspot-cache` (per instance, starts empty) |
 | `PUBLIC_BASE_URL` | the production address: the picture URLs in `/api/imagery/featured`, case files and tilejson |
 | `CORS_ORIGINS` / `CORS_ORIGIN_REGEX` | `["http://localhost:3000"]` / `^https://blindspot[a-z0-9-]*\.vercel\.app$` |
+| optional, not set by the script | `CLIENT_HASH_SALT` (else derived from `DATABASE_URL`), `IMAGERY_RENDER_PER_MINUTE`/`_PER_DAY` (30/300), `IMAGERY_TILES_PER_MINUTE`/`_PER_DAY` (600/6000), `SHARED_CLIENT_LIMITS=0` (per-instance counting only) |
 
 Bundle: the web packages (fastapi ... planetary-computer) plus pillow, rasterio and affine for
 drawing pictures, about 282 MB of the 500 MB cap. Job-only libraries (geopandas, pandas, scipy,
@@ -173,10 +176,19 @@ h5py, pyarrow, lightgbm, pdfplumber, pyproj...) are not shipped.
   are imported only when a picture is drawn.
 - **Pictures:** an instance looks in its `/tmp`, then `rendered_asset`, then renders live (1-20 s).
   Run `featured` against Neon after a load so the landing frames and the largest scars' chips are
-  stored; the 6-hourly workflow keeps them current.
+  stored; the daily Sentinel-2 run keeps them current.
 - **Payloads:** two default bodies exceed 4.5 MB raw and rely on gzip (browsers always send it):
   `/api/smoke/forward` and `/api/scars` without filters. See the contract notes, "Limits".
 - Each warm instance also keeps hot responses in memory for 30-300 s (`blindspot/api/cache.py`).
+- **Neon budget** (100 CU-hours, 5 GB egress a month; `docs/neon-budget.md`): a cold request
+  reads at most ~300 KB for every website query except `/api/risk?limit=1000` (the live map's
+  risk layer, ~0.9 MB: the risk route keeps no stored answer yet) and the first build of a `/live`
+  district list after its scars change (~1.4 MB). Heavy answers come from `response_body`
+  (`cache.stored_response`), which the first job run after a deploy creates (`init_db`). Stamps hash
+  the source with line endings normalised (`cache.source_text`), so bodies the Linux job runner
+  stores are served by an API deployed from Windows. A never-seen heavy variant (`guard=True`) is
+  limited to 20 per 10 minutes per instance (429 after). Never add a poller that reaches the
+  database every few minutes: it keeps the compute awake all month.
 
 After a deploy, check from outside (the scratch checks used in `docs/build-logs/deploy-api.md`
 do all of this): every contract GET returns 200 with the numbers of the local API (Neon is a

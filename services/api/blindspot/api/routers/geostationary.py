@@ -46,13 +46,20 @@ def _polar_passes(
     session: Session, since: datetime, until: datetime
 ) -> list[gf.PolarPass]:
     """Polar-satellite looks at the region in the period, from FIRMS detections in fire_detection
-    clipped to the Punjab and Haryana polygons."""
+    clipped to the Punjab and Haryana polygons.
+
+    The diurnal answer uses each pass's satellite, start and end only, so the database returns one
+    row per satellite and acquisition time (FIRMS times are to the minute: a pass is 1-3 rows, not
+    hundreds of detections). Grouping distinct times gives the same passes, starts and ends;
+    n_detections, median_scan_km and frp_sum_mw then describe the distinct times, and nothing in
+    this module reads them."""
     rows = session.execute(
         text(
-            "SELECT f.acq_utc, f.satellite, f.instrument, f.scan, f.frp_mw "
+            "SELECT f.acq_utc, f.satellite, min(f.instrument) AS instrument, min(f.scan) AS scan, "
+            "sum(f.frp_mw) AS frp_mw "
             "FROM fire_detection f JOIN boundary b ON b.level = 'state' "
             "AND b.props->>'iso3166_2' = ANY(:isos) AND ST_Covers(b.geom, f.geom) "
-            "WHERE f.acq_utc BETWEEN :since AND :until"
+            "WHERE f.acq_utc BETWEEN :since AND :until GROUP BY f.satellite, f.acq_utc"
         ),
         {"isos": REGION_ISOS, "since": since, "until": until},
     ).all()
@@ -123,13 +130,14 @@ def diurnal(session: SessionDep, days: Annotated[int, Query(ge=1, le=7)] = 3) ->
     """Fire activity through the day from GK-2A's 10-minute scans, against the polar windows."""
     now = utcnow()
     since = now - timedelta(days=days)
-    slots = session.execute(
-        select(GeoFireSlot)
+    slots = session.execute(  # the columns used here, not each scan's stats (Neon egress)
+        select(GeoFireSlot.status, GeoFireSlot.t_utc, GeoFireSlot.count, GeoFireSlot.count_pb,
+               GeoFireSlot.count_hr, GeoFireSlot.clear_frac)
         .where(
             GeoFireSlot.algorithm == gf.ALGORITHM_VERSION, GeoFireSlot.slot_utc >= since
         )
         .order_by(GeoFireSlot.slot_utc)
-    ).scalars()
+    ).all()
     ok, failed = [], 0
     for s in slots:
         if s.status == "ok" and s.t_utc is not None and s.count is not None:

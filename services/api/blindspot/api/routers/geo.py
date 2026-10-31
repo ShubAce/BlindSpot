@@ -14,6 +14,7 @@ simplified once, so neighbours never gap or overlap on the map, however far one 
 
 from __future__ import annotations
 
+import re
 import threading
 from collections.abc import Iterable, Sequence
 from typing import Annotated, Any, Literal
@@ -28,7 +29,14 @@ from sqlalchemy.orm import Session
 from starlette.responses import Response
 
 from blindspot.api import BBoxDep, SessionDep, respond
-from blindspot.api.cache import cached_route
+from blindspot.api.cache import (
+    cached_route,
+    canonical_key,
+    code_version,
+    fetch_binary,
+    stored_response,
+    table_stamp,
+)
 from blindspot.geo import district_for_point, nearest_place
 from blindspot.provenance import SourceRef, latest_refs, ref_for_fetch
 from blindspot.sources import boundaries as _sources  # noqa: F401  (registers source labels)
@@ -139,32 +147,47 @@ def boundaries(
     Polygons are whole (not clipped to the box). `simplify=0` returns full detail. Each feature
     carries its LGD code, area and, for districts, other spellings of its name (`aliases`).
     """
-    key = ("boundaries", _version(session), level, (state or "").lower(), bbox, simplify)
-    payload = _cached(key, lambda: _boundaries_payload(session, bbox, level, state, simplify))
-    sources = _refs(session, payload["_ids"], BOUNDARY_SOURCES)
-    body = {k: v for k, v in payload.items() if not k.startswith("_")}
-    return respond(body, sources, max_age=MAX_AGE_S)
+    # Neon egress: the polygons are read whole (2.9 MB of WKB for the 13 state outlines) and
+    # simplified here, so the finished answer is stored (api/cache.stored_response) until the
+    # boundary table (cache.table_stamp: any insert, update or delete), the sources' latest
+    # fetches or the code (and GEOS, which simplifies) change.
+    rows = table_stamp(session, "boundary")
+    refs = latest_refs(session, BOUNDARY_SOURCES)
+    stamp = (f"{rows}|{','.join(str(r.fetch_id) for r in refs)}|"
+             f"{code_version(__name__)}|{shapely.__version__}/{shapely.geos_version_string}")
+
+    def build() -> tuple[dict[str, Any], list[SourceRef], int]:
+        key = ("boundaries", rows, level, (state or "").lower(), bbox, simplify)
+        payload = _cached(key, lambda: _boundaries_payload(session, bbox, level, state, simplify))
+        sources = _refs(session, payload["_ids"], BOUNDARY_SOURCES)
+        return {k: v for k, v in payload.items() if not k.startswith("_")}, sources, MAX_AGE_S
+
+    stored_key = canonical_key("geo/boundaries", bbox=bbox, level=level, state=state, simplify=simplify)
+    # A whole level is megabytes of rows: a never-stored variant (another `simplify`, another box)
+    # counts against the novel-query allowance (api/cache.py); one state's outline is small.
+    return stored_response(session, stored_key, stamp, build, guard=state is None)
 
 
 def _boundaries_payload(
     session: Session, bbox: tuple[float, ...], level: str, state: str | None, tolerance: float
 ) -> dict[str, Any]:
-    rows = session.execute(
-        text(
-            f"""
-            SELECT b.id, b.level, b.name, b.state, b.district, b.code, b.source, b.props,
-                   b.fetch_id, ST_AsBinary(b.geom) AS wkb
-            FROM boundary b
-            WHERE b.level = :level
-              AND b.geom && ST_MakeEnvelope(:x0, :y0, :x1, :y1, 4326)
-              AND ST_Intersects(b.geom, ST_MakeEnvelope(:x0, :y0, :x1, :y1, 4326))
-              {_STATE_FILTER}
-            ORDER BY b.state, b.name
-            """
-        ),
+    # Binary format: the WKB arrives as bytes, not hex text (half the database egress).
+    state_filter = re.sub(r":(state)\b", r"%(\1)s", _STATE_FILTER)
+    rows = fetch_binary(
+        session,
+        f"""
+        SELECT b.id, b.level, b.name, b.state, b.district, b.code, b.source, b.props,
+               b.fetch_id, ST_AsBinary(b.geom) AS wkb
+        FROM boundary b
+        WHERE b.level = %(level)s
+          AND b.geom && ST_MakeEnvelope(%(x0)s, %(y0)s, %(x1)s, %(y1)s, 4326)
+          AND ST_Intersects(b.geom, ST_MakeEnvelope(%(x0)s, %(y0)s, %(x1)s, %(y1)s, 4326))
+          {state_filter}
+        ORDER BY b.state, b.name
+        """,
         {"level": level, "state": state, "x0": bbox[0], "y0": bbox[1], "x1": bbox[2],
          "y1": bbox[3]},
-    ).mappings().all()
+    )
     geoms = _simplify([shapely.from_wkb(r["wkb"]) for r in rows], tolerance)
     digits = 5 if tolerance < 0.0005 else 4  # ~1 m or ~11 m: below the simplification error
     features = [

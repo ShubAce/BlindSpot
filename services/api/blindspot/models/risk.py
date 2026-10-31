@@ -50,3 +50,17 @@ def latest_backtest(session: Session) -> dict[str, Any] | None:
     return session.execute(text(
         "SELECT backtest FROM risk_run WHERE backtest IS NOT NULL ORDER BY as_of DESC, id DESC LIMIT 1"
     )).scalar()
+
+
+def latest_backtest_summary(session: Session) -> dict[str, Any] | None:
+    """The newest backtest report without its per-window list (which the API only counts), plus
+    `windows_count`: what GET /api/risk serves, at a fraction of the bytes from the database."""
+    if not session.execute(text("SELECT to_regclass('public.risk_run') IS NOT NULL")).scalar_one():
+        return None
+    row = session.execute(text("""
+        SELECT backtest - 'windows', coalesce(jsonb_array_length(backtest -> 'windows'), 0)
+        FROM risk_run WHERE backtest IS NOT NULL ORDER BY as_of DESC, id DESC LIMIT 1
+    """)).first()
+    if row is None:
+        return None
+    return {**row[0], "windows_count": int(row[1])}
