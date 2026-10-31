@@ -93,7 +93,9 @@ export type Live<T> = SWRResponse<T, ApiError>;
 
 /** The generic hook: GET `path?query`, polling every `refreshInterval` ms. A null path pauses it. */
 export function useApi<T>(path: string | null, query?: Query, opts: LiveOptions<T> = {}): Live<T> {
-  const { timeoutMs = 15_000, ...config } = opts;
+  // 25 s: right after a deploy or a quiet spell, a dozen panels wake the API at once and a cold start
+  // can pass 15 s; a skeleton held a little longer reads better than an error that retries 2 s later
+  const { timeoutMs = 25_000, ...config } = opts;
   const key = path ? swrKey(path, query) : null;
   return useSWR<T, ApiError>(key, fetcherFor(timeoutMs) as (url: string) => Promise<T>, {
     keepPreviousData: true,
