@@ -30,6 +30,8 @@ export type Verification = {
   bad_markers?: (string | number)[];
   revised?: boolean;
   first_pass_unverified?: string[];
+  /** honesty rules the first draft broke (verifier.check_honesty), fixed before the answer showed */
+  first_pass_honesty?: string[];
 };
 
 export type ToolStep = {
@@ -203,6 +205,7 @@ export function reduce(inv: Investigation, ev: RawEvent, clock: number | null, a
           bad_markers: arr<string | number>(ev.bad_markers),
           revised: ev.revised === true,
           first_pass_unverified: arr<string>(ev.first_pass_unverified).map(String),
+          first_pass_honesty: arr<string>(obj(ev.honesty).first_pass_issues).map(String),
         },
       };
     case 'error':

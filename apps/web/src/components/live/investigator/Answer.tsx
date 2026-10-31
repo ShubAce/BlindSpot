@@ -104,6 +104,7 @@ export function verificationWords(v: Verification): { tone: 'positive' | 'warnin
 function Verdict({ v }: { v: Verification }) {
   const w = verificationWords(v);
   const first = v.first_pass_unverified ?? [];
+  const rules = v.first_pass_honesty ?? [];
   const bad = v.bad_markers ?? [];
   return (
     <div className="iv-check" data-tone={w.tone}>
@@ -124,6 +125,18 @@ function Verdict({ v }: { v: Verification }) {
             <ul>
               {first.map((f, i) => (
                 <li key={i}>{f}</li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
+        {rules.length ? (
+          <details className="iv-more">
+            <summary>
+              The first draft broke {rules.length === 1 ? 'an honesty rule' : `${number(rules.length)} honesty rules`}; it was rewritten before you saw it.
+            </summary>
+            <ul>
+              {rules.map((r, i) => (
+                <li key={i}>{r}</li>
               ))}
             </ul>
           </details>

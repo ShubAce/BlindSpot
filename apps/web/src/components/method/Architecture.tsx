@@ -13,11 +13,12 @@ import type { SourceRow } from './types';
 type Lane = { source: string; keys: string[]; job: string; every: string };
 
 const LANES: Lane[] = [
-  { source: 'NASA FIRMS', keys: ['firms'], job: 'firms_nrt', every: 'every 30 min' },
-  { source: 'CelesTrak', keys: ['celestrak'], job: 'tle', every: 'every 12 h' },
-  { source: 'OpenAQ, CPCB', keys: ['openaq', 'datagov_aqi'], job: 'air', every: 'every 30 min' },
-  { source: 'Open-Meteo', keys: ['openmeteo'], job: 'met, then smoke', every: 'every 3 h' },
-  { source: 'Sentinel-2 STAC', keys: ['stac_e84', 'stac_pc'], job: 'sentinel, then risk', every: 'every 6 h' },
+  // cadences: the cron slots in .github/workflows/data-jobs.yml
+  { source: 'NASA FIRMS', keys: ['firms'], job: 'firms_nrt', every: 'hourly, 3-hourly at night' },
+  { source: 'CelesTrak', keys: ['celestrak'], job: 'tle', every: 'daily, 16:47 IST' },
+  { source: 'OpenAQ, CPCB', keys: ['openaq', 'datagov_aqi'], job: 'air', every: 'hourly, 3-hourly at night' },
+  { source: 'Open-Meteo', keys: ['openmeteo'], job: 'met, then smoke', every: 'every 6 h' },
+  { source: 'Sentinel-2 STAC', keys: ['stac_e84', 'stac_pc'], job: 'sentinel, then risk', every: 'daily, 16:47 IST' },
   { source: 'Gemini', keys: ['gemini'], job: 'bulletin', every: 'daily, 07:30 IST' },
 ];
 
