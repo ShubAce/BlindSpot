@@ -752,7 +752,8 @@ done         {"type":"done","run_id":"97c49cde-...","duration_ms":8228,"ok":true
     script check, it is asked once more on the other model. A later run of the day translates
     only the missing or flagged language, from the stored English. The 2026-10-31 Punjabi
     bulletin passed after a re-run at 05:37 IST (gemini-3.6-flash, 30/30 numbers verified).
-  - Hindi uses Devanagari digits; Punjabi uses 0-9.
+  - Both Hindi and Punjabi write every number with the digits 0-9 (the prompts require it, so the
+    verifier can match them).
   - **Honesty check (2026-10-31, addition `verification.honesty`).** Every language is checked
     by its numbers (agent/verifier.py `check_honesty`): a sentence that gives the candidate unseen
     share or area must call them candidate unseen burns, and its section must give the audit

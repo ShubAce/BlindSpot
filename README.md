@@ -7,7 +7,7 @@ NASA's fire satellites cross Punjab near 1:30 PM and 1:30 AM. The burning peaks 
 afternoon pass, so much of it happens when no polar satellite reports a fire. Each burnt field still leaves a scar that
 Sentinel-2 photographs days later, whatever hour it was lit. BlindSpot matches every scar against every fire alert,
 measures the evening burning from a geostationary satellite, and follows the smoke to Delhi. A Gemini investigator
-explains any day's air with cited, number-checked answers.
+explains the past week's air with cited, number-checked answers.
 
 - **Live site:** https://blindspot-web-five.vercel.app (mission control at
   [/live](https://blindspot-web-five.vercel.app/live), the daily bulletin at
@@ -61,8 +61,8 @@ As of 31 October 2026. The site's `/method` page shows the current values, read 
 | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
 | Predicted pass times vs FIRMS acquisition times (1,428 detections, 3 days)                  | median error 0.5 min; all within 3 min                                                     |
 | Candidate unseen burns that are real burns (visual audit of random Sentinel-2 chip samples) | precision 87%, 95% CI 68–96%, n = 23                                                       |
-| Smoke index vs measured PM2.5 (22 cities, 25–30 Oct)                                       | r = 0.60 (CAMS 0.62, ventilation alone 0.14); only ~4 independent hours, so not yet robust |
-| Burn-risk ranking vs the burns that followed (risk-v3, 213 pass pairs)                      | AUC 0.57 (95% CI 0.50–0.65); 0.5 is chance, so a weak but real ranking                    |
+| Smoke index vs measured PM2.5 (16 cities, 25–31 Oct)                                       | median r = 0.43 (Delhi 0.60); the CAMS model 0.62, ventilation alone 0.14; few independent hours, so not yet robust |
+| Burn-risk ranking vs the burns that followed (risk-v3, 213 pass pairs)                      | AUC 0.57 (95% CI 0.50–0.65; 0.5 is chance): weak, about what burning nearby predicts alone; the top tenth burnt 1.4× as often as average |
 | GK-2A fire pixels vs MODIS on Aqua (strong afternoon fires)                                 | 78% detected (n = 37); 15% of GK-2A's pixels unconfirmed                                   |
 
 ## Architecture
@@ -164,7 +164,7 @@ Deployment (Neon, Vercel, GitHub Actions) is described in [services/api/README.m
 
 - The precision audit is small (n = 23), so the unseen share is an upper bound until the audit grows.
 - Sentinel-2 revisits every few days and cannot see through cloud or thick smoke, so scars appear with a delay.
-- GK-2A pixels are about 2 km across. It raises some false alarms at midday, and there is no reference to validate its
+- GK-2A pixels cover about 12 km² each over Punjab. It raises some false alarms at midday, and there is no reference to validate its
   evening detections against.
 - OpenAQ republishes CPCB readings 2–4 hours late, so "now" is often the last reading and its age.
 - Free tiers bound the investigator: repeated questions replay their cached, verified answers.

@@ -132,6 +132,11 @@ Each job is idempotent, records a `source_fetch` per upstream call, catches its 
 down. `uv run python -m blindspot.jobs run <name>` runs one; the API process runs the scheduler when
 `ENABLE_SCHEDULER=1`.
 
+The cadences below are the in-process scheduler's (local development). In production the jobs run on GitHub
+Actions on the cron slots in `.github/workflows/data-jobs.yml`: fires, official counts, air and GK-2A hourly
+from 13:47 to 23:47 IST and about every 3 h otherwise; weather (then smoke) every 6 h; Sentinel-2 (then risk)
+and orbits daily at 16:47 IST; the bulletin daily at 07:30 IST.
+
 | Job | Every | Does |
 | --- | --- | --- |
 | `firms_nrt` | 30 min | keyless 24h CSVs (VIIRS J1, J2, SNPP; MODIS) → upsert `fire_detection` with state/district |

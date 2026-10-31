@@ -197,7 +197,7 @@ API traffic assumption (judging month), stated so it can be checked against the 
 - **every one of the 21 refresh points hit once a day** by a visitor outside job wake-ups (the
   website's server in `sin1` and the browsers in India refresh at the same moments, so they share
   the wake): 21 x 5.5 = 115.5 min;
-- **crawlers**: the API has no `robots.txt` (404; `api/main.py` is not this area) and crawlers that
+- **crawlers**: the API now serves a `robots.txt` that disallows everything (`api/main.py`), but crawlers that
   run the website's JavaScript fetch the API from their own region at their own times: an
   allowance of 3 wake-ups a day, 16.5 min.
 
