@@ -60,9 +60,11 @@ jobs:
       SENTINEL_BUDGET_MIN: "40"
       CACHE_DIR: /tmp/blindspot-cache   # the runner context is not available in job-level env
       PUBLIC_API_URL: https://blindspot-api-azure.vercel.app
-      # data.gov.in refuses connections from these (US) runners; the relay runs in Mumbai and
-      # forwards only data.gov.in resource reads (infra/relay, infra/deploy_vercel_relay.py).
+      # data.gov.in refuses connections from these (US) runners, and NASA FIRMS stopped answering
+      # them on 2026-10-31; the relay runs in Mumbai and forwards only data.gov.in resource reads
+      # and FIRMS's public active-fire files (infra/relay). FIRMS falls back to its own host.
       DATAGOV_RELAY_URL: https://blindspot-relay.vercel.app
+      FIRMS_RELAY_URL: https://blindspot-relay.vercel.app
     defaults:
       run:
         working-directory: services/api

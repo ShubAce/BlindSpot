@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import csv
 import io
+import logging
 from collections import Counter
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
@@ -30,9 +31,11 @@ from typing import Any
 
 from pydantic import SecretStr
 
-from blindspot.config import BBox
-from blindspot.http import FetchResult, fetch
+from blindspot.config import BBox, get_settings
+from blindspot.http import FetchError, FetchResult, fetch
 from blindspot.provenance import SourceInfo, register_source
+
+log = logging.getLogger(__name__)
 
 FIRMS_BASE = "https://firms.modaps.eosdis.nasa.gov"
 REGION_FILE = "South_Asia"  # the smallest FIRMS regional file that contains Punjab and Haryana
@@ -61,14 +64,15 @@ class Product:
     folder: str  # keyless file folder under /data/active_fire/
     prefix: str  # keyless file name prefix
 
-    def file_url(self, window: str) -> str:
-        """The keyless regional CSV for `window` (24h, 48h or 7d)."""
+    def file_path(self, window: str) -> str:
+        """The keyless regional CSV's path on the FIRMS host, for `window` (24h, 48h or 7d)."""
         if window not in NRT_WINDOWS:
             raise ValueError(f"window must be one of {NRT_WINDOWS}, not {window!r}")
-        return (
-            f"{FIRMS_BASE}/data/active_fire/{self.folder}/csv/"
-            f"{self.prefix}_{REGION_FILE}_{window}.csv"
-        )
+        return f"data/active_fire/{self.folder}/csv/{self.prefix}_{REGION_FILE}_{window}.csv"
+
+    def file_url(self, window: str) -> str:
+        """The keyless regional CSV for `window` (24h, 48h or 7d)."""
+        return f"{FIRMS_BASE}/{self.file_path(window)}"
 
 
 PRODUCTS: tuple[Product, ...] = (
@@ -255,25 +259,29 @@ def clip_to_bbox(rows: list[FireRow], bbox: BBox) -> list[FireRow]:
 # --- keyless files -------------------------------------------------------------------------------
 
 
+def _keyless(product: Product, window: str, **kwargs: Any) -> FetchResult:
+    """Fetch a keyless file through the relay in Mumbai when FIRMS_RELAY_URL is set (FIRMS stopped
+    answering GitHub's runners on 2026-10-31; infra/relay), and from FIRMS itself when it is not
+    set or the relay fails. The relay passes FIRMS's ETag and bytes through unchanged."""
+    relay = get_settings().firms_relay_url
+    if relay:
+        try:
+            return fetch("firms", f"{relay.rstrip('/')}/api/firms",
+                         params={"path": product.file_path(window)}, **kwargs)
+        except FetchError as exc:
+            log.warning("firms: the relay failed (%s); asking FIRMS directly", exc)
+    return fetch("firms", product.file_url(window), **kwargs)
+
+
 def head_file(product: Product, window: str) -> FetchResult:
     """HEAD a keyless file: its ETag tells whether the content changed since our last download."""
-    return fetch(
-        "firms",
-        product.file_url(window),
-        method="HEAD",
-        expect="text",
-        meta={"product": product.source, "window": window, "check": "etag"},
-    )
+    return _keyless(product, window, method="HEAD", expect="text",
+                    meta={"product": product.source, "window": window, "check": "etag"})
 
 
 def get_file(product: Product, window: str) -> FetchResult:
     """Download a keyless file (CSV text in result.data, ETag in result.headers)."""
-    return fetch(
-        "firms",
-        product.file_url(window),
-        expect="text",
-        meta={"product": product.source, "window": window},
-    )
+    return _keyless(product, window, expect="text", meta={"product": product.source, "window": window})
 
 
 # --- area API (MAP_KEY) --------------------------------------------------------------------------

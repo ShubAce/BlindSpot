@@ -45,9 +45,12 @@ class Settings(BaseSettings):
     firms_map_key: SecretStr | None = None
     data_gov_in_api_key: SecretStr | None = None
     openaq_api_key: SecretStr | None = None
-    # data.gov.in refuses connections from GitHub's US runners, so the jobs there reach it through
-    # the relay in Mumbai (infra/relay): DATAGOV_RELAY_URL=https://blindspot-relay.vercel.app
+    # data.gov.in refuses connections from GitHub's US runners, and NASA FIRMS stopped answering
+    # them on 2026-10-31, so the jobs there go through the relay in Mumbai (infra/relay):
+    # DATAGOV_RELAY_URL / FIRMS_RELAY_URL=https://blindspot-relay.vercel.app (FIRMS falls back to
+    # its own host when the relay fails).
     datagov_relay_url: str | None = None
+    firms_relay_url: str | None = None
 
     database_url: str = LOCAL_DATABASE_URL  # the Docker PostGIS from infra/docker-compose.yml
     enable_scheduler: bool = False  # run the job scheduler inside the API process

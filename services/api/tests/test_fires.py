@@ -121,6 +121,61 @@ def test_choose_window_overlaps_the_last_sync() -> None:
     assert choose_window(now - timedelta(days=3), now) == "7d"
 
 
+def test_keyless_files_go_through_the_relay_and_fall_back_to_firms(monkeypatch: pytest.MonkeyPatch) -> None:
+    """With FIRMS_RELAY_URL the files come through the relay in Mumbai (FIRMS stopped answering
+    GitHub's runners on 2026-10-31); if the relay fails, from FIRMS itself; unset, straight from
+    FIRMS."""
+    from blindspot.config import Settings
+    from blindspot.http import FetchError
+    from blindspot.sources import firms
+
+    calls: list[tuple[str, dict[str, object] | None, str]] = []
+    relay_up = True
+
+    def fake_fetch(source: str, url: str, *, params: dict[str, object] | None = None,
+                   method: str = "GET", **kwargs: object) -> str:
+        calls.append((url, params, method))
+        if "relay" in url and not relay_up:
+            raise FetchError("firms", "ConnectError: [Errno 101] Network is unreachable")
+        return "answer"
+
+    monkeypatch.setattr(firms, "fetch", fake_fetch)
+    relay = Settings(firms_relay_url="https://blindspot-relay.vercel.app/")
+    monkeypatch.setattr(firms, "get_settings", lambda: relay)
+    path = "data/active_fire/noaa-20-viirs-c2/csv/J1_VIIRS_C2_South_Asia_24h.csv"
+    assert N20.file_path("24h") == path and N20.file_url("24h") == f"https://firms.modaps.eosdis.nasa.gov/{path}"
+    assert firms.head_file(N20, "24h") == "answer"
+    assert calls == [("https://blindspot-relay.vercel.app/api/firms", {"path": path}, "HEAD")]
+    calls.clear()
+    relay_up = False
+    assert firms.get_file(N20, "24h") == "answer"
+    assert [url for url, _, _ in calls] == ["https://blindspot-relay.vercel.app/api/firms", N20.file_url("24h")]
+    calls.clear()
+    monkeypatch.setattr(firms, "get_settings", lambda: Settings(firms_relay_url=None))
+    firms.get_file(N20, "24h")
+    assert calls == [(N20.file_url("24h"), None, "GET")]
+
+
+def test_ingested_etag_is_found_whichever_way_the_file_came() -> None:
+    """The ETag check keys on product and window, so a download through the relay counts the same
+    as one from FIRMS (the same bytes under another URL) and an unchanged file is not read again."""
+    from blindspot.jobs.firms import _ingested_etag
+
+    tag = f"etag-test-{utcnow().timestamp()}"
+    now = utcnow()
+    relay_url = "https://blindspot-relay.vercel.app/api/firms?path=data%2Factive_fire%2Fnoaa-20-viirs-c2"
+    meta = {"product": N20.source, "window": "24h", "etag": tag, "ingested": True, "test": tag}
+    fid = record_fetch("firms", relay_url, ok=True, started_at=now, meta=meta)
+    try:
+        with session_scope() as session:
+            assert _ingested_etag(session, N20, "24h") == tag
+            assert _ingested_etag(session, N20, "48h") != tag
+            assert _ingested_etag(session, MODIS, "24h") != tag
+    finally:
+        with session_scope() as session:
+            session.execute(text("DELETE FROM source_fetch WHERE id = :id"), {"id": fid})
+
+
 def test_backfill_windows_respect_the_five_day_limit() -> None:
     days = [date(2026, 9, 15) + timedelta(days=i) for i in range(12)] + [date(2026, 10, 1)]
     assert windows_for(days) == [

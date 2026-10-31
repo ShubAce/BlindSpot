@@ -212,17 +212,19 @@ def _last_sync(session: Session, product: Product) -> datetime | None:
     ).scalar()
 
 
-def _ingested_etag(session: Session, url: str) -> str | None:
-    """ETag of the last download of `url` whose rows were stored."""
+def _ingested_etag(session: Session, product: Product, window: str) -> str | None:
+    """ETag of the last download of this product's `window` file whose rows were stored, whether
+    it came from FIRMS or through the relay (the same bytes; the URLs differ)."""
     return session.execute(
         text(
             """
             SELECT meta->>'etag' FROM source_fetch
-            WHERE source_key = 'firms' AND ok AND url = :url AND meta->>'ingested' = 'true'
+            WHERE source_key = 'firms' AND ok AND meta->>'ingested' = 'true'
+              AND meta->>'product' = :product AND meta->>'window' = :window
             ORDER BY started_at DESC LIMIT 1
             """
         ),
-        {"url": url},
+        {"product": product.source, "window": window},
     ).scalar()
 
 
@@ -240,8 +242,7 @@ def _sync_product(product: Product, now: datetime) -> dict[str, Any]:
     bbox = get_settings().aoi_bbox
     with session_scope() as session:
         window = choose_window(_last_sync(session, product), now)
-        url = product.file_url(window)
-        known_etag = _ingested_etag(session, url)
+        known_etag = _ingested_etag(session, product, window)
     head = head_file(product, window)
     etag = head.headers.get("etag")
     if etag and etag == known_etag:

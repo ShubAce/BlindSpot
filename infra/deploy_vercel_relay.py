@@ -1,12 +1,13 @@
-"""Deploy the data.gov.in relay (infra/relay) to Vercel production, in Mumbai (bom1).
+"""Deploy the upstream relay (infra/relay) to Vercel production, in Mumbai (bom1).
 
-data.gov.in refuses connections from GitHub's runners (US), where the data jobs run, so the air job
-reaches it through this one function (DATAGOV_RELAY_URL). Run from services/api so python-dotenv is
-available:
+Two upstreams refuse GitHub's runners (US), where the data jobs run: data.gov.in (connection
+refused) and, since 2026-10-31, NASA FIRMS (every connection times out). The jobs reach them
+through two functions here: /api/resource/<id> (DATAGOV_RELAY_URL) and /api/firms (FIRMS_RELAY_URL,
+with FIRMS itself as the fallback). Run from services/api so python-dotenv is available:
     cd services/api && uv run python ../../infra/deploy_vercel_relay.py
 
 The token is read from .env (VERCEL_TOKEN) and never printed. The relay needs no environment
-variables: the caller sends its own data.gov.in key.
+variables: the data.gov.in caller sends its own key, and the FIRMS files are public.
 """
 
 from __future__ import annotations
