@@ -1,9 +1,10 @@
 # BlindSpot
 
-**BlindSpot counts the crop-residue fires in Punjab and Haryana that fire satellites never see.**
+**BlindSpot looks between the satellite passes: it maps the burnt fields in Punjab and Haryana that no fire alert
+matched, and measures the evening burning the polar fire satellites do not report.**
 
-NASA's fire satellites cross Punjab near 1:30 PM and 1:30 AM. Farmers now light their fields around 5 PM, after the
-afternoon pass, so a growing share of the burning is never counted. Each burnt field still leaves a black scar that
+NASA's fire satellites cross Punjab near 1:30 PM and 1:30 AM. The burning peaks around 4 to 5 PM, after the
+afternoon pass, so much of it happens when no polar satellite reports a fire. Each burnt field still leaves a scar that
 Sentinel-2 photographs days later, whatever hour it was lit. BlindSpot matches every scar against every fire alert,
 measures the evening burning from a geostationary satellite, and follows the smoke to Delhi. A Gemini investigator
 explains any day's air with cited, number-checked answers.
@@ -15,15 +16,16 @@ explains any day's air with cited, number-checked answers.
 - **Method and accuracy:** [/method](https://blindspot-web-five.vercel.app/method), with every validation number read
   live
 - **Design and contracts:** [docs/architecture.md](docs/architecture.md), [docs/api-contract-notes.md](docs/api-contract-notes.md)
+- **Team Praise** (Forge'26 NxtWave Launchpad buildathon, Theme 2): Shubham Suman (lead), Anurag Ranjan, Drgesh Kumar
 
 ## Why this matters
 
-| Evidence | Source |
-| --- | --- |
+| Evidence                                                                                                                                                             | Source                                                                            |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
 | Peak burning moved from about 13:30 IST (2020) to about 17:00 IST (2024), after both polar passes. Geostationary counts stayed flat while VIIRS counts fell steeply. | ISRO Space Applications Centre, *Current Science* 129(10):921–923, 25 Nov 2025 |
-| 96% of high-confidence GK-2A fire detections in Punjab (Oct–Nov 2025, 12–18 IST) fell at or after 16:00 IST; in 2020 it was 40%. | Jethva, *Remote Sensing* 18(10):1506 (2026); open dataset on Zenodo (CC BY 4.0) |
-| Official fire counts in Punjab fell about 90% between 2022 and 2025, while the burnt area measured from Sentinel-2 fell about 37%. | iFOREST, Stubble Burning Status Report 2025 |
-| The official bulletin itself says fires are missed "when satellite over-pass is not there". | CREAMS daily bulletin, ICAR-IARI |
+| 96% of high-confidence GK-2A fire detections in Punjab (Oct–Nov 2025, 12–18 IST) fell at or after 16:00 IST; in 2020 it was 40%.                                   | Jethva, *Remote Sensing* 18(10):1506 (2026); open dataset on Zenodo (CC BY 4.0) |
+| Official fire counts in Punjab fell about 90% between 2022 and 2025, while the burnt area measured from Sentinel-2 fell about 37%.                                   | iFOREST, Stubble Burning Status Report 2025                                       |
+| The official bulletin itself says fires are missed "when satellite over-pass is not there".                                                                          | CREAMS daily bulletin, ICAR-IARI                                                  |
 
 Fire counts drive enforcement, compensation and policy. If the counts miss the evening fires, they are measuring the
 time farmers burn, not how much they burn.
@@ -55,13 +57,13 @@ time farmers burn, not how much they burn.
 
 As of 31 October 2026. The site's `/method` page shows the current values, read live from the API.
 
-| Check | Result |
-| --- | --- |
-| Predicted pass times vs FIRMS acquisition times (1,003 detections, 3 days) | median error 0.8 min; all within 3 min |
-| Candidate unseen burns that are real burns (visual audit of random Sentinel-2 chip samples) | precision 0.87, 95% CI 0.68–0.95, n = 23 |
-| Smoke index vs measured PM2.5 (22 cities, 25–30 Oct) | r = 0.60 (CAMS 0.62, ventilation alone 0.14); only ~4 independent hours, so not yet robust |
-| Burn-risk ranking vs the burns that followed (risk-v3, 213 pass pairs) | AUC 0.57 (95% CI 0.50–0.65); 0.5 is chance, so a weak but real ranking |
-| GK-2A fire pixels vs MODIS on Aqua (strong fires) | 84% detected (16 of 19); 7% false alarms |
+| Check                                                                                       | Result                                                                                     |
+| ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Predicted pass times vs FIRMS acquisition times (1,003 detections, 3 days)                  | median error 0.8 min; all within 3 min                                                     |
+| Candidate unseen burns that are real burns (visual audit of random Sentinel-2 chip samples) | precision 0.87, 95% CI 0.68–0.95, n = 23                                                  |
+| Smoke index vs measured PM2.5 (22 cities, 25–30 Oct)                                       | r = 0.60 (CAMS 0.62, ventilation alone 0.14); only ~4 independent hours, so not yet robust |
+| Burn-risk ranking vs the burns that followed (risk-v3, 213 pass pairs)                      | AUC 0.57 (95% CI 0.50–0.65); 0.5 is chance, so a weak but real ranking                    |
+| GK-2A fire pixels vs MODIS on Aqua (strong fires)                                           | 84% detected (16 of 19); 7% false alarms                                                   |
 
 ## Architecture
 
@@ -109,19 +111,19 @@ flowchart LR
 
 ## Repository
 
-| Path | What is there |
-| --- | --- |
-| `services/api/blindspot/sources/` | One connector per upstream service: fetch and parse, no database writes |
-| `services/api/blindspot/analytics/` | Burn scars, fire matching, pass prediction, risk, smoke trajectories, headline numbers |
-| `services/api/blindspot/jobs/` | Scheduled jobs (`uv run python -m blindspot.jobs list`) |
-| `services/api/blindspot/agent/` | Investigator: tools, runner, number verifier, prompts, bulletin |
-| `services/api/blindspot/api/routers/` | HTTP API, one module per area |
-| `services/api/tests/` | pytest suite; fixtures are recorded real responses |
-| `apps/web/` | The website (Next.js 16) |
-| `docs/` | Architecture, API contract, research notes with citations, build logs |
-| `infra/` | Local PostGIS (Docker Compose), Vercel deploys (API, site, relay), Neon loader, GitHub secrets helper |
-| `infra/relay/` | The Mumbai relay for data.gov.in and FIRMS reads |
-| `.github/workflows/data-jobs.yml` | The job schedule; `scheduler.yml` dispatches its slots on time |
+| Path                                    | What is there                                                                                         |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `services/api/blindspot/sources/`     | One connector per upstream service: fetch and parse, no database writes                               |
+| `services/api/blindspot/analytics/`   | Burn scars, fire matching, pass prediction, risk, smoke trajectories, headline numbers                |
+| `services/api/blindspot/jobs/`        | Scheduled jobs (`uv run python -m blindspot.jobs list`)                                             |
+| `services/api/blindspot/agent/`       | Investigator: tools, runner, number verifier, prompts, bulletin                                       |
+| `services/api/blindspot/api/routers/` | HTTP API, one module per area                                                                         |
+| `services/api/tests/`                 | pytest suite; fixtures are recorded real responses                                                    |
+| `apps/web/`                           | The website (Next.js 16)                                                                              |
+| `docs/`                               | Architecture, API contract, research notes with citations, build logs                                 |
+| `infra/`                              | Local PostGIS (Docker Compose), Vercel deploys (API, site, relay), Neon loader, GitHub secrets helper |
+| `infra/relay/`                        | The Mumbai relay for data.gov.in and FIRMS reads                                                      |
+| `.github/workflows/data-jobs.yml`     | The job schedule; `scheduler.yml` dispatches its slots on time                                      |
 
 ## Run it locally
 

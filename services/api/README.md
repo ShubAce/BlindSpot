@@ -133,6 +133,18 @@ Remove-Item Env:DATABASE_URL                               # before anything els
 
 - A new table only needs `init_db`, which every `python -m blindspot.jobs run ...` performs first;
   `create_all` adds missing tables and never alters existing ones.
+- **Storage.** The daily Sentinel-2 run rebuilds `burn_cluster` and `harvest_cluster` and the risk
+  job rewrites every harvested field, so each run leaves a dead copy inside those tables' files:
+  Postgres reuses that room but never returns it (on 2026-10-31 Neon reached 949 MB of its 1 GB with
+  about 420 MB of live rows; at the cap Neon refuses every write). `infra/neon_compact.py` gives the
+  room back without deleting a row (drops secondary indexes, `VACUUM FULL`, recreates them). It
+  reads `NEON_DB` from `.env` itself; check Neon's Usage page after each daily run:
+
+  ```powershell
+  cd F:\forge\services\api
+  uv run python ..\..\infra\neon_compact.py --dry-run   # sizes and plan
+  uv run python ..\..\infra\neon_compact.py             # about 2 minutes; tables locked briefly
+  ```
 - Never run `pytest` with `DATABASE_URL` pointing at Neon: conftest would create a test database
   there.
 - Size: 348 MB after the load and three risk runs; 333 MB on 2026-10-31 (sized for a 0.5 GB cap; see `docs/neon-budget.md`). The daily `prune` job and the
