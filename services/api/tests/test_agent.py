@@ -652,6 +652,13 @@ def test_scar_case_and_risk_tools_on_recorded_real_payloads() -> None:
     assert scars.ok and scars.data["season"]["clusters"] == season["clusters"]
     assert scars.data["season"]["unseen_share_pct"] == round(season["unseen_share"] * 100, 1)
     assert "candidates" in scars.data["method"]["status"]
+    assert scars.data.get("candidate_unseen_audit") == tools.unseen_audit_block(SCARS["/api/scars/summary"])
+    # the audit goes to the model as served (no rounding: the site says 95% CI 68%-96%)
+    served = {"method": {"method": "random clusters", "audit": {"method": "random clusters, judged by eye",
+              "candidate_unseen": {"audited": 23, "burnt": 20, "precision": 0.87, "precision_ci95": [0.679, 0.955]}}}}
+    block = tools.unseen_audit_block(served)
+    assert block is not None and block["precision_ci95"] == [0.679, 0.955] and block["audited"] == 23
+    assert tools.unseen_audit_block({"method": {"audit": {}}}) is None and tools.unseen_audit_block(None) is None
     first = scars.data["clusters"][0]
     assert first["burnt_between"][0].endswith(" IST") and len(first["centroid_lon_lat"]) == 2
     assert case.ok and case.data["case"]["id"] == SCARS["case_id"]

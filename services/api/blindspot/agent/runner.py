@@ -65,6 +65,7 @@ from blindspot.agent.tools import (
     declarations,
     model_payload,
     run_tool,
+    unseen_audit_block,
 )
 from blindspot.agent.verifier import (
     Attributed,
@@ -849,24 +850,16 @@ def _evidence(run: Run, now: datetime) -> Evidence:
 async def unseen_audit(api: InternalApi) -> dict[str, Any] | None:
     """The burn-scar audit of candidate unseen burns (/api/scars/summary method.audit.candidate_unseen):
     the share an audit found to be real burns, its 95% interval and how many were audited. Any
-    candidate unseen share or area must come with it (verifier.check_honesty); the agent's burn-scar
-    tool leaves it out, so the bulletin and the answer check add it to that tool's output. None if
-    the audit is unavailable."""
+    candidate unseen share or area must come with it (verifier.check_honesty). The burn-scar tool
+    now carries it, but stored runs and the bulletin's older tool outputs may not, so the bulletin
+    and the answer check add it to that tool's output when it is missing. None if the audit is
+    unavailable."""
     try:
         reply = await api.get("/api/scars/summary")
     except Exception as exc:  # the check then drops unqualified shares instead
         log.warning("burn-scar audit unavailable: %s", exc)
         return None
-    audit = ((reply.body or {}).get("method") or {}).get("audit") or {} if reply.ok else {}
-    unseen = audit.get("candidate_unseen") or {}
-    if unseen.get("precision") is None or not unseen.get("precision_ci95"):
-        return None
-    return {
-        "precision": unseen["precision"], "precision_ci95": unseen["precision_ci95"],
-        "audited": unseen.get("audited"), "method": audit.get("method"),
-        "reading": "precision = share of audited candidate unseen burns that were real burns; "
-                   "so the candidate unseen share is an upper bound",
-    }
+    return unseen_audit_block(reply.body) if reply.ok else None
 
 
 async def _with_unseen_audit(api: InternalApi, run: Run) -> HonestyFacts:

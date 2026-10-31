@@ -662,6 +662,24 @@ async def get_satellite_passes(api: InternalApi, args: dict[str, Any]) -> ToolRe
     return ToolResult(True, data, _dedupe(refs + reply.sources()), summary)
 
 
+def unseen_audit_block(summary: Any) -> dict[str, Any] | None:
+    """The burn-scar audit of candidate unseen burns from a /api/scars/summary body, as served (no
+    rounding): the share an audit found to be real burns, its 95% interval and how many were
+    audited. Any candidate unseen share or area must come with it (verifier.check_honesty). None if
+    the body carries no audit."""
+    method = summary.get("method") if isinstance(summary, dict) else None
+    audit = (method.get("audit") if isinstance(method, dict) else None) or {}
+    unseen = audit.get("candidate_unseen") or {}
+    if unseen.get("precision") is None or not unseen.get("precision_ci95"):
+        return None
+    return {
+        "precision": unseen["precision"], "precision_ci95": unseen["precision_ci95"],
+        "audited": unseen.get("audited"), "method": audit.get("method"),
+        "reading": "precision = share of audited candidate unseen burns that were real burns; "
+                   "so the candidate unseen share is an upper bound",
+    }
+
+
 def _share_pct(block: dict[str, Any] | None) -> dict[str, Any] | None:
     """A copy with `unseen_share` (a 0-1 fraction in the scars API) also as a percentage."""
     if not isinstance(block, dict):
@@ -699,6 +717,10 @@ async def get_burn_scars(api: InternalApi, args: dict[str, Any]) -> ToolResult:
         method = body.get("method") or {}
         data["method"] = {"summary": method.get("summary"), "unseen_rule": method.get("unseen_rule"),
                           "status": "candidates: tillage can look like a burn"}  # fmt: skip
+        # Given with the share, so the first draft can qualify it (the answer check requires it).
+        audit = unseen_audit_block(body)
+        if audit is not None:
+            data["candidate_unseen_audit"] = audit
         sources += summary_reply.sources()
     if scars.ok:
         body = scars.body
