@@ -1,0 +1,3 @@
+# Native libraries are binary: no line-ending conversion, no diffs.
+*.so binary
+*.so.* binary

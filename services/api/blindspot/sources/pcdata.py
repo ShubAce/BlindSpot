@@ -672,6 +672,9 @@ def _read_band(href: str, dst_crs: str, dst_bounds: tuple[float, float, float, f
     and decimated otherwise, which makes GDAL use the COG's overviews instead of full-res blocks.
     Returns float32 DN with 0 where there is no data.
     """
+    from blindspot._vendor import preload_expat
+
+    preload_expat()  # Vercel's runtime has no libexpat.so.1, which rasterio's GDAL needs
     import rasterio
     from rasterio.enums import Resampling
     from rasterio.transform import from_bounds as transform_from_bounds

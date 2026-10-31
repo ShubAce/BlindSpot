@@ -101,6 +101,10 @@ def assemble(target: Path, foundation_only: bool) -> None:
         dst = target / "blindspot" / rel
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(pkg_src / rel, dst)
+    if not foundation_only:  # the native libraries the runtime lacks (blindspot/_vendor/README.md)
+        for src in (pkg_src / "_vendor").iterdir():
+            if src.is_file() and src.suffix not in (".py", ".pyc"):
+                shutil.copy2(src, target / "blindspot" / "_vendor" / src.name)
     (target / "index.py").write_text(INDEX_PY, encoding="utf-8")
     versions = locked_versions()
     reqs = [f"{name}=={versions[name]}" for name in WEB_PACKAGES if name in versions]
