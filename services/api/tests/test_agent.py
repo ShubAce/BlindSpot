@@ -510,12 +510,21 @@ def test_a_silent_stream_hits_our_deadline_and_falls_back(monkeypatch: Any) -> N
                                                 prefer=None, priority=False)  # fmt: skip
         return model, [c async for c in chunks]
 
+    def forget_calls() -> None:
+        # Each call is counted against today's budget: left behind, a day of test runs used up the
+        # fake models' budget and the gateway refused them ("daily budget used").
+        with session_scope() as session:
+            session.execute(text("DELETE FROM source_fetch WHERE source_key = 'gemini' "
+                                 "AND meta->>'run_id' = 'deadline-test'"))  # fmt: skip
+
+    forget_calls()
     try:
         model, chunks = asyncio.run(go())
         assert model == "model-b" and chunks[0].text == "ok"
         assert "504" in runner._cool_reason.get("model-a", "")  # cooled: new runs skip it
     finally:
         runner.reset_gateway_state()
+        forget_calls()
 
 
 def test_script_check_catches_any_other_script() -> None:
@@ -658,6 +667,7 @@ def test_scar_case_and_risk_tools_on_recorded_real_payloads() -> None:
               "candidate_unseen": {"audited": 23, "burnt": 20, "precision": 0.87, "precision_ci95": [0.679, 0.955]}}}}
     block = tools.unseen_audit_block(served)
     assert block is not None and block["precision_ci95"] == [0.679, 0.955] and block["audited"] == 23
+    assert block["precision_pct"] == 87.0 and block["precision_ci95_pct"] == [67.9, 95.5]
     assert tools.unseen_audit_block({"method": {"audit": {}}}) is None and tools.unseen_audit_block(None) is None
     first = scars.data["clusters"][0]
     assert first["burnt_between"][0].endswith(" IST") and len(first["centroid_lon_lat"]) == 2
