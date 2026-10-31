@@ -184,6 +184,21 @@ export function BaseMap({
 
   const [loaded, setLoaded] = useState(false);
   const [mapObj, setMapObj] = useState<MapLibreMap | null>(null);
+  // Cache Components keep a page the visitor left inside <Activity>: its effects are torn down and
+  // run again on the way back, but its state and DOM are kept. react-map-gl's reuseMaps then moved
+  // the old map into its own container in an endless loop (the tab froze), and a new map under the
+  // old `loaded` state drew layers before its style existed. So the map exists only while the page
+  // is shown: unmounted when it is hidden, built fresh when it is shown again.
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setShown(true)); // next frame: no map in a hidden tab
+    return () => {
+      cancelAnimationFrame(frame);
+      setShown(false);
+      setLoaded(false);
+      setMapObj(null);
+    };
+  }, []);
   const handleLoad = useCallback((e: { target: MapLibreMap }) => {
     patchMapForDeck(e.target);
     setMapObj(e.target);
@@ -260,7 +275,7 @@ export function BaseMap({
       className={className}
       style={{ position: 'relative', width: '100%', height: '100%', minHeight: 240, overflow: 'hidden', background: 'var(--bg)', ...style }}
     >
-      {mapStyle ? (
+      {mapStyle && shown ? (
         <MapGL
           ref={mapRef}
           mapStyle={mapStyle}
@@ -274,7 +289,6 @@ export function BaseMap({
           maxPitch={0}
           interactive={interactive}
           attributionControl={false}
-          reuseMaps
           onLoad={handleLoad}
           onClick={onMapClick ? handleClick : undefined}
           style={{ position: 'absolute', inset: 0 }}

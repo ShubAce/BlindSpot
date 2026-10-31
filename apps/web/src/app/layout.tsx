@@ -26,7 +26,7 @@ const workSans = Work_Sans({
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, '');
 
 const DESCRIPTION =
-  'BlindSpot maps the Punjab and Haryana crop fires that fire satellites miss, from the burn scars Sentinel-2 photographs, and traces their smoke to Delhi.';
+  'BlindSpot maps the Sentinel-2 burn scars in Punjab and Haryana that no fire alert matched, clocks the evening burning the polar fire satellites do not report, and traces the smoke to Delhi.';
 
 export const metadata: Metadata = {
   ...(SITE_URL ? { metadataBase: new URL(SITE_URL) } : {}),

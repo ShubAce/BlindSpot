@@ -9,12 +9,14 @@ import { countdown, span } from './words';
 
 /**
  * The blind-spot clock: a 24-hour IST dial drawn from the API (see clock.ts). Gold marks are the
- * times of day the polar fire satellites looked at Punjab and Haryana in the last days, the red bars
- * GK-2A's fire activity by hour over the same days, the bite in the ring the span between looks that
- * holds the most of that activity (the API's own blind spot), and the white hand now.
+ * times of day a polar fire satellite reported a fire in Punjab or Haryana in the last days (the API
+ * builds them from FIRMS detections), the red bars GK-2A's fire activity by hour over the same days,
+ * the bite in the ring the span between reports that holds the most of that activity (the API's own
+ * blind spot), and the white hand now.
  *
- * GK-2A watches all day, so the dial never says nobody looks: it says no fire satellite does, and the
- * red bars are what the geostationary satellite saw meanwhile.
+ * GK-2A watches all day, so the dial never says nobody looks. And a polar satellite can pass without
+ * reporting anything (Terra crosses at night), so it never says none looked either: the bite is where
+ * no polar satellite reported a fire, and the red bars are what the geostationary satellite saw.
  *
  * The whole dial is in the server HTML, drawn at the moment the pass list was computed, so it reads
  * without script. In the browser only the hand and the live line move: `useNow` is null during the
@@ -71,8 +73,8 @@ export function BlindClock({ model, live, meta }: { model: ClockModel; live: Liv
   const gapWords = gap && span_ ? `${clockTime(gap.from)} to ${clockTime(gap.to)} IST, ${span_.h} h ${span_.m} min` : null;
   const summary = region
     ? [
-        `In ${days} a polar fire satellite looked at Punjab and Haryana in ${number(model.looks.length)} windows of the day, ${number(Math.round(model.lookMinutes))} minutes in all.`,
-        gapWords ? `None looked from ${gapWords}${gap?.share != null ? `, the span that held ${percent(gap.share)} of GK-2A’s fire activity` : ''}.` : '',
+        `In ${days} the polar fire satellites reported fires in Punjab and Haryana in ${number(model.looks.length)} windows of the day, ${number(Math.round(model.lookMinutes))} minutes in all.`,
+        gapWords ? `None reported a fire from ${gapWords}${gap?.share != null ? `, the span that held ${percent(gap.share)} of GK-2A’s fire activity` : ''}.` : '',
         model.bars.length && meta.peak ? `GK-2A fire activity peaks at ${span(meta.peak)} IST.` : '',
       ]
     : [
@@ -83,10 +85,10 @@ export function BlindClock({ model, live, meta }: { model: ClockModel; live: Liv
   return (
     <figure className={s.clock}>
       <svg className={s.clockDial} viewBox="-18 -18 516 516" role="img" aria-labelledby="clock-t clock-d">
-        <title id="clock-t">{region ? 'When the fire satellites look at Punjab and Haryana: a 24-hour clock' : `When the fire satellites pass over ${meta.site} on ${dateIST(model.dayStart)}: a 24-hour clock`}</title>
+        <title id="clock-t">{region ? 'When the polar fire satellites report fires in Punjab and Haryana: a 24-hour clock' : `When the fire satellites pass over ${meta.site} on ${dateIST(model.dayStart)}: a 24-hour clock`}</title>
         <desc id="clock-d">{summary.filter(Boolean).join(' ')}</desc>
         <circle cx={c} cy={c} r={r1 + 16} className="lp-clock-face" />
-        {/* the day's ring, bitten where no fire satellite looks */}
+        {/* the day's ring, bitten where no polar satellite reports a fire */}
         {gap ? (
           <path d={sector(gap.to, gap.to + (DAY_MIN - gap.minutes), r0, r1)} className="lp-clock-ring" />
         ) : (
@@ -126,7 +128,7 @@ export function BlindClock({ model, live, meta }: { model: ClockModel; live: Liv
         {gap && span_ ? (
           <g aria-hidden="true">
             <text x={c} y={c - 26} className="lp-clock-hub-word" textAnchor="middle">
-              No fire satellite
+              No fire alerts
             </text>
             <text x={c} y={c + 48} className="lp-clock-hub-big" textAnchor="middle">
               {`${span_.h} h ${String(span_.m).padStart(2, '0')} min` /* taste-skill-ignore */}
@@ -152,7 +154,7 @@ export function BlindClock({ model, live, meta }: { model: ClockModel; live: Liv
         <p>
           <span className={`${s.swatch} lp-swatch-look`} aria-hidden="true" />
           {region
-            ? `Gold: when a polar fire satellite (VIIRS, MODIS) looked at Punjab and Haryana in ${days}, from its own fire detections. The bite: ${gapWords ? `${gapWords}, ` : ''}no fire satellite looked.`
+            ? `Gold: when a polar fire satellite (VIIRS, MODIS) reported a fire in Punjab or Haryana in ${days}. The bite: ${gapWords ? `${gapWords}, ` : ''}no fire alert from any of them.`
             : `Gold: today’s passes of the fire satellites over ${meta.site}, ${number(model.looks.length)} passes and ${number(Math.round(model.lookMinutes))} minutes in all${model.looks.length ? `; ${number(looksDone)} done` : ''}. The polar windows over the region did not load${meta.diurnalError ? ` (${meta.diurnalError.replace(/\.$/, '')})` : ''}.`}
         </p>
         <p>

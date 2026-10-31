@@ -135,7 +135,7 @@ export async function BlindHours() {
         </Figure>
         {biggest ? (
           <Figure value={number(biggest.pixel_hours, { decimals: 0 })} unit=" pixel-hours">
-            fell between {biggest.start} and {biggest.end} IST, {Math.floor(biggest.minutes / 60)} h {biggest.minutes % 60} min in which no polar satellite looked.
+            fell between {biggest.start} and {biggest.end} IST, {Math.floor(biggest.minutes / 60)} h {biggest.minutes % 60} min in which no polar satellite reported a fire.
           </Figure>
         ) : null}
       </div>

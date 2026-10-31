@@ -15,9 +15,9 @@ import { Reply } from '@/components/landing/Reply';
 import { Showcase } from '@/components/landing/Showcase';
 
 export const metadata: Metadata = {
-  title: { absolute: 'BlindSpot: the crop fires satellites miss' },
+  title: { absolute: 'BlindSpot: the burning between the satellite passes' },
   description:
-    'BlindSpot counts the crop-residue fires in Punjab and Haryana that the fire satellites miss, from Sentinel-2 burn scars, a live clock of when the satellites look, a smoke model and an investigator whose answers are cited and checked.',
+    'BlindSpot maps the Sentinel-2 burn scars in Punjab and Haryana that no fire alert matched (candidate unseen burns, with their audit), clocks the evening burning the polar fire satellites do not report, traces the smoke and answers questions with cited, checked figures.',
 };
 
 /**

@@ -85,16 +85,30 @@ const LOOK_LABEL_LAYOUT: SymbolLayerSpecification['layout'] = {
 };
 const LOOK_LABEL_PAINT: SymbolLayerSpecification['paint'] = { 'text-color': css(SATELLITE_STYLE.label), 'text-halo-color': MARK.ground, 'text-halo-width': 2 };
 
-/** Tooltips open beside the pointer, and on its left (or above it) near the map's right (or lower)
- *  edge, where the map's frame would cut them off. deck.gl sets the tooltip's `transform` to the
- *  pointer; the separate CSS `translate` shifts it from there. */
+const TIP_W = 280; // the tooltip's max-width (TOOLTIP_STYLE)
+const TIP_GAP = 12; // from the pointer
+const TIP_EDGE = 8; // kept clear of the map's frame
+
+/** Tooltips open beside the pointer and always inside the map's frame: right of the pointer where
+ *  they fit, else left of it, else (a phone's narrow map) as far left as the frame allows; above the
+ *  pointer near the lower edge. deck.gl sets the tooltip's `transform` to the pointer; the separate
+ *  CSS `translate` shifts it from there. */
 function edgeAware(info: PickingInfo, t: TooltipContent): TooltipContent {
   if (!t || typeof t === 'string') return t;
   const w = info.viewport?.width ?? 0;
   const h = info.viewport?.height ?? 0;
-  const left = w > 0 && info.x > w - 300;
+  const tw = w > 0 ? Math.min(TIP_W, w - 2 * TIP_EDGE) : TIP_W;
+  let tx = `${TIP_GAP}px`;
+  if (w > 0 && info.x + TIP_GAP + tw > w - TIP_EDGE) {
+    tx = info.x - TIP_GAP - tw >= TIP_EDGE
+      ? `calc(-100% - ${TIP_GAP}px)`
+      : `${Math.round(Math.max(TIP_EDGE, Math.min(info.x - tw / 2, w - TIP_EDGE - tw)) - info.x)}px`;
+  }
   const up = h > 0 && info.y > h - 175;
-  return { ...t, style: { ...t.style, translate: `${left ? 'calc(-100% - 12px)' : '12px'} ${up ? 'calc(-100% - 12px)' : '12px'}` } as Partial<CSSStyleDeclaration> };
+  return {
+    ...t,
+    style: { ...t.style, maxWidth: `${tw}px`, translate: `${tx} ${up ? `calc(-100% - ${TIP_GAP}px)` : `${TIP_GAP}px`}` } as Partial<CSSStyleDeclaration>,
+  };
 }
 const HL_FILL = rgba(MARK.ink, 40);
 const PLACE = rgba(MARK.ink, 230);

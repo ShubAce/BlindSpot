@@ -58,7 +58,9 @@ const GROUPS: { title: string; kinds: string[] }[] = [
   { title: 'Fires', kinds: ['fires', 'fires_official', 'fires_geo'] },
   { title: 'Orbits', kinds: ['orbits'] },
   { title: 'Pictures of the ground', kinds: ['imagery', 'landcover'] },
-  { title: 'Air', kinds: ['air', 'air_model', 'air_attribution'] },
+  { title: 'Air, measured', kinds: ['air'] },
+  // models, never mistaken for measurements: CAMS, and IITM's modelled stubble share
+  { title: 'Air, models', kinds: ['air_model', 'air_attribution'] },
   { title: 'Weather', kinds: ['weather'] },
   { title: 'Places and boundaries', kinds: ['boundaries', 'places'] },
   { title: 'The investigator', kinds: ['llm'] },

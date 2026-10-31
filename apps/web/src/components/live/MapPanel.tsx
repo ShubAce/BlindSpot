@@ -167,10 +167,13 @@ export function MapPanel() {
     cases: selected.data ? [selected.data] : [],
   };
 
-  const airDrawn = useMemo(
-    () => (air.data?.stations ?? []).filter((st) => st.pm25 != null && !(st.age_minutes != null && st.age_minutes > AIR_MAX_AGE_MIN)).length,
-    [air.data],
-  );
+  // Measured stations and CAMS model points are drawn alike (models as rings) but never counted
+  // together: a model's output is not a station that reported.
+  const airDrawn = useMemo(() => {
+    const drawn = (air.data?.stations ?? []).filter((st) => st.pm25 != null && !(st.age_minutes != null && st.age_minutes > AIR_MAX_AGE_MIN));
+    const models = drawn.filter((st) => st.is_model).length;
+    return { stations: drawn.length - models, models };
+  }, [air.data]);
   const dayLabel = s.replayDay ? dateIST(`${s.replayDay}T12:00:00+05:30`) : null;
 
   const statuses: Record<LiveLayer, Status> = {
@@ -230,8 +233,10 @@ export function MapPanel() {
     air: {
       live: air,
       what: 'air quality',
-      line: air.data ? `${number(airDrawn)} stations reported in the last 6 h` : null,
-      empty: air.data && airDrawn === 0 ? 'No station has reported in the last 6 h; their last readings are listed under Air at receptors.' : null,
+      line: air.data
+        ? `${number(airDrawn.stations)} stations reported in the last 6 h${airDrawn.models ? `; ${number(airDrawn.models)} CAMS model points (rings) are estimates, not measurements` : ''}`
+        : null,
+      empty: air.data && airDrawn.stations === 0 ? 'No station has reported in the last 6 h; their last readings are listed under Air at receptors.' : null,
       cadenceMs: cadence('openaq'),
     },
     satellites: {

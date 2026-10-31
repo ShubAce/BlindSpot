@@ -16,7 +16,7 @@ export function Rail() {
       <div className={s.railInner}>
         <h1 className={s.railTitle}>
           <Link href="/" className={s.railHome}>
-            BlindSpot counts unseen fires
+            BlindSpot looks between the passes
           </Link>
         </h1>
         <p className={s.railSentence}>Fields are lit after the fire satellites pass over, so their fire counts miss most of the burning.</p>

@@ -33,10 +33,12 @@ function collect(input: MapLayerInput, frame: ClockFrame, out: Layer[]): void {
 }
 
 /** deck.gl's interleaved mode places each layer before the map layer named by its `beforeId`
- *  prop, which deck's own Layer types do not declare; this is the one place that sets it. */
+ *  prop, which deck's own Layer types do not declare; this is the one place that sets it. Always a
+ *  fresh instance: deck.gl carries state across updates by layer id, and a layer object that an
+ *  earlier overlay initialised (a page shown again after <Activity> hid it) fails to join a new one. */
 function anchored(layer: Layer): Layer {
   const props = layer.props as unknown as { beforeId?: string };
-  return props.beforeId ? layer : layer.clone({ beforeId: DATA_ANCHOR } as unknown as Partial<Layer['props']>);
+  return layer.clone((props.beforeId ? {} : { beforeId: DATA_ANCHOR }) as unknown as Partial<Layer['props']>);
 }
 
 /** Flatten, evaluate animated layers at `frame`, order by the registry's draw order and anchor

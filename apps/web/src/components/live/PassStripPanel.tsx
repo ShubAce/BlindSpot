@@ -18,7 +18,7 @@ const BACK_H = 17;
 /**
  * The signature element: a day of the fire satellites' looks at Punjab, lit where one is watching
  * and dark where none is, with the FIRMS detections of the last hours as ticks and the GK-2A
- * geostationary activity by hour beneath, so the evening burning nobody photographs shows up in
+ * geostationary activity by hour beneath, so the evening burning no polar satellite reports shows up in
  * the dark span. Windows come from the CelesTrak elements, propagated in the browser.
  */
 export function PassStripPanel() {
@@ -93,11 +93,11 @@ export function PassStripPanel() {
       <p className={styles.stripNote}>
         {g?.available && g.share_outside_polar_windows != null ? (
           <>
-            <strong className="nums">{percent(g.share_outside_polar_windows)}</strong> of the GK-2A fire activity of the last {number(g.days ?? null)} days fell while no polar fire satellite
-            was looking{g.peak_ist ? <>; it peaked at <span className="nums">{g.peak_ist}</span> IST</> : null}
+            <strong className="nums">{percent(g.share_outside_polar_windows)}</strong> of the GK-2A fire activity of the last {number(g.days ?? null)} days fell outside the hours in which a
+            polar satellite reported a fire{g.peak_ist ? <>; it peaked at <span className="nums">{g.peak_ist}</span> IST</> : null}
             {span ? (
               <>
-                , and none looked from <span className="nums">{span.start}</span> to <span className="nums">{span.end}</span>
+                , and none reported one from <span className="nums">{span.start}</span> to <span className="nums">{span.end}</span>
               </>
             ) : null}
             . An activity index in pixel-hours, not a count of fires.
