@@ -339,7 +339,7 @@ export async function Accuracy() {
 // smoke model against PM2.5
 
 export async function Smoke() {
-  const [r, h] = await Promise.all([serverGet<SmokeValidation>(P.smokeValidation, undefined, 10_000), headline()]);
+  const [r, h] = await Promise.all([serverGet<SmokeValidation>(P.smokeValidation, undefined, 15_000), headline()]);
   if (!r.ok) return <Failed what="the smoke check" r={r} />;
   const d = r.data;
   const phrase = h.ok ? auditPhrase(h.data.unseen_burns) : null;
@@ -412,7 +412,7 @@ const BASELINE_WORDS: Record<string, string> = {
 };
 
 export async function Risk() {
-  const r = await serverGet<RiskMethod>(PATHS.risk, { limit: 1 }, 10_000);
+  const r = await serverGet<RiskMethod>(PATHS.risk, { limit: 1 }, 15_000);
   if (!r.ok) return <Failed what="the risk method" r={r} />;
   const d = r.data;
   const m = d.method;
@@ -514,8 +514,8 @@ export async function Limits() {
   const [h, s, sm, rk, geo] = await Promise.all([
     headline(),
     scarsSummary(),
-    serverGet<SmokeValidation>(P.smokeValidation, undefined, 10_000),
-    serverGet<RiskMethod>(PATHS.risk, { limit: 1 }, 10_000),
+    serverGet<SmokeValidation>(P.smokeValidation, undefined, 15_000),
+    serverGet<RiskMethod>(PATHS.risk, { limit: 1 }, 15_000),
     serverGet<GeoDiurnal>(PATHS.geostationaryDiurnal),
   ]);
   const items: { title: string; body: string }[] = [];
@@ -592,7 +592,7 @@ function cadence(min: number | null): string {
 }
 
 export async function Sources() {
-  const [r, b] = await Promise.all([serverGet<SourcesList>(PATHS.sources), serverGet<StateBoundaries>(PATHS.geoBoundaries, { level: 'state', simplify: 0.02 }, 8_000)]);
+  const [r, b] = await Promise.all([serverGet<SourcesList>(PATHS.sources), serverGet<StateBoundaries>(PATHS.geoBoundaries, { level: 'state', simplify: 0.02 }, 12_000)]);
   if (!r.ok) return <Failed what="the source list" r={r} />;
   const attribution = b.ok ? (b.data.attribution ?? null) : null;
   const rows = r.data.sources.filter((s) => s.kind !== 'unregistered');

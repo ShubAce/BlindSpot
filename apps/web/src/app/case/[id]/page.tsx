@@ -21,7 +21,7 @@ type Props = { params: Promise<{ id: string }> };
 
 const isId = (id: string) => /^\d{1,12}$/.test(id);
 
-const getCase = (id: string) => serverGet<CaseFile>(PATHS.scarCase(id), undefined, 8_000);
+const getCase = (id: string) => serverGet<CaseFile>(PATHS.scarCase(id), undefined, 12_000);
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params;

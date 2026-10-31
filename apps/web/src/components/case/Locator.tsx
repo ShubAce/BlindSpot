@@ -14,7 +14,7 @@ const STATES = ['Punjab', 'Haryana', 'Chandigarh', 'Delhi'];
 const W = 400;
 
 export async function Locator({ lon, lat, state }: { lon: number; lat: number; state: string | null }) {
-  const r = await serverGet<StateBoundaries>(PATHS.geoBoundaries, { level: 'state', simplify: 0.02 }, 8_000);
+  const r = await serverGet<StateBoundaries>(PATHS.geoBoundaries, { level: 'state', simplify: 0.02 }, 12_000);
   if (!r.ok) return <p className="card__note">The state outlines could not be loaded: {r.error.message}</p>;
   const feats = (r.data.features?.features ?? []).filter((f) => STATES.includes(f.properties?.name));
   if (!feats.length) return <p className="card__note">The API returned no state outlines for this region.</p>;

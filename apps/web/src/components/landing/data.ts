@@ -14,7 +14,7 @@ import type { AgentExamples, Diurnal, Featured, FireHours, FrameScars, Headline,
 
 export const getHeadline = () => serverGet<Headline>(PATHS.headline);
 export const getFeatured = () => serverGet<Featured>(PATHS.imageryFeatured);
-export const getRisk = () => serverGet<Risk>(PATHS.risk, { limit: 1 }, 10_000);
+export const getRisk = () => serverGet<Risk>(PATHS.risk, { limit: 1 }, 15_000);
 export const getExamples = () => serverGet<AgentExamples>(PATHS.agentExamples);
 export const getFireHours = () => serverGet<FireHours>(PATHS.firesHours, { days: 7 });
 export const getDelhiMet = () => serverGet<MetNow>(PATHS.metNow, { city: 'Delhi' });
@@ -28,7 +28,7 @@ export const getPasses = () =>
 export const getDiurnal = () => serverGet<Diurnal>(PATHS.geostationaryDiurnal);
 
 /** Every burn scar inside a picture's box (the outlines on the hero's frames). */
-export const getFrameScars = (bbox: number[]) => serverGet<FrameScars>(PATHS.scars, { bbox: bbox.join(','), limit: 2000 }, 10_000);
+export const getFrameScars = (bbox: number[]) => serverGet<FrameScars>(PATHS.scars, { bbox: bbox.join(','), limit: 2000 }, 15_000);
 
 /** How many case slips the showcase stands up. */
 export const SLIPS = 6;
@@ -38,7 +38,7 @@ export const SLIPS = 6;
  * six slips are six places, largest first. Then each one's case file, for its picture.
  */
 export async function getCases(): Promise<{ list: ApiResult<ScarList>; cases: ScarCase[] }> {
-  const list = await serverGet<ScarList>(PATHS.scars, { unseen: true, min_confidence: 0.9, limit: 120 }, 10_000);
+  const list = await serverGet<ScarList>(PATHS.scars, { unseen: true, min_confidence: 0.9, limit: 120 }, 15_000);
   if (!list.ok) return { list, cases: [] };
   const seen = new Set<string>();
   const picked = list.data.features.features

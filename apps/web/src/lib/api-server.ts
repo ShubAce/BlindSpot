@@ -43,7 +43,10 @@ export type ApiResult<T> = { ok: true; data: T } | { ok: false; error: ServerErr
 
 const SERVER_BASE = (process.env.API_INTERNAL_URL || API_BASE).replace(/\/+$/, '');
 
-export async function serverGet<T>(path: string, query?: Query, timeoutMs = 6_000): Promise<ApiResult<T>> {
+// 10 s: the first read after an API deploy meets an empty CDN and a cold Python function (numpy,
+// skyfield and rasterio load before the route runs). Sections stream behind <Suspense>, so a slow
+// read delays only its own section.
+export async function serverGet<T>(path: string, query?: Query, timeoutMs = 10_000): Promise<ApiResult<T>> {
   'use cache';
   try {
     const data = await apiGet<T>(path, query, { timeoutMs, base: SERVER_BASE });
@@ -63,14 +66,14 @@ export async function serverGet<T>(path: string, query?: Query, timeoutMs = 6_00
 export const serverApi = {
   headline: () => serverGet<HeadlineResponse>(PATHS.headline),
   sources: () => serverGet<SourcesResponse>(PATHS.sources),
-  fires: (q: { hours?: number } = {}) => serverGet<FiresResponse>(PATHS.fires, q, 10_000),
+  fires: (q: { hours?: number } = {}) => serverGet<FiresResponse>(PATHS.fires, q, 15_000),
   firesHours: (q: { days?: number; region?: string } = {}) => serverGet<FiresHoursResponse>(PATHS.firesHours, q),
   orbitsTle: () => serverGet<OrbitsTleResponse>(PATHS.orbitsTle),
   orbitsPasses: (q: PassesQuery) => serverGet<PassesResponse>(PATHS.orbitsPasses, q),
-  scars: (q: { unseen?: boolean; limit?: number; since?: string } = {}) => serverGet<ScarsResponse>(PATHS.scars, q, 10_000),
+  scars: (q: { unseen?: boolean; limit?: number; since?: string } = {}) => serverGet<ScarsResponse>(PATHS.scars, q, 15_000),
   scarsSummary: (q: { since?: string } = {}) => serverGet<ScarsSummaryResponse>(PATHS.scarsSummary, q),
   scarCase: (id: string | number) => serverGet<ScarCaseResponse>(PATHS.scarCase(id)),
-  risk: (q: { limit?: number; district?: string } = {}) => serverGet<RiskResponse>(PATHS.risk, q, 10_000),
+  risk: (q: { limit?: number; district?: string } = {}) => serverGet<RiskResponse>(PATHS.risk, q, 15_000),
   airLatest: () => serverGet<AirLatestResponse>(PATHS.airLatest),
   imageryFeatured: () => serverGet<ImageryFeaturedResponse>(PATHS.imageryFeatured),
   bulletinLatest: (lang: BulletinLang = 'en') => serverGet<BulletinResponse>(PATHS.bulletinLatest, { lang }),
