@@ -62,13 +62,16 @@ async function IntroWords() {
     <>
       <p className={s.statement}>
         {geo?.share_outside_polar_windows != null
-          ? `${percent(geo.share_outside_polar_windows)} of the fire activity GK-2A saw in the last ${number(geo.days)} days fell outside the polar satellites’ looks.`
-          : 'GK-2A’s record of the day’s fire activity has not loaded, so the share outside the polar satellites’ looks cannot be given.'}
+          ? `${percent(geo.share_outside_polar_windows)} of the fire activity GK-2A saw in the last ${number(geo.days)} days fell outside the hours in which a polar satellite reported a fire.`
+          : 'GK-2A’s record of the day’s fire activity has not loaded, so the share outside the polar satellites’ fire reports cannot be given.'}
       </p>
       <p className={s.introBody}>
         {geo ? `GK-2A is a geostationary satellite that scans Punjab every ten minutes${geo.peak_ist ? `; the activity it sees peaks at ${span(geo.peak_ist)} IST` : ''}. Its figure is an activity index, not a count of fires. ` : ''}
         {fires?.count != null
-          ? `The polar satellites’ count is NASA FIRMS: ${number(fires.count)} fire detections in the 24 hours to ${fires.window_ist?.to ? fires.window_ist.to.slice(11, 16) : timeIST(r.data.as_of)} IST${region ? ` in ${region}` : ''}.`
+          ? `The polar satellites’ count is NASA FIRMS: ${number(fires.count)} fire detections in the 24 hours to ${fires.window_ist?.to ? fires.window_ist.to.slice(11, 16) : timeIST(r.data.as_of)} IST${region ? ` in ${region}` : ''}${
+              /* FIRMS publishes each pass an hour or more after it: say how far the count reaches */
+              fires.latest_acq_utc ? `, the newest seen at ${timeIST(fires.latest_acq_utc)} IST (FIRMS adds each pass an hour or more after it)` : ''
+            }.`
           : ''}
       </p>
     </>

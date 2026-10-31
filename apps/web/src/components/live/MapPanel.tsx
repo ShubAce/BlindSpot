@@ -142,15 +142,18 @@ export function MapPanel() {
   const look = useMemo(() => (on.satellites && site && passes[0] ? nextLookParts(sats, passes[0], site) : null), [on.satellites, site, passes, sats]);
 
   // the map draws the newest scars overall plus, once a district was clicked, that district's newest
-  // (the list and the counts read the overall list alone)
+  // (the list and the counts read the overall list alone). Not while replaying: the district's list
+  // is today's, and SWR keeps it after the replay drops its key, so it would draw late-October scars
+  // over an earlier day.
+  const replaying = s.replayDay != null;
   const drawnScars = useMemo(() => {
     const a = scars.data;
-    const b = districtScars.data;
+    const b = replaying ? undefined : districtScars.data;
     if (!a || !b) return a ?? b;
     const seen = new Set(a.features.features.map((f) => f.properties.id));
     const extra = b.features.features.filter((f) => !seen.has(f.properties.id));
     return extra.length ? { ...a, features: { ...a.features, features: [...a.features.features, ...extra] } } : a;
-  }, [scars.data, districtScars.data]);
+  }, [scars.data, districtScars.data, replaying]);
 
   const data: MapData = {
     fires: fires.data,

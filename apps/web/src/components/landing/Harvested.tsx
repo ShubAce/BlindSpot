@@ -107,13 +107,13 @@ async function Caveat() {
     .trim();
   const bt = r.data.backtest;
   if (!note && bt?.headline?.auc == null && bt?.all_pairs?.auc_weighted_mean == null) return null;
-  // Lead with the season-wide figure and its interval when the API has one (risk-v3 backtest); one
+  // Lead with the season-wide figure, with its interval when the API has one (risk-v3 backtest): one
   // pass pair alone flatters the ranking.
   const all = bt?.all_pairs;
-  const ci = all?.auc_ci95;
+  const ci = all?.auc_ci95 && all.auc_ci95.length === 2 ? all.auc_ci95 : null;
   const seasonLine =
-    all?.auc_weighted_mean != null && ci && ci.length === 2
-      ? `Tested on the burns that followed: AUC ${number(all.auc_weighted_mean, { decimals: 2 })} over ${number(all.pairs)} pairs of passes (95% CI ${number(ci[0], { decimals: 2 })}–${number(ci[1], { decimals: 2 })}; 0.5 would be chance)${bt?.headline?.auc != null ? `, ${number(bt.headline.auc, { decimals: 2 })} on the latest pair alone` : ''}.`
+    all?.auc_weighted_mean != null
+      ? `Tested on the burns that followed: AUC ${number(all.auc_weighted_mean, { decimals: 2 })} over ${number(all.pairs)} pairs of passes (${ci ? `95% CI ${number(ci[0], { decimals: 2 })}–${number(ci[1], { decimals: 2 })}; ` : ''}0.5 would be chance)${bt?.headline?.auc != null ? `, ${number(bt.headline.auc, { decimals: 2 })} on the latest pair alone` : ''}.`
       : null;
   return (
     <div className={s.listMethod}>

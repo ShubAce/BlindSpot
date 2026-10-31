@@ -41,7 +41,7 @@ export default function Home() {
         </a>
         <Rail />
         <main id="main">
-          <section className={s.hero} aria-label="The unseen share, the clock of the satellites’ looks, and one place on four passes">
+          <section className={s.hero} aria-label="The unseen share, the clock of the polar satellites’ fire reports, and one place on four passes">
             <div className={s.heroFigure}>
               <Suspense fallback={<div className={s.heroFigureSkeleton} />}>
                 <HeroFigure />

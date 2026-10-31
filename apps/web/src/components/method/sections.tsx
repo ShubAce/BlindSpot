@@ -150,7 +150,7 @@ export async function BlindHours() {
         <div className="m-table-wrap">
           <table className="m-table m-table--stack">
             <caption>
-              GK-2A checked against {d.validation.reference}, pass by pass{d.validation.period ? `, ${dateIST(d.validation.period[0])} to ${dateIST(d.validation.period[1])}` : ''}
+              GK-2A checked against the polar satellites (VIIRS and MODIS) from FIRMS, pass by pass{d.validation.period ? `, ${dateIST(d.validation.period[0])} to ${dateIST(d.validation.period[1])}` : ''}
             </caption>
             <thead>
               <tr>

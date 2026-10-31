@@ -58,16 +58,18 @@ export function answerParts(text: string | null | undefined, n: number, prefer?:
     .map((l) => l.trim())
     .filter(Boolean);
   const isPoint = (l: string) => /^[-*•]\s+/.test(l);
+  // Citation markers ("[4]") point to a source list the landing does not print: dropped.
+  const plain = (l: string) => l.replace(/\*\*/g, '').replace(/\s*\[\s*\d+(?:\s*[-–,]\s*\d+)*\s*\]/g, '');
   const lead = lines.find((l) => !isPoint(l)) ?? null;
   const points = lines
     .filter(isPoint)
-    .map((l) => l.replace(/^[-*•]\s+/, '').replace(/\*\*/g, ''))
+    .map((l) => plain(l.replace(/^[-*•]\s+/, '')))
     // Points matching `avoid` are left out (a figure that would contradict one shown elsewhere).
     .filter((l) => !avoid || !avoid.test(l))
     // Points matching `prefer` first (in their own order), then the rest.
     .sort((a, b) => (prefer ? Number(prefer.test(b)) - Number(prefer.test(a)) : 0))
     .slice(0, n);
-  return { lead: lead ? lead.replace(/\*\*/g, '') : null, points };
+  return { lead: lead ? plain(lead) : null, points };
 }
 
 /** A source label without its parenthetical detail, for lists that must stay short:

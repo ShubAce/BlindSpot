@@ -33,6 +33,10 @@ function asOf(s: string | null | undefined): string | null {
   return m ? dateTimeIST(`${m[1]}T${m[2]}:00+05:30`, { suffix: true }) : (s ?? null);
 }
 
+/** A source URL that opens only with an access key: the API masked the key (***), or the upstream
+ *  wants one in a header (OpenAQ). */
+const keyedUrl = (url: string): boolean => url.includes('***') || /^https:\/\/api\.openaq\.org\//.test(url);
+
 /** A language that cannot be shown says why: held back by the script check, absent today, or not loaded. */
 type Usable = { ok: true; data: Bulletin } | { ok: false; reason: string; flag: 'held back' | 'none today' | 'not loaded' };
 
@@ -156,11 +160,12 @@ export function BulletinReader({ set, initial, auditNote }: { set: BulletinSet; 
     tabs.current[j]?.focus();
   };
 
-  // The frame (date, model, freshness) comes from the first language that is readable.
+  // The frame (date, model, freshness) comes from the language on screen; each language has its own
+  // run and model. Only when that one is not readable does it come from the first that is.
   const anyOk = LANGS.map((l) => states[l.code]).find((s): s is { ok: true; data: Bulletin } => s.ok);
-  const any = anyOk?.data ?? LANGS.map((l) => set[l.code]).find((r) => r.ok)?.data ?? null;
   const cur = states[lang];
   const b = cur.ok ? cur.data : null;
+  const any = b ?? anyOk?.data ?? LANGS.map((l) => set[l.code]).find((r) => r.ok)?.data ?? null;
   const markers = new Set((b?.citations ?? []).map((c) => String(c.marker)));
   const prefix = `src-${lang}`;
   const day = any?.date ? dateIST(`${any.date}T12:00:00+05:30`, { weekday: true, year: true }) : null;
@@ -273,9 +278,16 @@ export function BulletinReader({ set, initial, auditNote }: { set: BulletinSet; 
                       </span>
                       <span className="prov__meta nums">{c.source.fetched_at ? `fetched ${dateTimeIST(c.source.fetched_at, { suffix: true })}` : 'fetch time not recorded'}</span>
                       {c.source.url ? (
-                        <a className="prov__url" href={c.source.url} target="_blank" rel="noreferrer noopener" title={c.source.url}>
-                          {shortUrl(c.source.url)}
-                        </a>
+                        keyedUrl(c.source.url) ? (
+                          // the API masked its key (***) or the upstream wants one: shown, not linked, so it never opens an error page
+                          <span className="prov__url" title={`${c.source.url} (needs an access key, so not a link)`}>
+                            {shortUrl(c.source.url)}
+                          </span>
+                        ) : (
+                          <a className="prov__url" href={c.source.url} target="_blank" rel="noreferrer noopener" title={c.source.url}>
+                            {shortUrl(c.source.url)}
+                          </a>
+                        )
                       ) : null}
                     </li>
                   ))}

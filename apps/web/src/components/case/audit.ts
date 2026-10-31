@@ -17,13 +17,14 @@ import type { UnseenBurnsBlock } from './types';
 export type CaseState = 'unseen' | 'alerted' | 'unchecked';
 export const caseState = (unseen: boolean | null | undefined): CaseState => (unseen === true ? 'unseen' : unseen === false ? 'alerted' : 'unchecked');
 
-/** "audit precision 87% (95% CI 68–96%, n = 23)", or null when the API has no audit to state. */
-export function auditPhrase(u: UnseenBurnsBlock | null | undefined): string | null {
+/** "audit precision 87% (95% CI 68–96%, n = 23)" (with `verb`: "audit precision was 87% (…)", for a
+ *  sentence), or null when the API has no audit to state. */
+export function auditPhrase(u: UnseenBurnsBlock | null | undefined, verb?: string): string | null {
   if (!u || u.precision == null) return null;
   const ci = u.precision_ci95 && u.precision_ci95.length === 2 ? `95% CI ${percent(u.precision_ci95[0])}–${percent(u.precision_ci95[1])}` : null;
   const n = u.precision_n != null ? `n = ${u.precision_n}` : null;
   const inner = [ci, n].filter(Boolean).join(', ');
-  return `audit precision ${percent(u.precision)}${inner ? ` (${inner})` : ''}`;
+  return `audit precision ${verb ? `${verb} ` : ''}${percent(u.precision)}${inner ? ` (${inner})` : ''}`;
 }
 
 /** "Sentinel-2B" from a Sentinel-2 item id; null when the id does not start with a platform code. */

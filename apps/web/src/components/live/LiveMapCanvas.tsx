@@ -457,12 +457,15 @@ export default function LiveMapCanvas({ data, label }: { data: MapData; label: s
   const onPick = useCallback(
     (info: PickingInfo) => {
       if (!info.layer?.id.startsWith('scars') || !info.object) return;
+      // A tap is followed about 100 ms later by the browser's compatibility mousedown, and MapLibre
+      // stops any flight a mousedown meets: start the camera after it (unnoticeable with a mouse).
+      const later = (move: () => void) => window.setTimeout(move, 150);
       if (info.layer.id === 'scars:tiles') {
         const t = info.object as ScarTile;
         // a district opens onto its own newest scars (loaded for it) at district scale
         if (t.district) {
           dispatch({ type: 'scarDistrict', district: t.district.name });
-          camera({ bounds: t.extent, padding: 32 });
+          later(() => camera({ bounds: t.extent, padding: 32 }));
           return;
         }
         // a tile opens onto its fields: frame them, with at least ~3 km around so a lone field keeps
@@ -474,12 +477,14 @@ export default function LiveMapCanvas({ data, label }: { data: MapData; label: s
         const hx = Math.max((e - w) / 2, pad);
         const hy = Math.max((n - so) / 2, pad);
         const bounds: [number, number, number, number] = [cx - hx, cy - hy, cx + hx, cy + hy];
-        const map = mapRef.current?.getMap();
-        const cam = map?.cameraForBounds(bounds, { padding: 48 });
-        if (map && cam?.center != null && cam.zoom != null) {
-          const zoomTo = Math.min(13, Math.max(cam.zoom, SCAR_TILE_STYLE.fieldsZoom + 0.1));
-          map.flyTo({ center: cam.center, zoom: zoomTo, duration: mapClock.isReduced ? 0 : 1200 });
-        } else camera({ bounds, padding: 48 });
+        later(() => {
+          const map = mapRef.current?.getMap();
+          const cam = map?.cameraForBounds(bounds, { padding: 48 });
+          if (map && cam?.center != null && cam.zoom != null) {
+            const zoomTo = Math.min(13, Math.max(cam.zoom, SCAR_TILE_STYLE.fieldsZoom + 0.1));
+            map.flyTo({ center: cam.center, zoom: zoomTo, duration: mapClock.isReduced ? 0 : 1200 });
+          } else camera({ bounds, padding: 48 });
+        });
         return;
       }
       const o = info.object as { f?: { properties: { id: number } }; properties?: { id: number } };

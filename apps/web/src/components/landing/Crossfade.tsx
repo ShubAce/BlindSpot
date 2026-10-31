@@ -172,7 +172,9 @@ export function tallyLine(date: string, t: FrameMarks['tally'][number], truncate
   const all = t.seen + t.unseen + t.unchecked;
   const scars = (n: number) => `${number(n)} burn scar${n === 1 ? '' : 's'}`;
   if (!all) return `By ${date}: no burn scar mapped in this frame yet.`;
-  const head = `By ${date}: ${truncated ? 'at least ' : ''}${scars(all)} in this frame (${metricText('area_ha', t.ha)}).`;
+  // "touching": the box query returns every scar that reaches into the frame, whole, so a few lie
+  // partly outside it (the /method caption counts only those centred inside, hence its smaller total)
+  const head = `By ${date}: ${truncated ? 'at least ' : ''}${scars(all)} touching this frame (${metricText('area_ha', t.ha)}).`;
   const unseen = `candidate unseen burn${t.unseen === 1 ? '' : 's'} (gold)`;
   let body: string;
   if (!t.seen && t.unseen) {

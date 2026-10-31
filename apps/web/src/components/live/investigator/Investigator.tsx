@@ -7,7 +7,7 @@ import { ErrorNote, EmptyNote, Skeleton } from '@/components/ui/states';
 import { dateTimeIST, duration, number, relative, timeIST } from '@/lib/format';
 import { useNow } from '@/lib/live';
 
-import { AnswerPanel } from './Answer';
+import { AnswerPanel, Precision } from './Answer';
 import { budgetOf, useAgentStatus, useExamples, type Budget, type ExampleRun } from './data';
 import { modelName, normaliseQuestion } from './describe';
 import type { Investigation } from './model';
@@ -307,10 +307,12 @@ function Start({
                 <button type="button" className="iv-ex" onClick={() => onExample(ex)}>
                   <span className="iv-exQ">{ex.question}</span>
                   {ex.answer ? <span className="iv-exAnswer">{firstSentence(ex.answer)}</span> : null}
+                  {/* a share of candidate unseen burns never shows without its audit */}
+                  {ex.answer && /unseen/i.test(firstSentence(ex.answer)) ? <Precision inline /> : null}
                   <span className="iv-exMeta">
                     {[
                       ex.verification ? checkedWords(ex.verification.verified, ex.verification.checked) : null,
-                      ex.tools_used?.length ? `${number(ex.tools_used.filter((t) => t !== 'show_on_map').length)} tools` : null,
+                      ex.tools_used?.length ? toolCount(ex.tools_used.filter((t) => t !== 'show_on_map').length) : null,
                       `answered ${dateTimeIST(ex.started_at, { suffix: true })}`,
                     ]
                       .filter(Boolean)
@@ -353,6 +355,8 @@ function Start({
 
 /** The verdict line of a stored answer, without its citation markers (they are linked in the run itself). */
 const firstSentence = (text: string) => text.split(/\n/)[0].replace(/\s*\[\d+(?:\s*,\s*\d+)*\]/g, '').replace(/\*\*/g, '').trim();
+
+const toolCount = (n: number) => `${number(n)} ${n === 1 ? 'tool' : 'tools'}`;
 
 const checkedWords = (verified: number, checked: number) =>
   checked === 0 ? 'no figures to check' : verified === checked ? `${number(checked)} of ${number(checked)} figures checked` : `${number(verified)} of ${number(checked)} figures matched`;

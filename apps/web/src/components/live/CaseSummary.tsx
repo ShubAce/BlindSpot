@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { scarState } from './scar-state';
 import { ErrorNote, Skeleton } from '@/components/ui/states';
@@ -18,13 +18,17 @@ const CHIP = 132;
 
 function Chip({ side, when }: { side: ImagerySide | null; when: string }) {
   const url = absoluteApiUrl(side?.truecolor_url);
+  // A render the API refused (busy, rate-limited) arrives as an error body, not a picture: say so
+  // instead of a broken image. Keyed by the URL, so another case's chip starts afresh.
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  const failed = url != null && failedUrl === url;
   return (
     <figure className={styles.chip}>
-      {url ? (
+      {url && !failed ? (
         // eslint-disable-next-line @next/next/no-img-element -- rendered on demand by the API, sized here
-        <img src={url} width={CHIP} height={CHIP} alt={`Sentinel-2 true colour of the field ${when.toLowerCase()} the burn, ${side?.date ? dateIST(`${side.date}T12:00:00+05:30`) : 'date unknown'}`} loading="lazy" decoding="async" />
+        <img src={url} width={CHIP} height={CHIP} alt={`Sentinel-2 true colour of the field ${when.toLowerCase()} the burn, ${side?.date ? dateIST(`${side.date}T12:00:00+05:30`) : 'date unknown'}`} loading="lazy" decoding="async" onError={() => setFailedUrl(url)} />
       ) : (
-        <span className={styles.chipMissing}>No clear picture</span>
+        <span className={styles.chipMissing}>{failed ? 'The picture did not load' : 'No clear picture'}</span>
       )}
       <figcaption>
         {when}, {side?.date ? dateIST(`${side.date}T12:00:00+05:30`) : '—'}

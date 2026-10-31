@@ -99,7 +99,7 @@ function fireVerdict(f: CaseFire): string {
 async function AuditLine() {
   const r = await serverGet<HeadlineAudit>(PATHS.headline);
   if (!r.ok) return <p className="card__note">The audit figures could not be loaded: {r.error.message}</p>;
-  const phrase = auditPhrase(r.data.unseen_burns);
+  const phrase = auditPhrase(r.data.unseen_burns, 'was');
   if (!phrase) return <p className="card__note">The API states no audit for candidate unseen burns yet{r.data.unseen_burns?.reason ? `: ${r.data.unseen_burns.reason}` : '.'}</p>;
   return (
     <p className="audit-line">
@@ -175,7 +175,9 @@ export function CaseScreen({ data }: { data: CaseFile }) {
         <Kpi label="Area burnt" value={area.value} unit={area.unit} sub={c.res_m ? `mapped from ${c.res_m} m pixels` : undefined} />
         <Kpi label="Between the two passes" value={c.gap_days == null ? MISSING : number(c.gap_days, { decimals: 1 })} unit="days" sub={`${dateIST(c.burn_after)} to ${dateIST(c.burn_before)}`} />
         <Kpi label="Fire alerts that explain it" value={st === 'unchecked' ? 'Not yet' : c.fire_matches == null ? MISSING : number(c.fire_matches)} sub={st === 'unchecked' ? 'not matched yet' : radius != null ? `within ${kmPrecise(radius)} and the window` : 'by the matching rule'} />
-        <Kpi label="Nearest fire alert" value={c.nearest_fire_m == null ? 'None' : dist(c.nearest_fire_m).value} unit={c.nearest_fire_m == null ? undefined : dist(c.nearest_fire_m).unit} sub={c.nearest_fire_m == null ? 'none found near the scar' : 'from the scar'} />
+        {/* nearest_fire_m counts only alerts inside the burn window (the API's matching window); the
+            list below also shows alerts outside it, so the label names the window */}
+        <Kpi label="Nearest alert in the window" value={c.nearest_fire_m == null ? 'None' : dist(c.nearest_fire_m).value} unit={c.nearest_fire_m == null ? undefined : dist(c.nearest_fire_m).unit} sub={c.nearest_fire_m == null ? 'no alert between the two passes' : 'from the scar, between the two passes'} />
         <Kpi label="Detection confidence" value={c.confidence == null ? MISSING : number(c.confidence, { decimals: 2 })} sub="score from 0 to 1" />
       </div>
 

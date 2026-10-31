@@ -34,18 +34,25 @@ export function useWidth<T extends HTMLElement>(fallback = 640) {
   return [ref, width] as const;
 }
 
-/** IST midnights (and middays when there is room) inside [from, to], as epoch ms with a label. */
+/** IST midnights (and middays when there is room) inside [from, to], as epoch ms with a label.
+ *  Labels fit the width: "Mon 26 Oct" (about 62 px at 11 px) where a day is 76 px or wider, else
+ *  "26 Oct" (about 38 px), on every day that leaves 48 px between labels. */
 export function istDayTicks(from: number, to: number, width: number): { t: number; label: string; major: boolean }[] {
   const out: { t: number; label: string; major: boolean }[] = [];
   const first = startOfIstDay(from);
   if (!first) return out;
   const days = (to - from) / 86_400_000;
-  const withNoon = width / Math.max(1, days) > 150;
+  const perDay = width / Math.max(1, days);
+  const withNoon = perDay > 150;
+  const long = perDay >= 76;
+  const step = long ? 1 : Math.max(1, Math.ceil(48 / perDay));
+  let day = 0;
   for (let t = first.getTime(); t <= to; t += 12 * 3_600_000) {
     const major = (t - first.getTime()) % 86_400_000 === 0;
     if (t < from) continue;
     if (!major && !withNoon) continue;
-    out.push({ t, label: major ? dateIST(t, { weekday: true }) : '12:00', major });
+    if (major && day++ % step !== 0) continue;
+    out.push({ t, label: major ? dateIST(t, { weekday: long }) : '12:00', major });
   }
   return out;
 }

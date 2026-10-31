@@ -113,7 +113,7 @@ export function useInvestigator() {
         applied = map.applyAgentEvent({ action: String(ev.action ?? ''), payload: (ev.payload ?? {}) as Record<string, unknown> });
       } else if (ev.type === 'tool_call' && ev.name === 'get_case_file') {
         const id = Number((ev.args as Record<string, unknown> | undefined)?.scar_id);
-        if (Number.isInteger(id) && id > 0) map.openCase(id);
+        if (Number.isInteger(id) && id > 0) map.openCase(id, { reveal: false });
       }
       update((s) => (s.key === key ? reduce(s, ev, clock, applied) : s));
     },
@@ -122,11 +122,13 @@ export function useInvestigator() {
 
   /** After the run: outline on the map the fields and fires its tools returned. */
   const showEvidence = useCallback(
-    (tools: StoredTool[] | null, steps: Investigation['steps']) => {
+    (tools: StoredTool[] | null) => {
       const ev = evidenceOf(tools);
-      const placed = steps.some((st) => (st.kind === 'tool' && st.map && st.map.action !== 'show_layer') || (st.kind === 'map' && st.action !== 'show_layer'));
+      // Outlined, never framed: these are the tool's sample of fields, often not the districts the
+      // answer names (a season answer about Amritsar framed eight fields in Sangrur). The camera
+      // moves only where the agent itself sent it (show_on_map), and the answer lists the fields.
       if (ev.fireIds.length) map.highlight('fire', ev.fireIds, { replace: true });
-      if (ev.scars.length) map.highlight('scar', ev.scars.map((x) => x.id), { replace: true, focus: !placed });
+      if (ev.scars.length) map.highlight('scar', ev.scars.map((x) => x.id), { replace: true, focus: false });
     },
     [map],
   );
@@ -170,7 +172,7 @@ export function useInvestigator() {
         const res = await loadRun(done.runId, c.signal);
         if (c.signal.aborted) return;
         update((s) => (s.key === key ? { ...s, tools: res.run.tools ?? [] } : s));
-        showEvidence(res.run.tools ?? [], done.steps);
+        showEvidence(res.run.tools ?? []);
       } catch {
         // the evidence list is extra: the answer and its sources are already on screen
       }
@@ -226,7 +228,7 @@ export function useInvestigator() {
       const done = current.current;
       if (!done || done.key !== key) return;
       remember(done);
-      showEvidence(run.tools ?? [], done.steps);
+      showEvidence(run.tools ?? []);
     },
     [begin, feed, pause, remember, showEvidence, update],
   );

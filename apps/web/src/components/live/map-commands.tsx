@@ -28,13 +28,14 @@ export type MapCommands = {
   highlight: (kind: HighlightKind, ids: readonly (string | number)[], opts?: { replace?: boolean; focus?: boolean }) => void;
   /** Mark a place (district, city, village or point) with a ring and its label. */
   markPlace: (place: PlaceMark, opts?: { replace?: boolean }) => void;
-  /** Switch layers on. `only` switches every other layer off. `city` picks the back-trajectory city. */
-  showLayers: (layers: readonly LiveLayer[], opts?: { only?: boolean; city?: string }) => void;
+  /** Switch layers on. `only` switches every other layer off. `city` picks the back-trajectory city.
+   *  `reveal` (default true): on a phone, scroll the map into view if it is off-screen. */
+  showLayers: (layers: readonly LiveLayer[], opts?: { only?: boolean; city?: string; reveal?: boolean }) => void;
   hideLayers: (layers: readonly LiveLayer[]) => void;
   /** Remove every highlight and place mark. */
   clearHighlights: () => void;
-  /** Open (or with null, close) a scar's case summary and fly to it. */
-  openCase: (id: number | null) => void;
+  /** Open (or with null, close) a scar's case summary and fly to it; `reveal` as for showLayers. */
+  openCase: (id: number | null, opts?: { reveal?: boolean }) => void;
   /** Leave the season replay and show live data again. */
   goLive: () => void;
   /** Apply an agent `map` event ({action, payload}) as the API sends it. Returns false if it was not understood. */
@@ -72,6 +73,17 @@ const box = (v: unknown): [number, number, number, number] | null => {
   return n.every((x): x is number => x != null) ? (n as [number, number, number, number]) : null;
 };
 
+/** On a phone the map sits above the lists and the investigator: when a tap there changes the map
+ *  while it is scrolled out of sight, bring it into view (the change would otherwise go unseen). */
+function revealMap(): void {
+  if (typeof window === 'undefined' || !window.matchMedia('(max-width: 700px)').matches) return;
+  const el = document.getElementById('live-map');
+  if (!el) return;
+  const r = el.getBoundingClientRect();
+  if (r.bottom > 80 && r.top < window.innerHeight - 80) return; // enough of it is on screen
+  el.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+}
+
 export function useMapCommands(): MapCommands {
   const { dispatch, camera } = useLiveActions();
   return useMemo<MapCommands>(() => {
@@ -87,14 +99,16 @@ export function useMapCommands(): MapCommands {
     const showLayers: MapCommands['showLayers'] = (layers, opts = {}) => {
       if (opts.city) dispatch({ type: 'smokeBackCity', city: opts.city });
       dispatch({ type: 'layers', on: layers, only: opts.only });
+      if (opts.reveal ?? true) revealMap();
     };
     const hideLayers: MapCommands['hideLayers'] = (layers) => dispatch({ type: 'layers', off: layers });
     const clearHighlights = () => dispatch({ type: 'clear' });
-    const openCase: MapCommands['openCase'] = (id) => {
+    const openCase: MapCommands['openCase'] = (id, opts = {}) => {
       dispatch({ type: 'select', id });
       if (id != null) {
         dispatch({ type: 'layers', on: ['scars'] });
         dispatch({ type: 'highlight', kind: 'scar', ids: [id], replace: true, focus: true });
+        if (opts.reveal ?? true) revealMap();
       }
     };
     const goLive = () => dispatch({ type: 'replay', day: null });
@@ -106,8 +120,9 @@ export function useMapCommands(): MapCommands {
         const layer = typeof p.layer === 'string' ? AGENT_LAYERS[p.layer] : undefined;
         if (!layer) return false;
         const params = (p.params ?? {}) as Record<string, unknown>;
+        // the agent's own moves never scroll the page: the reader is reading the answer
         if (p.visible === false) hideLayers([layer]);
-        else showLayers([layer], { city: typeof params.city === 'string' ? params.city : undefined });
+        else showLayers([layer], { city: typeof params.city === 'string' ? params.city : undefined, reveal: false });
         return true;
       }
       const center = pair(p.center);
@@ -123,7 +138,7 @@ export function useMapCommands(): MapCommands {
         const kind = typeof p.feature_type === 'string' ? AGENT_KINDS[p.feature_type] : undefined;
         const id = p.id;
         if (kind && (typeof id === 'string' || typeof id === 'number')) {
-          if (kind === 'scar') openCase(num(id));
+          if (kind === 'scar') openCase(num(id), { reveal: false });
           else highlight(kind, [id], { focus: !center && !bbox });
         }
         if (bbox) flyTo({ bbox });

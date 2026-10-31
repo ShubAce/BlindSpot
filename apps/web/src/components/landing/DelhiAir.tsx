@@ -42,8 +42,12 @@ export function DelhiAir({ initial }: { initial: Headline | null }) {
   // The smoke trace is a model (back-trajectories on two weather models), and is called one.
   const t = d?.smoke_trace;
   const belt = t?.share_over_burn_belt?.h24;
-  const trace = t?.verdict_hint
-    ? ` Our smoke model ${VERDICT[t.verdict_hint] ?? `reads “${t.verdict_hint.replace(/_/g, ' ')}”`}${t.verdict_reason ? `: ${t.verdict_reason}` : ''}.${belt != null ? ` It traces ${percent(belt)} of the air reaching Delhi to the burning belt within a day.` : ''}`
+  // Where the air came from first, then the verdict and its reason: the reason ("…or the air passed
+  // only a little burning") speaks of the burning met on the way, which a high belt share does not
+  // contradict, but read before the share it sounded as if the air had missed the belt.
+  const verdict = t?.verdict_hint ? (VERDICT[t.verdict_hint] ?? `reads “${t.verdict_hint.replace(/_/g, ' ')}”`) : null;
+  const trace = verdict
+    ? `${belt != null ? ` Our smoke model traces ${percent(belt)} of the air reaching Delhi over the burning belt within a day, and` : ' Our smoke model'} ${verdict}${t?.verdict_reason ? `: ${t.verdict_reason}` : ''}.`
     : '';
 
   return (

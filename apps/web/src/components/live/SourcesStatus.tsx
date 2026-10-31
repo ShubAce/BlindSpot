@@ -24,10 +24,14 @@ const shortLabel = (s: SourceStatus) => s.label.split(/\s[(:]|;\s/)[0].replace(/
 const STATUS_TEXT: Record<string, string> = { error: 'failed', stale: 'stale', never: 'never ran' };
 const TONE: Record<string, string> = { error: 'negative', stale: 'warning', never: 'neutral' };
 
-function StatusMark({ s }: { s: SourceStatus }) {
+function StatusMark({ s, named = false }: { s: SourceStatus; named?: boolean }) {
   if (s.status === 'ok') return null;
+  // In the title row the pill names the source ("NASA FIRMS failed"): a bare "failed" beside
+  // "fresh" read as if mission control itself had failed.
+  const name = named ? `${shortLabel(s).split(' ').slice(0, 2).join(' ')} ` : '';
   return (
     <span className={styles.pill} data-tone={TONE[s.status] ?? 'neutral'}>
+      {name}
       {STATUS_TEXT[s.status] ?? s.status}
     </span>
   );
@@ -78,7 +82,7 @@ export function SourcesStatus() {
           <span>
             Sources: <span className="nums">{number(ok)}</span> of <span className="nums">{number(rows.length)}</span> fresh
           </span>
-          {problem ? <StatusMark s={problem} /> : null}
+          {problem ? <StatusMark s={problem} named /> : null}
         </button>
       )}
       {open && src.data ? (

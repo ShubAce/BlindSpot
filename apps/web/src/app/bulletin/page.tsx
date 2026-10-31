@@ -28,7 +28,7 @@ const CODES: BulletinLangCode[] = ['en', 'hi', 'pa'];
 
 async function AuditNote() {
   const r = await serverGet<HeadlineAudit>(PATHS.headline);
-  const phrase = r.ok ? auditPhrase(r.data.unseen_burns) : null;
+  const phrase = r.ok ? auditPhrase(r.data.unseen_burns, 'was') : null;
   return (
     <p className="card__note reading">
       Candidate unseen burns are Sentinel-2 burn scars with no FIRMS fire alert near them.

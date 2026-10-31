@@ -202,11 +202,13 @@ function Fields({ scars, onOpen }: { scars: NamedScar[]; onOpen: (id: number) =>
   );
 }
 
-/** The precision of the candidate unseen burns, read from the headline, never typed in. */
-function Precision() {
+/** The precision of the candidate unseen burns, read from the headline, never typed in. `inline`
+ *  for a line inside a button (an example's preview), where a <p> may not go. */
+export function Precision({ inline = false }: { inline?: boolean }) {
   const head = useLiveHeadline();
   const text = precisionText(head.data?.unseen_burns);
   if (!text) return null;
+  if (inline) return <span className="iv-exMeta">Candidate unseen burns: {text}.</span>;
   return <p className="iv-note">Candidate unseen burns are Sentinel-2 burn scars with no fire alert: {text}.</p>;
 }
 

@@ -96,9 +96,10 @@ export function WeatherChart({ series, from, to }: { series: CaseWeatherPoint[];
               ) : null}
               {k === PANELS.length - 1
                 ? xt
-                    .filter((tk) => x(tk.t) > left + 20 || tk.major)
+                    // a label that would run past the right edge is left out, not pushed onto its neighbour
+                    .filter((tk) => (x(tk.t) > left + 20 || tk.major) && x(tk.t) + tk.label.length * 6.3 <= right)
                     .map((tk) => (
-                      <text key={tk.t} x={Math.min(x(tk.t), right - 60)} y={h - 8} fontSize={11} fill="var(--axis-ink)">
+                      <text key={tk.t} x={x(tk.t)} y={h - 8} fontSize={11} fill="var(--axis-ink)">
                         {tk.label}
                       </text>
                     ))
