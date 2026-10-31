@@ -59,11 +59,11 @@ As of 31 October 2026. The site's `/method` page shows the current values, read 
 
 | Check                                                                                       | Result                                                                                     |
 | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| Predicted pass times vs FIRMS acquisition times (1,003 detections, 3 days)                  | median error 0.8 min; all within 3 min                                                     |
-| Candidate unseen burns that are real burns (visual audit of random Sentinel-2 chip samples) | precision 0.87, 95% CI 0.68–0.95, n = 23                                                  |
+| Predicted pass times vs FIRMS acquisition times (1,428 detections, 3 days)                  | median error 0.5 min; all within 3 min                                                     |
+| Candidate unseen burns that are real burns (visual audit of random Sentinel-2 chip samples) | precision 87%, 95% CI 68–96%, n = 23                                                       |
 | Smoke index vs measured PM2.5 (22 cities, 25–30 Oct)                                       | r = 0.60 (CAMS 0.62, ventilation alone 0.14); only ~4 independent hours, so not yet robust |
 | Burn-risk ranking vs the burns that followed (risk-v3, 213 pass pairs)                      | AUC 0.57 (95% CI 0.50–0.65); 0.5 is chance, so a weak but real ranking                    |
-| GK-2A fire pixels vs MODIS on Aqua (strong fires)                                           | 84% detected (16 of 19); 7% false alarms                                                   |
+| GK-2A fire pixels vs MODIS on Aqua (strong afternoon fires)                                 | 78% detected (n = 37); 15% of GK-2A's pixels unconfirmed                                   |
 
 ## Architecture
 
