@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     firms_map_key: SecretStr | None = None
     data_gov_in_api_key: SecretStr | None = None
     openaq_api_key: SecretStr | None = None
+    # data.gov.in refuses connections from GitHub's US runners, so the jobs there reach it through
+    # the relay in Mumbai (infra/relay): DATAGOV_RELAY_URL=https://blindspot-relay.vercel.app
+    datagov_relay_url: str | None = None
 
     database_url: str = LOCAL_DATABASE_URL  # the Docker PostGIS from infra/docker-compose.yml
     enable_scheduler: bool = False  # run the job scheduler inside the API process

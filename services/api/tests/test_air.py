@@ -595,8 +595,8 @@ def test_datagov_batch_is_marked_complete_only_after_it_is_stored(
     batch = datagov.Batch(rows, [fid], [fid] * len(rows), page["updated_date"], page["total"])
     keyed = Settings(data_gov_in_api_key="k" * 40)  # never sent: both calls are replaced below
     monkeypatch.setattr(air_jobs, "get_settings", lambda: keyed)
-    monkeypatch.setattr(datagov, "feed_stamp", lambda _key: page["updated_date"])
-    monkeypatch.setattr(datagov, "fetch_all", lambda _key, _bbox=None: batch)
+    monkeypatch.setattr(datagov, "feed_stamp", lambda _key, _relay=None: page["updated_date"])
+    monkeypatch.setattr(datagov, "fetch_all", lambda _key, _bbox=None, _relay=None: batch)
 
     def marked() -> str | None:
         with session_scope() as session:
@@ -735,6 +735,36 @@ def test_air_job_survives_an_upstream_outage(monkeypatch: pytest.MonkeyPatch) ->
                 {"id": first_id, "dead": f"{dead}%"},
             )
         http.reset_cooldowns()
+
+
+def test_datagov_through_the_relay_sends_the_key_in_a_header(monkeypatch: pytest.MonkeyPatch) -> None:
+    """With DATAGOV_RELAY_URL the requests go to the relay in Mumbai (data.gov.in refuses the US
+    runners) with the key in X-Api-Key, never in the URL; without it they go to data.gov.in with
+    the key as `api-key`, data.gov.in's own rule."""
+    from types import SimpleNamespace
+
+    page = {"updated_date": "2026-10-31T08:02:27Z", "total": 1, "count": 1, "records": [{
+        "station": "Golden Temple, Amritsar - PPCB", "city": "Amritsar", "state": "Punjab",
+        "latitude": "31.62", "longitude": "74.876", "pollutant_id": "PM2.5", "avg_value": "167",
+        "last_update": "31-10-2026 13:00:00"}]}  # fmt: skip
+    calls: list[tuple[str, dict[str, Any], dict[str, str]]] = []
+
+    def fake_fetch(source: str, url: str, *, params: Any = None, headers: Any = None, meta: Any = None) -> Any:
+        calls.append((url, dict(params or {}), dict(headers or {})))
+        return SimpleNamespace(data=page, fetch_id=None)
+
+    monkeypatch.setattr(datagov, "fetch", fake_fetch)
+    monkeypatch.setattr(datagov, "set_fetch_records", lambda *args, **kwargs: None)
+    relay = "https://blindspot-relay.vercel.app/"
+    assert datagov.feed_stamp("secret-key", relay) == "2026-10-31T08:02:27Z"
+    assert [r.value for r in datagov.fetch_all("secret-key", None, relay).rows] == [167]
+    assert len(calls) == 2
+    for url, params, headers in calls:
+        assert url == f"https://blindspot-relay.vercel.app/api/resource/{datagov.RESOURCE_ID}"
+        assert headers == {"X-Api-Key": "secret-key"} and "api-key" not in params
+    calls.clear()
+    datagov.feed_stamp("secret-key")
+    assert calls == [(datagov.RESOURCE_URL, {"api-key": "secret-key", "format": "json", "limit": 1}, {})]
 
 
 # --- live checks (tiny; skipped without a key or network) ---------------------------------------

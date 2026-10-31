@@ -26,7 +26,8 @@ from blindspot.http import fetch, set_fetch_records
 
 log = logging.getLogger(__name__)
 
-RESOURCE_URL = "https://api.data.gov.in/resource/3b01bcb8-0b14-4abf-b6f2-c1bfd384ba69"
+RESOURCE_ID = "3b01bcb8-0b14-4abf-b6f2-c1bfd384ba69"
+RESOURCE_URL = f"https://api.data.gov.in/resource/{RESOURCE_ID}"
 SOURCE_KEY = "datagov_aqi"
 PAGE_SIZE = 1000
 MAX_RESTARTS = 2
@@ -152,15 +153,25 @@ def _newest_batch(records: Sequence[Mapping[str, Any]]) -> datetime | None:
     return max(times, default=None)
 
 
-def fetch_all(api_key: str, bbox: BBox | None = None) -> Batch:
+def _where(api_key: str, relay: str | None) -> tuple[str, dict[str, Any], dict[str, str]]:
+    """(url, key params, headers) for one request. Through the relay (infra/relay, in Mumbai) the
+    key goes in X-Api-Key and the relay adds it to its own request; data.gov.in refuses connections
+    from the US runners where the jobs run, but answers the relay."""
+    if relay:
+        return f"{relay.rstrip('/')}/api/resource/{RESOURCE_ID}", {}, {"X-Api-Key": api_key}
+    return RESOURCE_URL, {"api-key": api_key}, {}
+
+
+def fetch_all(api_key: str, bbox: BBox | None = None, relay: str | None = None) -> Batch:
     """Every row of the feed (all India, paged), keeping those inside bbox.
 
     CPCB refreshes the feed hourly and rows flip a few seconds before `updated_date` is re-stamped,
     so a multi-page pull can straddle a refresh. If either the stamp or the newest batch time
     changes between pages, start again (at most MAX_RESTARTS times): one consistent batch.
     """
+    url, key_params, headers = _where(api_key, relay)
     params: dict[str, Any] = {
-        "api-key": api_key,
+        **key_params,
         "format": "json",
         "limit": PAGE_SIZE,
         "sort[station]": "asc",
@@ -173,7 +184,7 @@ def fetch_all(api_key: str, bbox: BBox | None = None) -> Batch:
         batch_time: datetime | None = None
         offset, total, restarted = 0, 0, False
         while True:
-            result = fetch(SOURCE_KEY, RESOURCE_URL, params={**params, "offset": offset})
+            result = fetch(SOURCE_KEY, url, params={**params, "offset": offset}, headers=headers)
             data = result.data or {}
             records = data.get("records") or []
             newest = _newest_batch(records)
@@ -212,13 +223,15 @@ def mark_stored(batch: Batch) -> None:
         set_fetch_records(last, rows, {"complete_batch": batch.updated_date})
 
 
-def feed_stamp(api_key: str) -> str | None:
+def feed_stamp(api_key: str, relay: str | None = None) -> str | None:
     """The feed's `updated_date`, from a one-row request (a few hundred bytes instead of 1.7 MB).
     CPCB re-stamps it with every hourly batch, so an unchanged stamp means nothing new to read."""
+    url, key_params, headers = _where(api_key, relay)
     result = fetch(
         SOURCE_KEY,
-        RESOURCE_URL,
-        params={"api-key": api_key, "format": "json", "limit": 1},
+        url,
+        params={**key_params, "format": "json", "limit": 1},
+        headers=headers,
         meta={"kind": "stamp"},
     )
     stamp = (result.data or {}).get("updated_date")

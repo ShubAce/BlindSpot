@@ -129,14 +129,15 @@ def _last_complete_batch(session: Session) -> str | None:
 
 
 def datagov_step() -> dict[str, Any]:
-    key = get_settings().data_gov_in_api_key
+    settings = get_settings()
+    key, relay = settings.data_gov_in_api_key, settings.datagov_relay_url
     if key is None:
         return {"skipped": "DATA_GOV_IN_API_KEY is not set"}
-    stamp = datagov.feed_stamp(key.get_secret_value())
+    stamp = datagov.feed_stamp(key.get_secret_value(), relay)
     with session_scope() as session:
         if stamp is not None and stamp == _last_complete_batch(session):
             return {"skipped": "CPCB feed unchanged since the last pull", "feed_updated": stamp}
-    batch = datagov.fetch_all(key.get_secret_value(), AOI_BBOX)
+    batch = datagov.fetch_all(key.get_secret_value(), AOI_BBOX, relay)
     rows = [
         _obs(
             provider=DATAGOV,
