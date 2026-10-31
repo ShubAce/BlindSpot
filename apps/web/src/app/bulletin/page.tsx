@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
 
-import { AppBar } from '@/components/case/AppBar';
+import { SiteNav } from '@/components/nav/SiteNav';
 import { auditPhrase } from '@/components/case/audit';
 import type { HeadlineAudit } from '@/components/case/types';
 import { BulletinReader } from '@/components/bulletin/BulletinReader';
@@ -62,7 +62,7 @@ export default function BulletinPage({ searchParams }: { searchParams: Promise<{
       <a className="skip-link" href="#main">
         Skip to the bulletin
       </a>
-      <AppBar current="bulletin" />
+      <SiteNav current="bulletin" />
       <main id="main" className="app-canvas bulletin-canvas">
         <Suspense fallback={<BulletinSkeleton />}>
           <BulletinBody searchParams={searchParams} />

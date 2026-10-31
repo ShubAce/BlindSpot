@@ -1,6 +1,6 @@
 /* Mission control (global, every class prefixed lv-: the app's Turbopack CSS rule compiles
    .module.css files as plain global CSS, so modules would not scope anyway)
-    (data-terminal style, icon-rail shell), on the app tokens of [data-surface="app"]
+    (data-terminal style, under the site's top bar), on the app tokens of [data-surface="app"]
    in app/globals.css. Cards are darker than the ground and separated by a 1px line, never a shadow
    (only what floats over the map, the case summary, carries one). The accent is used only as the
    1px selection line. Figures are Work Sans with tabular figures. */
@@ -9,8 +9,9 @@
    shell */
 
 .lv-shell {
-  display: grid;
-  grid-template-columns: var(--rail-width) minmax(0, 1fr);
+  /* the site bar (components/nav) lines up with the screen's padding */
+  --sn-pad: 16px;
+  --sn-pad-phone: 12px;
   min-height: 100svh;
   background: var(--ground);
 }
@@ -31,98 +32,6 @@
   transform: none;
 }
 
-/* the rail */
-.lv-rail {
-  position: sticky;
-  top: 0;
-  z-index: 30;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 18px;
-  height: 100svh;
-  padding: 14px 0 16px;
-  background: var(--ground);
-  border-right: 1px solid var(--border);
-}
-.lv-railMark {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  border-radius: var(--radius-control);
-}
-.lv-railList {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.lv-railBottom {
-  margin-top: auto;
-}
-.lv-railLink {
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  color: var(--faint);
-  border-radius: var(--radius-control);
-  transition: color var(--t-hover) ease;
-}
-.lv-railLink:hover,
-.lv-railLink:focus-visible,
-.lv-railLink[aria-current="page"] {
-  color: var(--text);
-}
-/* the active screen: the one gold line, on the rail's edge, as tall as the icon */
-.lv-railLink[aria-current="page"]::before {
-  content: "";
-  position: absolute;
-  right: -5px;
-  top: 11px;
-  width: 1px;
-  height: 18px;
-  background: var(--accent);
-}
-/* tooltip: the name, beside the icon (it floats, so it may have an edge) */
-.lv-railLink::after {
-  content: attr(data-tip);
-  position: absolute;
-  left: 46px;
-  top: 50%;
-  padding: 4px 8px;
-  font-size: 12px;
-  line-height: 16px;
-  white-space: nowrap;
-  color: var(--text);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-control);
-  opacity: 0;
-  pointer-events: none;
-  transform: translate(-4px, -50%);
-  transition:
-    opacity var(--t-hover) ease,
-    transform var(--t-hover) var(--ease-out);
-}
-.lv-railLink:hover::after,
-.lv-railLink:focus-visible::after {
-  opacity: 1;
-  transform: translate(0, -50%);
-}
-.lv-railText {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-
 /* ---------------------------------------------------------------------------------------------
    the screen grid */
 
@@ -135,9 +44,9 @@
     "map side"
     "strip side";
   gap: 16px;
-  /* one screen where it is tall enough; on a short laptop (1440 x 900) the screen grows instead of
-     squeezing the map, and the pass strip sits just under the fold */
-  height: max(100svh, 1000px);
+  /* one screen under the site bar where it is tall enough; on a short laptop (1440 x 900) the
+     screen grows instead of squeezing the map, and the pass strip sits just under the fold */
+  height: max(calc(100svh - var(--sn-top-h)), 1000px);
   padding: 16px;
   min-width: 0;
 }
@@ -1142,69 +1051,14 @@
 }
 
 /* ---------------------------------------------------------------------------------------------
-   phone: the rail is a bottom bar, the ranked list a sheet above it, the map first */
+   phone: the site's bottom bar navigates, the ranked list is a sheet above it, the map first */
 
 @media (max-width: 700px) {
-  .lv-shell {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .lv-rail {
-    position: fixed;
-    inset: auto 0 0 0;
-    flex-direction: row;
-    justify-content: space-around;
-    gap: 0;
-    height: 56px;
-    padding: 0 8px env(safe-area-inset-bottom);
-    border-right: 0;
-    border-top: 1px solid var(--border);
-  }
-  .lv-railMark {
-    display: none;
-  }
-  .lv-railList,
-  .lv-railBottom {
-    flex-direction: row;
-    flex: 3;
-    justify-content: space-around;
-    gap: 0;
-    margin: 0;
-  }
-  .lv-railBottom {
-    flex: 1;
-  }
-  .lv-railLink {
-    width: auto;
-    height: 56px;
-    padding: 0 10px;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 2px;
-  }
-  .lv-railLink::after {
-    display: none;
-  }
-  .lv-railLink[aria-current="page"]::before {
-    top: 0;
-    left: 25%;
-    right: 25%;
-    width: auto;
-    height: 1px;
-  }
-  .lv-railText {
-    position: static;
-    width: auto;
-    height: auto;
-    overflow: visible;
-    clip-path: none;
-    font-size: 11px;
-    line-height: 14px;
-  }
   .lv-screen,
   .lv-screen:has(> .lv-console > *) {
     gap: 12px;
-    padding: 12px 12px calc(56px + 52px + 16px);
+    /* the sheet's 52px handle (the site's bottom bar is covered by the body's padding) */
+    padding: 12px 12px calc(52px + 16px);
   }
   .lv-titleRow {
     flex-direction: column;
@@ -1298,12 +1152,12 @@
   .lv-side {
     grid-template-columns: minmax(0, 1fr);
   }
-  /* the ranked list as a sheet over the bottom bar */
+  /* the ranked list as a sheet over the site's bottom bar */
   .lv-listCard {
     position: fixed;
     left: 0;
     right: 0;
-    bottom: 56px;
+    bottom: var(--sn-tabs-h);
     z-index: 25;
     max-height: 52px;
     contain: none;
@@ -1479,9 +1333,9 @@
   }
   .lv-console {
     position: sticky;
-    top: 16px;
+    top: calc(var(--sn-top-h) + 16px);
     align-self: start;
-    height: calc(100svh - 32px);
+    height: calc(100svh - var(--sn-top-h) - 32px);
   }
 }
 

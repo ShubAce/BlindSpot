@@ -1,0 +1,197 @@
+/* The site navigation (SiteNav.tsx), the same on every page. A global stylesheet, classes prefixed
+   sn- (the app's Turbopack CSS rule compiles .module.css files as plain global CSS).
+
+   Its colours are fixed, not read from the page or app surface tokens, so the bar is identical on
+   both: warm black #0c0a08, the line #2b2620, links #b6b0a7 (9.2:1 on the bar), the current place and
+   hover in white, the gold only as the 1px selection line and the action.
+
+   Heights are custom properties so pages can make room: --sn-top-h is the top bar, --sn-tabs-h the
+   phone's bottom bar (0 where there is none). A page aligns the bar with its own content with
+   --sn-max (the content's max width) and --sn-pad (its side padding). */
+
+:root {
+  --sn-top-h: 56px;
+  --sn-tabs-h: 0px;
+  --sn-ground: #0c0a08;
+  --sn-line: #2b2620;
+  --sn-link: #b6b0a7;
+  --sn-tab: #958f87;
+}
+
+/* the top bar: pinned on desktop and tablet, so every page keeps its way out */
+.sn-top {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  background: var(--sn-ground);
+  border-bottom: 1px solid var(--sn-line);
+  font-family: var(--face-text);
+}
+.sn-top__inner {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  height: var(--sn-top-h);
+  max-width: var(--sn-max, none);
+  margin: 0 auto;
+  padding: 0 var(--sn-pad, var(--margin));
+}
+.sn-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1;
+  text-decoration: none;
+}
+.sn-links {
+  display: flex;
+  align-items: stretch;
+  gap: 28px;
+  margin-left: auto;
+  align-self: stretch;
+}
+.sn-link {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  color: var(--sn-link);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1;
+  text-decoration: none;
+  transition: color var(--t-hover) var(--ease-out);
+}
+.sn-link:hover,
+.sn-link[aria-current] {
+  color: #ffffff;
+}
+/* the selection mark: a 1px gold line as wide as the label, laid on the bar's rule */
+.sn-link[aria-current]::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1px;
+  background: var(--accent);
+}
+.sn-action {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 16px;
+  background: var(--accent);
+  color: var(--sn-ground);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  text-decoration: none;
+  transition:
+    background-color var(--t-hover) var(--ease-out),
+    transform var(--t-press) var(--ease-out);
+}
+.sn-action:hover {
+  background: #d8b46c;
+}
+.sn-action:active {
+  transform: translateY(1px);
+}
+.sn-brand:focus-visible,
+.sn-link:focus-visible,
+.sn-action:focus-visible,
+.sn-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* anchors and scrollIntoView land below the pinned bar */
+@media (min-width: 701px) {
+  html {
+    scroll-padding-top: var(--sn-top-h);
+  }
+}
+
+/* the bottom bar exists only on a phone */
+.sn-tabs {
+  display: none;
+}
+
+@media (max-width: 700px) {
+  :root {
+    --sn-top-h: 48px;
+    --sn-tabs-h: calc(56px + env(safe-area-inset-bottom));
+  }
+  .sn-top {
+    position: relative;
+  }
+  .sn-top__inner {
+    padding: 0 var(--sn-pad-phone, 16px);
+  }
+  .sn-links,
+  .sn-action {
+    display: none;
+  }
+  .sn-tabs {
+    display: block;
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 60;
+    height: var(--sn-tabs-h);
+    padding-bottom: env(safe-area-inset-bottom);
+    background: var(--sn-ground);
+    border-top: 1px solid var(--sn-line);
+    font-family: var(--face-text);
+  }
+  .sn-tabs ul {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    height: 56px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .sn-tab {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    height: 56px;
+    color: var(--sn-tab);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 14px;
+    text-decoration: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  .sn-tab[aria-current] {
+    color: #ffffff;
+  }
+  .sn-tab[aria-current]::before {
+    content: "";
+    position: absolute;
+    top: -1px;
+    left: 28%;
+    right: 28%;
+    height: 1px;
+    background: var(--accent);
+  }
+  /* the end of every page stays above the bar */
+  body:has(.sn-tabs) {
+    padding-bottom: var(--sn-tabs-h);
+  }
+}
+
+@media print {
+  .sn-top,
+  .sn-tabs {
+    display: none;
+  }
+}

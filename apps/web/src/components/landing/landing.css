@@ -16,7 +16,6 @@
   --paper-muted: #5c554d;
   --soft: #2b2620;
   --scrim: rgb(12 10 8 / 0.64);
-  --rail-h: 76px;
   --grid: repeat(12, minmax(0, 1fr));
   --pad-section: clamp(96px, 11vw, 168px);
   --step-statement: clamp(1.5rem, 1rem + 1.2vw, 2rem);
@@ -107,11 +106,9 @@
 }
 
 /* ------------------------------------------------------------------------------------------------
-   header bar: the h1, the one sentence, two links and the action */
+   title row, under the site bar (components/nav): the h1 and the one sentence */
 
 .lp-rail {
-  position: relative;
-  z-index: 40;
   background: var(--bg);
 }
 .lp-rail-inner {
@@ -119,11 +116,10 @@
   grid-template-columns: var(--grid);
   column-gap: var(--gutter);
   align-items: center;
-  min-height: var(--rail-h);
-  padding: 12px var(--margin);
+  padding: 18px var(--margin) 6px;
 }
 .lp-rail-title {
-  grid-column: 1 / span 5;
+  grid-column: 1 / span 7;
   margin: 0;
   font-family: var(--face-display);
   font-size: var(--step-rail);
@@ -133,102 +129,13 @@
   text-transform: uppercase;
   white-space: nowrap;
 }
-.lp-rail-home {
-  color: inherit;
-  text-decoration: none;
-}
 .lp-rail-sentence {
-  grid-column: 6 / span 4;
-  max-width: 44ch;
+  grid-column: 8 / -1;
+  max-width: 46ch;
   margin: 0;
   font-size: var(--step-body);
   font-weight: 600;
   line-height: 1.3;
-}
-.lp-rail-nav {
-  grid-column: 10 / span 3;
-  justify-self: end;
-  display: flex;
-  align-items: center;
-  gap: 20px;
-}
-.lp-rail-link {
-  color: var(--ink);
-  font-size: var(--step-small);
-  font-weight: 600;
-  text-decoration: underline;
-  text-decoration-color: transparent;
-  text-underline-offset: 4px;
-  transition: text-decoration-color var(--t-hover) ease;
-}
-.lp-rail-link:hover {
-  text-decoration-color: currentColor;
-}
-
-.lp-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 44px;
-  padding: 0 16px;
-  background: var(--accent);
-  color: var(--accent-ink);
-  font-size: var(--step-small);
-  font-weight: 600;
-  text-decoration: none;
-  white-space: nowrap;
-  transition:
-    background-color var(--t-hover) ease,
-    transform var(--t-press) var(--ease-out);
-}
-.lp-button:hover {
-  background: var(--ink);
-}
-.lp-button:active {
-  transform: translateY(1px) scale(0.98);
-}
-.lp-button-wide {
-  display: flex;
-  width: 100%;
-  min-height: 52px;
-  font-size: var(--step-body);
-}
-
-.lp-menu {
-  display: none;
-  position: relative;
-  justify-self: end;
-}
-.lp-menu-button {
-  display: flex;
-  align-items: center;
-  min-height: 44px;
-  padding: 0 4px;
-  font-size: var(--step-body);
-  font-weight: 600;
-  list-style: none;
-  cursor: pointer;
-}
-.lp-menu-button::-webkit-details-marker {
-  display: none;
-}
-.lp-menu-panel {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 8px);
-  display: grid;
-  min-width: 240px;
-  padding: 8px 0;
-  background: var(--surface);
-}
-.lp-menu-panel a {
-  padding: 12px 20px;
-  color: var(--ink);
-  font-size: var(--step-body);
-  text-decoration: none;
-}
-.lp-menu-panel a:hover {
-  background: var(--soft);
 }
 
 /* ------------------------------------------------------------------------------------------------
@@ -1322,30 +1229,22 @@
 }
 
 /* ------------------------------------------------------------------------------------------------
-   tablet and phone: the rail keeps the h1 and a Menu; the rest goes to the first screen's corner */
+   tablet and phone: the title row stacks the h1 over its sentence */
 
 @media (max-width: 1099px) {
-  .lp-page {
-    --rail-h: 72px;
-  }
   .lp-rail-title {
-    grid-column: 1 / span 9;
+    grid-column: 1 / -1;
     white-space: normal;
   }
-  .lp-rail-nav {
-    display: none;
+  .lp-rail-inner {
+    padding-bottom: 20px;
   }
   .lp-rail-sentence {
     grid-column: 1 / -1;
     grid-row: 2;
     max-width: 60ch;
-    margin-top: 6px;
+    margin-top: 8px;
     font-size: var(--step-small);
-  }
-  .lp-menu {
-    display: block;
-    grid-column: 10 / -1;
-    grid-row: 1;
   }
   .lp-hero {
     grid-template-columns: minmax(0, 1fr);
@@ -1438,11 +1337,9 @@
 
 @media (max-width: 760px) {
   .lp-page {
-    --rail-h: 84px;
     --pad-section: 88px;
   }
   .lp-rail-title {
-    grid-column: 1 / span 9;
     font-size: 1.75rem;
     line-height: 1;
   }

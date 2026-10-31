@@ -7,12 +7,13 @@ import { HeroClock, HeroFigure } from '@/components/landing/Hero';
 import { HeroPictures } from '@/components/landing/HeroPictures';
 import { Intro } from '@/components/landing/Intro';
 import '@/components/landing/landing.css';
+import { Masthead } from '@/components/landing/Masthead';
 import { s } from '@/components/landing/styles';
 import { OneDay } from '@/components/landing/OneDay';
 import { Proof } from '@/components/landing/Proof';
-import { Rail } from '@/components/landing/Rail';
 import { Reply } from '@/components/landing/Reply';
 import { Showcase } from '@/components/landing/Showcase';
+import { SiteNav } from '@/components/nav/SiteNav';
 
 export const metadata: Metadata = {
   title: { absolute: 'BlindSpot: the burning between the satellite passes' },
@@ -39,8 +40,9 @@ export default function Home() {
         <a href="#main" className={s.skip}>
           Skip to the content
         </a>
-        <Rail />
+        <SiteNav current="home" />
         <main id="main">
+          <Masthead />
           <section className={s.hero} aria-label="The unseen share, the clock of the polar satellites’ fire reports, and one place on four passes">
             <div className={s.heroFigure}>
               <Suspense fallback={<div className={s.heroFigureSkeleton} />}>

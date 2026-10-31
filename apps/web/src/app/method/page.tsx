@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Suspense, type ReactNode } from 'react';
 
-import { SiteHeader } from '@/components/method/SiteHeader';
+import { SiteNav } from '@/components/nav/SiteNav';
 import { Accuracy, ArchitectureSection, BlindHours, HeroFrames, Limits, PassTimes, Risk, ScarRule, Smoke, Sources } from '@/components/method/sections';
 
 import '@/components/case/app-screen.css';
@@ -96,7 +96,7 @@ export default function MethodPage() {
       <a className="skip-link" href="#main">
         Skip to the method
       </a>
-      <SiteHeader current="method" />
+      <SiteNav current="method" />
       <main id="main">
         <header className="m-hero">
           <h1 className="m-hero__title">How BlindSpot counts</h1>

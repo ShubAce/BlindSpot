@@ -2,8 +2,9 @@
 
 import type { ReactNode } from 'react';
 
+import { SiteNav } from '@/components/nav/SiteNav';
+
 import { AirReceptors } from './AirReceptors';
-import { IconRail } from './IconRail';
 import { InvestigatorSlot } from './InvestigatorSlot';
 import { LiveProvider } from './live-state';
 import styles from './styles';
@@ -17,12 +18,12 @@ import { UnseenList } from './UnseenList';
  * Mission control. The question it answers first: where did fields burn unseen since the last pass,
  * and where is that smoke going?
  *
- * Grid (1440 x 900, 16px gutters, rail 50px):
+ * Grid (1440 x 900, 16px gutters, under the site's 56px top bar):
  *   columns  [main 1fr] [side 360px] ([console, its own width, only when the console renders])
  *   rows     [title auto] [map 1fr] [strip auto], the side column spans map and strip.
- *   1440 - 50 rail - 2 x 16 padding - 16 gap - 360 side = 982px of main column.
- * Below 1100px one column: title, map, strip, then the side panels two up; below 700px the rail
- * becomes a bottom bar and the ranked list a sheet.
+ *   1440 - 2 x 16 padding - 16 gap - 360 side = 1032px of main column.
+ * Below 1100px one column: title, map, strip, then the side panels two up; below 700px the site's
+ * bottom bar takes the navigation and the ranked list is a sheet above it.
  */
 export function LiveScreen({ finding }: { finding: ReactNode }) {
   return (
@@ -31,7 +32,7 @@ export function LiveScreen({ finding }: { finding: ReactNode }) {
         <a href="#live-map" className={styles.skip}>
           Skip to the map
         </a>
-        <IconRail active="/live" />
+        <SiteNav current="live" />
         <main className={styles.screen} id="main">
           <header className={styles.titleRow}>
             <div className={styles.titleText}>
