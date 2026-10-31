@@ -21,7 +21,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from deploy_vercel_web import run_vercel  # noqa: E402
+from deploy_vercel_web import link_once, run_vercel  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RELAY_DIR = REPO_ROOT / "infra" / "relay"
@@ -38,7 +38,7 @@ def main() -> int:
 
     vercel_json = RELAY_DIR / "vercel.json"
     vercel_json.write_text(json.dumps({"regions": [FUNCTION_REGION]}, indent=2) + "\n", encoding="utf-8")
-    print(run_vercel(["link", "--yes", "--project", PROJECT], RELAY_DIR, token).strip().splitlines()[-1])
+    link_once(RELAY_DIR, PROJECT, token)
     out = run_vercel(["deploy", "--prod", "--yes"], RELAY_DIR, token)
     urls = re.findall(r"https://[a-z0-9.-]+\.vercel\.app", out)
     print("deployed:", sorted(set(urls)))

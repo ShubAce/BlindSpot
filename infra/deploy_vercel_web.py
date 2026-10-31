@@ -42,6 +42,17 @@ def run_vercel(args: list[str], cwd: Path, token: str, stdin: str | None = None,
     return out
 
 
+def link_once(folder: Path, project: str, token: str) -> None:
+    """Link `folder` to `project` the first time only. `vercel link --yes` also connects the GitHub
+    repository, after which every push deployed the repo root to production (it broke the relay on
+    2026-10-31), so a fresh link is followed by a disconnect. The repo's root vercel.json disables
+    Git deployments as well. We deploy from these scripts only."""
+    if (folder / ".vercel" / "project.json").exists():
+        return
+    print(run_vercel(["link", "--yes", "--project", project], folder, token).strip().splitlines()[-1])
+    run_vercel(["git", "disconnect", "--yes"], folder, token, check=False)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--api-url", default=API_URL, help="the deployed API's address")
@@ -58,7 +69,7 @@ def main() -> int:
     vercel_json = WEB_DIR / "vercel.json"
     vercel_json.write_text(json.dumps({"regions": [FUNCTION_REGION]}, indent=2) + "\n", encoding="utf-8")
 
-    print(run_vercel(["link", "--yes", "--project", PROJECT], WEB_DIR, token).strip().splitlines()[-1])
+    link_once(WEB_DIR, PROJECT, token)
 
     if not args.skip_env:
         api = args.api_url.rstrip("/")
