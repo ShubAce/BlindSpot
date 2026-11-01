@@ -16,12 +16,11 @@ import {
   districtTiles,
   describePick,
   firesLayer,
-  MARK,
   mercatorMetresPerPixel,
-  rgba,
+  paletteFor,
   riskLayers,
   satelliteLayers,
-  SCAR_TILE_STYLE,
+  SCAR_TILE_GEOMETRY,
   scarsLayers,
   scarTilesLayer,
   smokeLayers,
@@ -29,6 +28,7 @@ import {
   windLayer,
   type DistrictShape,
   type MapLayerInput,
+  type MapPalette,
   type ScarFeature,
   type ScarTile,
   type TooltipContent,
@@ -36,13 +36,12 @@ import {
 import { mapClock } from '@/components/map/clock';
 import { mapLabelFont } from '@/components/map/layers/common';
 import { nextLookParts, placeLookLabel } from '@/components/map/look';
-import { SATELLITE_STYLE } from '@/components/map/palette';
 import { centroidOf, readBoundaries, type AirLatestResponse, type AreaGeometry, type FiresResponse, type RiskResponse, type ScarsResponse, type SmokeBackResponse, type SmokeForwardResponse, type WindFieldResponse } from '@/lib/api';
 import { dateIST, metricText, number, placeName } from '@/lib/format';
 import { useBoundaries } from '@/lib/live';
 import type { LatLon, PassWindow, Satellite } from '@/lib/orbits';
+import { useTheme, type Theme } from '@/lib/theme';
 
-import { BACK_STYLE } from './legend';
 import { useLiveActions, useLiveState } from './live-state';
 import { useMapCommands } from './map-commands';
 import { istDayEndUtc, precisionText, useLiveHeadline, useScarsSummaryLive } from './data';
@@ -71,7 +70,6 @@ export type MapData = {
   cases: readonly LiveScarCase[];
 };
 
-const HL = rgba(MARK.ink, 255);
 const css = (c: readonly number[]) => `rgba(${c[0]},${c[1]},${c[2]},${(c[3] ?? 255) / 255})`;
 const LOOK_LABEL_LAYOUT: SymbolLayerSpecification['layout'] = {
   'text-field': ['get', 'label'],
@@ -83,7 +81,14 @@ const LOOK_LABEL_LAYOUT: SymbolLayerSpecification['layout'] = {
   'text-offset': [0, -0.25],
   'text-allow-overlap': true,
 };
-const LOOK_LABEL_PAINT: SymbolLayerSpecification['paint'] = { 'text-color': css(SATELLITE_STYLE.label), 'text-halo-color': MARK.ground, 'text-halo-width': 2 };
+/** The next look's label, written by the basemap in the satellites' ink on a ground halo. A new paint
+ *  object per theme is enough: react-map-gl diffs it into setPaintProperty. */
+const lookLabelPaint = ({ SATELLITE_STYLE, MARK }: MapPalette): SymbolLayerSpecification['paint'] => ({
+  'text-color': css(SATELLITE_STYLE.label),
+  'text-halo-color': MARK.ground,
+  'text-halo-width': 2,
+});
+const LOOK_LABEL_PAINT: Readonly<Record<Theme, SymbolLayerSpecification['paint']>> = { dark: lookLabelPaint(paletteFor('dark')), light: lookLabelPaint(paletteFor('light')) };
 
 const TIP_W = 280; // the tooltip's max-width (TOOLTIP_STYLE)
 const TIP_GAP = 12; // from the pointer
@@ -110,8 +115,6 @@ function edgeAware(info: PickingInfo, t: TooltipContent): TooltipContent {
     style: { ...t.style, maxWidth: `${tw}px`, translate: `${tx} ${up ? `calc(-100% - ${TIP_GAP}px)` : `${TIP_GAP}px`}` } as Partial<CSSStyleDeclaration>,
   };
 }
-const HL_FILL = rgba(MARK.ink, 40);
-const PLACE = rgba(MARK.ink, 230);
 
 type HlPoint = { id: string; position: [number, number] };
 type HlArea = { id: string; geometry: AreaGeometry };
@@ -170,9 +173,13 @@ export default function LiveMapCanvas({ data, label }: { data: MapData; label: s
   const { registerMap, camera, mapRef, dispatch } = useLiveActions();
   const commands = useMapCommands();
   const on = s.layers;
+  // The map paints its own colours (MapLibre's style, deck.gl's layers), so it follows the theme in
+  // code: every layer below is rebuilt with the theme's marks when it changes. This chunk loads after
+  // hydration, so the first map already has the right theme.
+  const theme = useTheme();
 
   // the zoom and view, read when a move ends: zoomed out (live) the season by district, then the
-  // drawn fields binned into tiles below SCAR_TILE_STYLE.fieldsZoom, then the fields
+  // drawn fields binned into tiles below SCAR_TILE_GEOMETRY.fieldsZoom, then the fields
   const [zoom, setZoom] = useState<number | null>(null);
   const [view, setView] = useState<[number, number, number, number] | null>(null);
   const binZoom = zoom == null ? null : Math.round(zoom * 2) / 2;
@@ -182,12 +189,12 @@ export default function LiveMapCanvas({ data, label }: { data: MapData; label: s
     const spec = districtShapes.data ? readBoundaries(districtShapes.data) : null;
     return spec?.kind === 'geojson' ? (spec.data.features as unknown as DistrictShape[]) : [];
   }, [districtShapes.data]);
-  const wantDistricts = !s.replayDay && (zoom == null || zoom < SCAR_TILE_STYLE.districtZoom);
+  const wantDistricts = !s.replayDay && (zoom == null || zoom < SCAR_TILE_GEOMETRY.districtZoom);
   const districts = useMemo(
     () => (on.scars && wantDistricts && binZoom != null ? districtTiles(summary.data?.by_district ?? [], shapes, binZoom) : []),
     [on.scars, wantDistricts, binZoom, summary.data, shapes],
   );
-  const scarsView = districts.length ? 'districts' : zoom == null || zoom < SCAR_TILE_STYLE.fieldsZoom ? 'tiles' : 'fields';
+  const scarsView = districts.length ? 'districts' : zoom == null || zoom < SCAR_TILE_GEOMETRY.fieldsZoom ? 'tiles' : 'fields';
   useEffect(() => {
     dispatch({ type: 'scarsView', view: scarsView });
   }, [scarsView, dispatch]);
@@ -195,29 +202,29 @@ export default function LiveMapCanvas({ data, label }: { data: MapData; label: s
   // in the replay, a detection's age is counted from the end of the day shown, not from now
   const fireClock = s.replayDay ? Date.parse(istDayEndUtc(s.replayDay)) : data.now ? data.now.getTime() : 0;
   const fireBucket = Math.floor(fireClock / 600_000);
-  const fires = useMemo(() => (on.fires ? firesLayer(data.fires, { now: new Date(fireBucket * 600_000) }) : null), [on.fires, data.fires, fireBucket]);
+  const fires = useMemo(() => (on.fires ? firesLayer(data.fires, { now: new Date(fireBucket * 600_000), theme }) : null), [on.fires, data.fires, fireBucket, theme]);
   // tiles are re-binned per half zoom step, so a pinch does not rebuild them on every frame
   const scars = useMemo(() => {
     if (!on.scars) return null;
-    if (scarsView === 'districts') return scarTilesLayer(districts);
+    if (scarsView === 'districts') return scarTilesLayer(districts, { theme });
     if (scarsView === 'tiles') {
       if (binZoom == null) return null;
-      return scarTilesLayer(binScars((data.scars?.features.features ?? []) as unknown as ScarFeature[], binZoom));
+      return scarTilesLayer(binScars((data.scars?.features.features ?? []) as unknown as ScarFeature[], binZoom), { theme });
     }
-    return scarsLayers(data.scars as ScarsResponse | undefined, { selectedId: s.selectedScar });
-  }, [on.scars, scarsView, districts, binZoom, data.scars, s.selectedScar]);
-  const risk = useMemo(() => (on.risk ? riskLayers(riskForLayer(data.risk)) : null), [on.risk, data.risk]);
+    return scarsLayers(data.scars as ScarsResponse | undefined, { selectedId: s.selectedScar, theme });
+  }, [on.scars, scarsView, districts, binZoom, data.scars, s.selectedScar, theme]);
+  const risk = useMemo(() => (on.risk ? riskLayers(riskForLayer(data.risk), { theme }) : null), [on.risk, data.risk, theme]);
   // 2,000 overlapping trails at the shared style's alpha bury the scars; drawn at half strength here
-  const smoke = useMemo(() => (on.smoke ? smokeLayers(data.smoke).map((l) => withOpacity(l, 0.45)) : null), [on.smoke, data.smoke]);
-  const wind = useMemo(() => (on.wind ? windLayer(data.wind) : null), [on.wind, data.wind]);
-  const air = useMemo(() => (on.air ? airLayers(data.air) : null), [on.air, data.air]);
+  const smoke = useMemo(() => (on.smoke ? smokeLayers(data.smoke, { theme }).map((l) => withOpacity(l, 0.45)) : null), [on.smoke, data.smoke, theme]);
+  const wind = useMemo(() => (on.wind ? windLayer(data.wind, { theme }) : null), [on.wind, data.wind, theme]);
+  const air = useMemo(() => (on.air ? airLayers(data.air, { theme }) : null), [on.air, data.air, theme]);
   // the next look at Punjab: the line its scanner sweeps through the site and that pass's track
   // (its whole-swath footprint would only tint the entire view: VIIRS sees 3,040 km at once)
   // Its label is a basemap symbol when the basemap has fonts, placed first, so a town name under it
   // gives way instead of being covered; it sits off the burn belt's marks where the view allows.
   const [glyphs, setGlyphs] = useState(false);
   const nextLook = useMemo(() => (data.site && data.passes[0] ? { pass: data.passes[0], site: data.site, label: !glyphs } : null), [data.site, data.passes, glyphs]);
-  const sats = useMemo(() => (on.satellites ? satelliteLayers(data.sats, data.now, { nextLook }) : null), [on.satellites, data.sats, data.now, nextLook]);
+  const sats = useMemo(() => (on.satellites ? satelliteLayers(data.sats, data.now, { nextLook, theme }) : null), [on.satellites, data.sats, data.now, nextLook, theme]);
   const look = useMemo(() => (on.satellites && glyphs && nextLook ? nextLookParts(data.sats, nextLook.pass, nextLook.site) : null), [on.satellites, glyphs, nextLook, data.sats]);
   const marks = useMemo(() => {
     const out: [number, number][] = [];
@@ -242,6 +249,7 @@ export default function LiveMapCanvas({ data, label }: { data: MapData; label: s
   const back = useMemo<MapLayerInput[] | null>(() => {
     const b = data.smokeBack;
     if (!on.smokeBack || !b) return null;
+    const { BACK_STYLE } = paletteFor(theme);
     const out: MapLayerInput[] = [];
     const cone = b.summary?.cone;
     if (cone) {
@@ -256,7 +264,7 @@ export default function LiveMapCanvas({ data, label }: { data: MapData; label: s
         }),
       );
     }
-    out.push(...smokeLayers(b as unknown as SmokeBackResponse, { id: 'smoke:back', showCone: false }));
+    out.push(...smokeLayers(b as unknown as SmokeBackResponse, { id: 'smoke:back', showCone: false, theme }));
     const lines = (b.summary?.members ?? []).filter((m) => (m.centerline?.path?.length ?? 0) > 1);
     if (lines.length) {
       out.push(
@@ -268,11 +276,13 @@ export default function LiveMapCanvas({ data, label }: { data: MapData; label: s
           getColor: (m) => (m.model === 'gfs_seamless' ? BACK_STYLE.line2 : BACK_STYLE.line),
           getWidth: 2,
           pickable: false,
+          // deck.gl never compares accessor functions: the theme is what tells it the colours changed
+          updateTriggers: { getColor: [theme] },
         }),
       );
     }
     return out;
-  }, [on.smokeBack, data.smokeBack]);
+  }, [on.smokeBack, data.smokeBack, theme]);
 
   // highlights: rings at the centre (visible at any zoom) and outlines of the shapes
   const hl = useMemo(() => {
@@ -319,6 +329,7 @@ export default function LiveMapCanvas({ data, label }: { data: MapData; label: s
   }, [s.highlights, s.hoverScar, data.scars, data.cases, data.risk, data.fires, data.air]);
 
   const hlLayers = useMemo<Layer[]>(() => {
+    const { FOCUS_STYLE: F } = paletteFor(theme);
     const out: Layer[] = [];
     if (hl.areas.length) {
       out.push(
@@ -328,8 +339,8 @@ export default function LiveMapCanvas({ data, label }: { data: MapData; label: s
           filled: true,
           stroked: true,
           lineWidthUnits: 'pixels',
-          getFillColor: HL_FILL,
-          getLineColor: HL,
+          getFillColor: F.fill,
+          getLineColor: F.line,
           getLineWidth: 2,
           pickable: false,
         }),
@@ -347,7 +358,7 @@ export default function LiveMapCanvas({ data, label }: { data: MapData; label: s
           stroked: true,
           getPosition: (d) => d.position,
           getRadius: 12,
-          getLineColor: PLACE,
+          getLineColor: F.label,
           getLineWidth: 1.5,
           pickable: false,
         }),
@@ -363,20 +374,20 @@ export default function LiveMapCanvas({ data, label }: { data: MapData; label: s
             getPixelOffset: [16, 0],
             getSize: 12,
             sizeUnits: 'pixels',
-            getColor: PLACE,
+            getColor: F.label,
             getTextAnchor: 'start',
             getAlignmentBaseline: 'center',
             fontFamily: mapLabelFont(),
             fontWeight: 500,
             fontSettings: { sdf: true },
             outlineWidth: 3,
-            outlineColor: rgba(MARK.ground, 255),
+            outlineColor: F.halo,
           }),
         );
       }
     }
     return out;
-  }, [hl, s.places]);
+  }, [hl, s.places, theme]);
 
   // frame the highlighted features once their geometry is here (a click in the list, an agent's highlight)
   const framed = useRef(0);
@@ -481,7 +492,7 @@ export default function LiveMapCanvas({ data, label }: { data: MapData; label: s
           const map = mapRef.current?.getMap();
           const cam = map?.cameraForBounds(bounds, { padding: 48 });
           if (map && cam?.center != null && cam.zoom != null) {
-            const zoomTo = Math.min(13, Math.max(cam.zoom, SCAR_TILE_STYLE.fieldsZoom + 0.1));
+            const zoomTo = Math.min(13, Math.max(cam.zoom, SCAR_TILE_GEOMETRY.fieldsZoom + 0.1));
             map.flyTo({ center: cam.center, zoom: zoomTo, duration: mapClock.isReduced ? 0 : 1200 });
           } else camera({ bounds, padding: 48 });
         });
@@ -538,10 +549,10 @@ export default function LiveMapCanvas({ data, label }: { data: MapData; label: s
   );
 
   return (
-    <BaseMap layers={layers} getTooltip={getTooltip} onPick={onPick} onLoad={onLoad} mapRef={setRef} label={label} foreignLabels="dim">
+    <BaseMap layers={layers} theme={theme} getTooltip={getTooltip} onPick={onPick} onLoad={onLoad} mapRef={setRef} label={label} foreignLabels="dim">
       {lookLabel ? (
         <Source id="lv-look-label" type="geojson" data={lookLabel}>
-          <MapLayer id="lv-look-label" type="symbol" layout={LOOK_LABEL_LAYOUT} paint={LOOK_LABEL_PAINT} />
+          <MapLayer id="lv-look-label" type="symbol" layout={LOOK_LABEL_LAYOUT} paint={LOOK_LABEL_PAINT[theme]} />
         </Source>
       ) : null}
     </BaseMap>

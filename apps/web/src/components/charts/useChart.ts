@@ -13,7 +13,8 @@ import type { ChartHandle } from '@/lib/charts';
  *   return <div ref={ref} />;
  *
  * `key` is any string or number that changes exactly when the chart's inputs change (the data's
- * `generated_at` is often enough). The draw function always sees the latest props.
+ * `generated_at` is often enough). The draw function always sees the latest props. A theme change
+ * needs nothing in `key`: the chart redraws itself with the new tokens (lib/charts.ts, lifecycle).
  */
 export function useChart<T extends ChartHandle>(draw: (el: HTMLDivElement) => T | null, key: string | number) {
   const ref = useRef<HTMLDivElement>(null);

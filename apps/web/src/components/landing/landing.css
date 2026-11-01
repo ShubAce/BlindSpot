@@ -8,14 +8,33 @@
    display (the one big figure) and the rail's h1. Tokens come from src/app/globals.css.
 
    Paper (slips, cards, the footer) is a low-chroma bone. Contrast (WCAG 2): paper-ink #0c0a08 on
-   paper #efeeec 17.2:1; paper-muted #5c554d on paper 6.5:1; muted #8f8a84 on bg 5.78:1. */
+   paper #efeeec 17.04:1; paper-muted #5c554d on paper 6.33:1; muted #8f8a84 on bg 5.78:1.
+
+   Light theme (:root[data-theme="light"], src/lib/theme.ts): the page itself turns into that bone
+   paper with ink type, so the paper laid on it steps up to a near-white #fcfcfb (1.13:1 on the
+   ground, 1.24:1 on the surface bands: one tone step, no shadow), keeping its black ink and muted ink
+   (19.25:1 and 7.15:1 on it). The sections still alternate light and dark: the showcase stays a dark
+   photograph (it keeps the dark palette, see .lp-showcase) and the footer becomes the page's one
+   inverted field, the white card on ink. Whatever is drawn on a photograph keeps its dark-theme
+   colours (the scar outlines in the brand gold and white). The clock becomes a white dial with a
+   stone track: the polar satellites' looks in the deep gold data mark (--accent-mark #a67b01, 3.75:1
+   on the dial, where the brand gold would be 2.29:1) and GK-2A's activity in the light fire red
+   (#b82d0f, 5.98:1), a pair chosen to stay apart for colour-blind eyes. */
 
 .lp-page {
   --paper: #efeeec;
-  --paper-ink: var(--accent-ink);
+  /* its own value, not the accent's label: paper keeps black ink on both themes */
+  --paper-ink: #0c0a08;
   --paper-muted: #5c554d;
   --soft: #2b2620;
   --scrim: rgb(12 10 8 / 0.64);
+  /* the blind-spot clock: its dial, its track, and a polar look still to come today (the data gold
+     at half strength, on both themes) */
+  --clock-face: var(--surface);
+  --clock-ring: #3a332b;
+  --clock-look-later: color-mix(in srgb, var(--accent-mark) 50%, transparent);
+  /* the stamp's margin: a lighter paper than the card's on dark, a darker one on light */
+  --stamp: #ffffff;
   --grid: repeat(12, minmax(0, 1fr));
   --pad-section: clamp(96px, 11vw, 168px);
   --step-statement: clamp(1.5rem, 1rem + 1.2vw, 2rem);
@@ -26,13 +45,25 @@
   color: var(--ink);
 }
 
+/* Light: paper on paper. Ratios: --soft #dad5cf under ink 12.33:1 (the date chip's hover) and under
+   muted 5.03:1 (a disabled square), 1.26:1 on the ground as the drag row's track under its ink thumb;
+   the dial's track #cdc8c2 1.62:1 on the white face (dark's is 1.46:1); a look still to come follows
+   the light data gold by itself (--clock-look-later). */
+:root[data-theme="light"] .lp-page {
+  --paper: #fcfcfb;
+  --soft: #dad5cf;
+  --clock-face: var(--paper);
+  --clock-ring: #cdc8c2;
+  --stamp: #efeeec;
+}
+
 .lp-skip {
   position: absolute;
   left: var(--margin);
   top: -200px;
   z-index: 100;
   padding: 12px 16px;
-  background: var(--accent);
+  background: var(--accent-fill);
   color: var(--accent-ink);
   font-weight: 600;
 }
@@ -173,12 +204,13 @@
   aspect-ratio: 16 / 10;
   background: var(--surface);
 }
+/* the dial's own face, so the clock lands on the disc that held its place */
 .lp-clock-skeleton {
   aspect-ratio: 1;
   max-width: min(100%, 68svh);
   margin-inline: auto;
   border-radius: 50%;
-  background: var(--surface);
+  background: var(--clock-face);
 }
 
 /* the picture: uncropped (its own ratio), the outlines drawn in its pixels */
@@ -221,9 +253,11 @@
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
 }
+/* drawn on the photograph, so the brand gold on both themes (the light theme's text gold would sink
+   into the dark soil of a burnt field) */
 .lp-mark-unseen {
   fill: rgb(201 164 90 / 0.28);
-  stroke: var(--accent);
+  stroke: var(--accent-fill);
   stroke-width: 1.6px;
 }
 .lp-mark-seen {
@@ -287,9 +321,10 @@
 .lp-frame-date:hover {
   background: var(--soft);
 }
+/* an ink chip carries the ground as its label: black on white on dark, bone on ink on light (15.51:1) */
 .lp-frame-date[aria-pressed="true"] {
   background: var(--ink);
-  color: var(--accent-ink);
+  color: var(--bg);
 }
 
 /* the key figure: the share, large, with its audit beside it in the full ink */
@@ -338,23 +373,24 @@
   overflow: visible;
 }
 .lp-clock-face {
-  fill: var(--surface);
+  fill: var(--clock-face);
 }
 .lp-clock-ring {
-  fill: #3a332b;
+  fill: var(--clock-ring);
 }
 .lp-clock-ring-full {
   fill: none;
-  stroke: #3a332b;
+  stroke: var(--clock-ring);
 }
 .lp-clock-bar {
   fill: var(--mark-fire);
 }
+/* a filled data mark: the gold of the map's unseen burns, not the text gold */
 .lp-clock-look {
-  fill: var(--accent);
+  fill: var(--accent-mark);
 }
 .lp-clock-look[data-done="no"] {
-  fill: rgb(201 164 90 / 0.5);
+  fill: var(--clock-look-later);
 }
 .lp-clock-gap {
   fill: none;
@@ -435,7 +471,7 @@
   background: var(--ink);
 }
 .lp-swatch-look {
-  background: var(--accent);
+  background: var(--accent-mark);
 }
 .lp-swatch-fire {
   background: var(--mark-fire);
@@ -540,6 +576,39 @@
   padding-top: clamp(80px, 9vw, 140px);
   overflow: hidden;
   background: var(--surface);
+}
+/* Light: the showcase stays dark, a photograph with its words on dark scrims. It takes back the dark
+   values of every token its contents read (white type, gold focus rings, the dark band if the
+   picture does not arrive, dark skeletons, the dark theme's bone for its slips), so the section looks
+   the same on both themes. `color` is set again because the page's ink reaches it already computed. */
+:root[data-theme="light"] .lp-showcase {
+  color-scheme: dark;
+  --bg: #0c0a08;
+  --surface: #181512;
+  --ink: #ffffff;
+  --muted: #8f8a84;
+  --accent: #c9a45a;
+  --paper: #efeeec;
+  --soft: #2b2620;
+  --pocket: clamp(24px, 2.2vw, 32px);
+  color: var(--ink);
+}
+/* The slips stand in a pocket. On dark, the page below the showcase is the pocket's front and cuts
+   them with a hard edge; on light that page is bone, the slips' own paper, so the cut would vanish
+   and their last lines would end in the middle of nothing. The island ends instead in a band of its
+   dark ground, and the row of slips gains the band's height, so each shows as much of itself above
+   the cut as on dark. */
+:root[data-theme="light"] .lp-showcase::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  z-index: 1;
+  height: var(--pocket);
+  background: var(--bg);
+  pointer-events: none;
+}
+:root[data-theme="light"] .lp-slips-wrap {
+  padding-bottom: var(--pocket);
 }
 .lp-showcase-pic {
   position: absolute;
@@ -880,14 +949,16 @@
   padding: 0;
   border: 0;
   background: var(--ink);
-  color: var(--accent-ink);
+  color: var(--bg);
   cursor: pointer;
   transition:
     background-color var(--t-hover) ease,
     transform var(--t-press) var(--ease-out);
 }
+/* the gold fill under its black label, as the site bar's action (8.41:1 on both themes) */
 .lp-square:hover {
-  background: var(--accent);
+  background: var(--accent-fill);
+  color: var(--accent-ink);
 }
 .lp-square:active {
   transform: scale(0.94);
@@ -1114,7 +1185,7 @@
     transform var(--t-press) var(--ease-out);
 }
 .lp-reply-bar:hover {
-  background: var(--accent);
+  background: var(--accent-fill);
   color: var(--accent-ink);
 }
 .lp-reply-bar:active {
@@ -1127,6 +1198,13 @@
 .lp-footer {
   padding: 140px var(--margin) 0;
   background: var(--surface);
+}
+/* Light: the page closes on its one inverted field, ink as the ground (the white card on it 17.52:1),
+   so the light sections still alternate with dark ones (the showcase, then this) and the back of the
+   card lies on a dark desk as on the dark theme. The reply card above is cut against it with a hard
+   edge instead of fading into a pale band. */
+:root[data-theme="light"] .lp-footer {
+  background: var(--ink);
 }
 .lp-back {
   position: relative;
@@ -1176,7 +1254,7 @@
   width: 88px;
   aspect-ratio: 3 / 4;
   padding: 6px;
-  background: #ffffff;
+  background: var(--stamp);
   rotate: 3deg;
 }
 .lp-stamp img,
@@ -1208,7 +1286,8 @@
 .lp-reply-card :focus-visible {
   outline-color: var(--paper-ink);
 }
-/* a slip's ring is drawn outside the paper, on the dark showcase: gold, as everywhere on dark */
+/* a slip's ring is drawn outside the paper, on the showcase, which is dark on both themes: gold, as
+   everywhere on dark */
 .lp-slip:focus-visible {
   outline-color: var(--accent);
 }
@@ -1402,11 +1481,12 @@
   .lp-answer-points li + li {
     display: none;
   }
+  /* The credit stays on the picture, in the band above the claim (the section's 56px top padding).
+     Laid out after the picture, it fell below the section and was clipped away. */
   .lp-showcase-caption {
-    position: relative;
-    top: auto;
-    right: auto;
-    margin: 16px var(--margin) 0;
+    top: 8px;
+    left: var(--margin);
+    padding: 4px 8px;
     text-align: left;
   }
   .lp-slips {

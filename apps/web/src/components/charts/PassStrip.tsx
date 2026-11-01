@@ -7,9 +7,10 @@ import { duration, number, startOfIstDay, timeIST, toDate, type DateInput } from
 import { FIRE_INSTRUMENTS, type PassWindow } from '@/lib/orbits';
 
 /**
- * The pass strip: 24 hours of one IST day with the fire satellites' observation windows lit, the
- * blind hours dark, the day's FIRMS detections as ticks, an optional geostationary hourly row, and
- * "now" marked. Mission control's signature element (.taste-skill/notes.md).
+ * The pass strip: 24 hours of one IST day with the fire satellites' observation windows marked (lit
+ * on the dark theme, shaded on the light one) against the blind hours, the day's FIRMS detections as
+ * ticks, an optional geostationary hourly row, and "now" marked. Mission control's signature element
+ * (.taste-skill/notes.md).
  *
  *   <PassStrip now={now} windows={windowsFromPasses(passes.data)} detections={detectionsFromFires(fires.data)}
  *              geostationary={geoHourly(diurnal.data)} />
@@ -186,7 +187,7 @@ export function PassStrip({ windows, detections = [], geostationary = null, geoL
             i % step === 0 ? <line key={`g${i}`} x1={(i / 24) * W} x2={(i / 24) * W} y1={rowTop} y2={axisTop} strokeWidth={1} shapeRendering="crispEdges" style={strokeOf('--grid')} /> : null,
           )}
 
-          {/* the day, dark; windows lit */}
+          {/* the day on the raised ground; the windows over it (lit on dark, shaded on light) */}
           <rect x={0} y={rowTop} width={W} height={STRIP_H} style={fillOf('--raised')} />
           {model.gaps.map((g) => {
             const gw = x(g.end) - x(g.start);
@@ -262,7 +263,7 @@ export function PassStrip({ windows, detections = [], geostationary = null, geoL
                         y={h >= 14 && bw >= 18 ? geoTop + GEO_H - h + 11 : geoTop + GEO_H - h - 3}
                         fontSize={11}
                         textAnchor="middle"
-                        style={h >= 14 && bw >= 18 ? { fill: 'var(--surface, var(--bg))', fontWeight: 600 } : fillOf('--axis-ink')}
+                        style={h >= 14 && bw >= 18 ? { fill: 'var(--on-fire)', fontWeight: 600 } : fillOf('--axis-ink')}
                       >
                         {number(g.value)}
                       </text>

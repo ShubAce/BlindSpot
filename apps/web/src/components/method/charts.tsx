@@ -13,6 +13,11 @@ import type { AucPair, GeoDiurnal, OrbitValidation, SmokeCityRow } from './types
  * the text inks, identity never by colour alone (shape or position carries it too). Fires and GK-2A
  * pixels are the fire mark; candidate unseen burns and BlindSpot's own model are gold; references
  * and baselines are neutral.
+ *
+ * Gold has two values on light (one on dark): a gold mark (dot, interval) is --accent-mark, which
+ * still reads as gold beside the ink and grey marks (dataviz validator, smoke chart on light: Delta E
+ * 19 from the grey ring, where the deeper text gold measures 8); gold words, and the line a gold
+ * label names, are --accent, deep enough for small text.
  */
 
 const sign = (v: number | null | undefined, d = 1) => number(v, { decimals: d, signed: true });
@@ -146,7 +151,7 @@ export function PassErrorChart({ data }: { data: OrbitValidation }) {
                 <tspan fill="var(--axis-ink)" fontSize={11}>{` ${s.instrument}`}</tspan>
               </text>
               {e.min_min != null && e.max_min != null ? <line x1={x(e.min_min)} x2={x(e.max_min)} y1={cy} y2={cy} stroke="var(--chart-muted)" strokeWidth={6} strokeLinecap="round" /> : null}
-              {e.median_min != null ? <circle cx={x(e.median_min)} cy={cy} r={6} fill="var(--accent)" stroke="var(--bg)" strokeWidth={2} /> : null}
+              {e.median_min != null ? <circle cx={x(e.median_min)} cy={cy} r={6} fill="var(--accent-mark)" stroke="var(--bg)" strokeWidth={2} /> : null}
               <text x={width} y={cy + 4} fontSize={12} textAnchor="end" fill="var(--axis-ink)">
                 {`n ${number(e.n)}`}
               </text>
@@ -198,7 +203,7 @@ export function AuditForest({ rows }: { rows: ForestRow[] }) {
         {rows.map((r, i) => {
           const top = padT + i * rowH;
           const cy = narrow ? top + 40 : top + rowH / 2;
-          const col = r.lead ? 'var(--accent)' : 'var(--ink)';
+          const col = r.lead ? 'var(--accent-mark)' : 'var(--ink)';
           return (
             <g key={r.label}>
               <title>{`${r.label}: ${percent(r.value)}${r.ci ? ` (95% CI ${percent(r.ci[0])}–${percent(r.ci[1])})` : ''}, ${r.n}`}</title>
@@ -263,7 +268,7 @@ export function SmokeDots({ rows }: { rows: SmokeCityRow[] }) {
               </text>
               {r.ventilation != null ? <circle cx={x(r.ventilation)} cy={cy} r={5} fill="none" stroke="var(--axis-ink)" strokeWidth={1.5} /> : null}
               {r.cams != null ? <rect x={x(r.cams) - 4.5} y={cy - 4.5} width={9} height={9} transform={`rotate(45 ${x(r.cams)} ${cy})`} fill="var(--ink)" /> : null}
-              {r.model != null ? <circle cx={x(r.model)} cy={cy} r={6} fill="var(--accent)" stroke="var(--bg)" strokeWidth={1.5} /> : null}
+              {r.model != null ? <circle cx={x(r.model)} cy={cy} r={6} fill="var(--accent-mark)" stroke="var(--bg)" strokeWidth={1.5} /> : null}
               <text x={width} y={cy + 4} fontSize={11} textAnchor="end" fill="var(--axis-ink)">
                 {r.nEff == null ? '' : `n eff ${number(r.nEff, { decimals: 1 })}`}
               </text>
@@ -348,7 +353,7 @@ export function AucStrip({ pairs, mean, lead }: { pairs: AucPair[]; mean: number
           </>
         ) : null}
         {pts.map((p, i) => (
-          <circle key={i} cx={x(p.ms)} cy={y(p.auc as number)} r={isLead(p) ? 6 : 3.5} fill={isLead(p) ? 'var(--accent)' : 'var(--chart-1)'} fillOpacity={isLead(p) ? 1 : 0.55} stroke={isLead(p) || hover === i ? 'var(--ink)' : 'var(--bg)'} strokeWidth={isLead(p) || hover === i ? 2 : 1} />
+          <circle key={i} cx={x(p.ms)} cy={y(p.auc as number)} r={isLead(p) ? 6 : 3.5} fill={isLead(p) ? 'var(--accent-mark)' : 'var(--chart-1)'} fillOpacity={isLead(p) ? 1 : 0.55} stroke={isLead(p) || hover === i ? 'var(--ink)' : 'var(--bg)'} strokeWidth={isLead(p) || hover === i ? 2 : 1} />
         ))}
         {weeks.map((t) => (
           <text key={t} x={x(t)} y={h - 8} fontSize={11} textAnchor="middle" fill="var(--axis-ink)">

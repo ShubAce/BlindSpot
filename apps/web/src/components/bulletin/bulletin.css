@@ -271,32 +271,29 @@
   @page {
     margin: 16mm 14mm;
   }
-  html,
-  body,
-  .app-screen {
-    background: #fff !important;
-    color: #000 !important;
-  }
-  .app-bar,
+  /* The paper's colours (the light theme's, from either theme), the white page and what never
+     prints come from app-screen.css, shared with the case file. What this sheet adds is kept inside
+     the bulletin's own canvas: a stylesheet stays loaded after the visitor moves on (and the page
+     stays in the document, hidden), so a bare .app-canvas or .card__title rule here would reshape a
+     case file printed later in the same visit. */
   .lang-tabs,
-  [data-print="hide"],
   .removed summary {
     display: none !important;
   }
-  .app-canvas {
+  .bulletin-canvas {
     padding: 0 !important;
     max-width: none !important;
   }
-  .title-row h1,
-  .finding,
+  .bulletin-canvas .title-row h1,
+  .bulletin-canvas .finding,
   .bulletin,
   .bulletin__section h2,
-  .card__title,
-  .prov__label,
-  .figs__row dt,
-  .figs__row dd,
-  .card__note,
-  .prov__meta {
+  .bulletin-canvas .card__title,
+  .bulletin-canvas .prov__label,
+  .bulletin-canvas .figs__row dt,
+  .bulletin-canvas .figs__row dd,
+  .bulletin-canvas .card__note,
+  .bulletin-canvas .prov__meta {
     color: #000 !important;
   }
   .bulletin-grid {
@@ -336,15 +333,15 @@
   .removed ul {
     display: block;
   }
-  .prov__url {
+  .bulletin-canvas .prov__url {
     color: #000 !important;
   }
-  .prov__url::after {
+  .bulletin-canvas .prov__url::after {
     content: " " attr(title);
     font-size: 8pt;
     word-break: break-all;
   }
-  .figs__row {
+  .bulletin-canvas .figs__row {
     border-color: #ccc !important;
   }
 }

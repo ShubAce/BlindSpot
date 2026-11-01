@@ -1,29 +1,18 @@
 /**
  * The map's layers as data: id, label, what it shows, where it comes from, how often it refreshes,
- * its credit line, and its legend (built from the same style objects the factories draw with).
- * A layer panel can be generated from `LAYER_LIST` alone; BaseMap uses `layerOrder` to stack layers
- * and `describePick` for tooltips.
+ * and its credit line. A layer's key comes from `layerLegend(id, theme)`, built from the same style
+ * objects the factories draw with. A layer panel can be generated from `LAYER_LIST` and
+ * `layerLegend`; BaseMap uses `layerOrder` to stack layers and `describePick` for tooltips.
  */
 
 import type { PickingInfo } from '@deck.gl/core';
 
 import { PATHS } from '@/lib/api';
 import { CADENCE } from '@/lib/cadence';
+import type { Theme } from '@/lib/theme';
 
 import type { LegendItem } from './marks';
-import {
-  AIR_STYLE,
-  FIRE_STYLE,
-  fireRadiusPx,
-  GEO_PIXEL_STYLE,
-  NAQI_BANDS,
-  NAQI_PM25_EDGES,
-  RISK_STYLE,
-  SATELLITE_STYLE,
-  SCAR_STYLE,
-  SMOKE_STYLE,
-  WIND_STYLE,
-} from './palette';
+import { fireRadiusPx, NAQI_BANDS, NAQI_PM25_EDGES, paletteFor, type MapPalette } from './palette';
 import { describeStation } from './layers/air';
 import { describeFire, type FireFeature } from './layers/fires';
 import { describeGeoPixel } from './layers/geostationary';
@@ -50,10 +39,53 @@ export type LayerDescriptor = {
   attribution: string;
   animated: boolean;
   defaultOn: boolean;
-  legend: LegendItem[];
 };
 
-const ringFor = (i: number) => RISK_STYLE.ramp[i];
+/** Each layer's key, drawn from one theme's marks with the same style objects its factory paints
+ *  with, so a swatch is the mark itself, scaled down. */
+function legendsOf({ FIRE_STYLE, GEO_PIXEL_STYLE, SCAR_STYLE, RISK_STYLE, SMOKE_STYLE, WIND_STYLE, AIR_STYLE, SATELLITE_STYLE }: MapPalette): Record<MapLayerId, LegendItem[]> {
+  const ringFor = (i: number) => RISK_STYLE.ramp[i];
+  return {
+    fires: [
+      { label: 'Last 6 h', mark: { kind: 'dot', fill: FIRE_STYLE.fill, stroke: FIRE_STYLE.stroke, strokeWidth: FIRE_STYLE.strokePx, radius: 4 } },
+      { label: '6 to 24 h ago', mark: { kind: 'dot', fill: FIRE_STYLE.fillOld, stroke: FIRE_STYLE.stroke, strokeWidth: FIRE_STYLE.strokePx, radius: 4 } },
+      { label: '2 MW', mark: { kind: 'dot', fill: FIRE_STYLE.fill, radius: fireRadiusPx(2) } },
+      { label: '40 MW', mark: { kind: 'dot', fill: FIRE_STYLE.fill, radius: fireRadiusPx(40) } },
+    ],
+    geostationary: [{ label: 'GK-2A fire pixel', mark: { kind: 'square', stroke: GEO_PIXEL_STYLE.stroke, fill: GEO_PIXEL_STYLE.fill, strokeWidth: GEO_PIXEL_STYLE.strokePx } }],
+    scars: [
+      { label: 'Candidate unseen burn', mark: { kind: 'area', fill: SCAR_STYLE.unseenFill, stroke: SCAR_STYLE.unseenStroke, strokeWidth: SCAR_STYLE.strokePx } },
+      { label: 'Burn with a fire alert', mark: { kind: 'area', fill: SCAR_STYLE.alertedFill, stroke: SCAR_STYLE.alertedStroke, strokeWidth: SCAR_STYLE.strokePx } },
+      { label: 'Not yet checked against fire alerts', mark: { kind: 'outline', stroke: SCAR_STYLE.uncheckedStroke, strokeWidth: SCAR_STYLE.strokePx, fill: SCAR_STYLE.uncheckedFill } },
+    ],
+    risk: [0, 2, 4].map((i) => ({
+      label: i === 0 ? 'Lower risk' : i === 2 ? 'Middle' : 'Highest risk',
+      mark: { kind: 'outline' as const, stroke: ringFor(i), strokeWidth: RISK_STYLE.strokePx, fill: [ringFor(i)[0], ringFor(i)[1], ringFor(i)[2], RISK_STYLE.fillAlpha] as [number, number, number, number] },
+    })),
+    smoke: [{ label: 'Smoke trail', mark: { kind: 'trail', color: SMOKE_STYLE.color, width: 3 } }],
+    wind: [{ label: 'Wind', mark: { kind: 'trail', color: WIND_STYLE.color, width: WIND_STYLE.widthPx } }],
+    air: [
+      ...NAQI_BANDS.map((band, i) => ({
+        label: band,
+        note: i < NAQI_PM25_EDGES.length ? `PM2.5 up to ${NAQI_PM25_EDGES[i]} µg/m³ (24 h)` : `PM2.5 above ${NAQI_PM25_EDGES[NAQI_PM25_EDGES.length - 1]} µg/m³ (24 h)`,
+        mark: { kind: 'dot' as const, fill: AIR_STYLE.ramp[i], stroke: AIR_STYLE.stroke, strokeWidth: AIR_STYLE.strokePx, radius: AIR_STYLE.radiusPx },
+      })),
+      { label: 'Model', mark: { kind: 'ring', stroke: AIR_STYLE.ramp[3], strokeWidth: AIR_STYLE.strokePx, radius: AIR_STYLE.radiusPx } },
+    ],
+    satellites: [
+      { label: 'Satellite now', mark: { kind: 'dot', fill: SATELLITE_STYLE.dot, stroke: SATELLITE_STYLE.dotStroke, strokeWidth: 1.5, radius: SATELLITE_STYLE.dotPx } },
+      { label: 'Ground track', mark: { kind: 'line', color: SATELLITE_STYLE.track, width: SATELLITE_STYLE.trackPx } },
+      { label: 'Swath being imaged', mark: { kind: 'band', fill: SATELLITE_STYLE.swathFill, edge: SATELLITE_STYLE.swathEdge } },
+    ],
+    imagery: [],
+  };
+}
+
+const LEGENDS: Readonly<Record<Theme, Record<MapLayerId, LegendItem[]>>> = { dark: legendsOf(paletteFor('dark')), light: legendsOf(paletteFor('light')) };
+
+/** A layer's key in a theme's colours: a panel that follows the site's theme (useTheme()) passes the
+ *  theme it gives the factories. */
+export const layerLegend = (id: MapLayerId, theme: Theme = 'dark'): LegendItem[] => LEGENDS[paletteFor(theme).theme][id];
 
 export const LAYERS: Record<MapLayerId, LayerDescriptor> = {
   fires: {
@@ -66,12 +98,6 @@ export const LAYERS: Record<MapLayerId, LayerDescriptor> = {
     attribution: 'Fire alerts: NASA FIRMS',
     animated: false,
     defaultOn: true,
-    legend: [
-      { label: 'Last 6 h', mark: { kind: 'dot', fill: FIRE_STYLE.fill, stroke: FIRE_STYLE.stroke, strokeWidth: FIRE_STYLE.strokePx, radius: 4 } },
-      { label: '6 to 24 h ago', mark: { kind: 'dot', fill: FIRE_STYLE.fillOld, stroke: FIRE_STYLE.stroke, strokeWidth: FIRE_STYLE.strokePx, radius: 4 } },
-      { label: '2 MW', mark: { kind: 'dot', fill: FIRE_STYLE.fill, radius: fireRadiusPx(2) } },
-      { label: '40 MW', mark: { kind: 'dot', fill: FIRE_STYLE.fill, radius: fireRadiusPx(40) } },
-    ],
   },
   geostationary: {
     id: 'geostationary',
@@ -83,7 +109,6 @@ export const LAYERS: Record<MapLayerId, LayerDescriptor> = {
     attribution: 'GK-2A: KMA via NOAA Open Data Dissemination',
     animated: false,
     defaultOn: false,
-    legend: [{ label: 'GK-2A fire pixel', mark: { kind: 'square', stroke: GEO_PIXEL_STYLE.stroke, fill: GEO_PIXEL_STYLE.fill, strokeWidth: GEO_PIXEL_STYLE.strokePx } }],
   },
   scars: {
     id: 'scars',
@@ -95,26 +120,18 @@ export const LAYERS: Record<MapLayerId, LayerDescriptor> = {
     attribution: 'Contains modified Copernicus Sentinel-2 data 2026',
     animated: false,
     defaultOn: true,
-    legend: [
-      { label: 'Candidate unseen burn', mark: { kind: 'area', fill: SCAR_STYLE.unseenFill, stroke: SCAR_STYLE.unseenStroke, strokeWidth: SCAR_STYLE.strokePx } },
-      { label: 'Burn with a fire alert', mark: { kind: 'area', fill: SCAR_STYLE.alertedFill, stroke: SCAR_STYLE.alertedStroke, strokeWidth: SCAR_STYLE.strokePx } },
-      { label: 'Not yet checked against fire alerts', mark: { kind: 'outline', stroke: SCAR_STYLE.uncheckedStroke, strokeWidth: SCAR_STYLE.strokePx, fill: SCAR_STYLE.uncheckedFill } },
-    ],
   },
   risk: {
     id: 'risk',
     label: 'Harvested, not burnt',
-    description: 'Fields cut but not yet burnt, ranked by the risk that they burn next; paler is higher.',
+    // the ring stands out more as the risk rises: paler on dark, deeper on light (palette.ts)
+    description: 'Fields cut but not yet burnt, ranked by the risk that they burn next; the stronger the ring, the higher the risk.',
     endpoint: PATHS.risk,
     sourceKeys: ['stac_e84', 'stac_pc'],
     cadenceMs: CADENCE.risk,
     attribution: 'Contains modified Copernicus Sentinel-2 data 2026',
     animated: false,
     defaultOn: false,
-    legend: [0, 2, 4].map((i) => ({
-      label: i === 0 ? 'Lower risk' : i === 2 ? 'Middle' : 'Highest risk',
-      mark: { kind: 'outline' as const, stroke: ringFor(i), strokeWidth: RISK_STYLE.strokePx, fill: [ringFor(i)[0], ringFor(i)[1], ringFor(i)[2], RISK_STYLE.fillAlpha] as [number, number, number, number] },
-    })),
   },
   smoke: {
     id: 'smoke',
@@ -126,7 +143,6 @@ export const LAYERS: Record<MapLayerId, LayerDescriptor> = {
     attribution: 'Winds: Open-Meteo (ECMWF, DWD, NOAA)',
     animated: true,
     defaultOn: true,
-    legend: [{ label: 'Smoke trail', mark: { kind: 'trail', color: SMOKE_STYLE.color, width: 3 } }],
   },
   wind: {
     id: 'wind',
@@ -138,7 +154,6 @@ export const LAYERS: Record<MapLayerId, LayerDescriptor> = {
     attribution: 'Winds: Open-Meteo (ECMWF, DWD, NOAA)',
     animated: true,
     defaultOn: false,
-    legend: [{ label: 'Wind', mark: { kind: 'trail', color: WIND_STYLE.color, width: WIND_STYLE.widthPx } }],
   },
   air: {
     id: 'air',
@@ -150,14 +165,6 @@ export const LAYERS: Record<MapLayerId, LayerDescriptor> = {
     attribution: 'Air quality: CPCB via data.gov.in and OpenAQ; model: Copernicus CAMS',
     animated: false,
     defaultOn: true,
-    legend: [
-      ...NAQI_BANDS.map((band, i) => ({
-        label: band,
-        note: i < NAQI_PM25_EDGES.length ? `PM2.5 up to ${NAQI_PM25_EDGES[i]} µg/m³ (24 h)` : `PM2.5 above ${NAQI_PM25_EDGES[NAQI_PM25_EDGES.length - 1]} µg/m³ (24 h)`,
-        mark: { kind: 'dot' as const, fill: AIR_STYLE.ramp[i], stroke: AIR_STYLE.stroke, strokeWidth: AIR_STYLE.strokePx, radius: AIR_STYLE.radiusPx },
-      })),
-      { label: 'Model', mark: { kind: 'ring', stroke: AIR_STYLE.ramp[3], strokeWidth: AIR_STYLE.strokePx, radius: AIR_STYLE.radiusPx } },
-    ],
   },
   satellites: {
     id: 'satellites',
@@ -169,11 +176,6 @@ export const LAYERS: Record<MapLayerId, LayerDescriptor> = {
     attribution: 'Orbits: CelesTrak',
     animated: false,
     defaultOn: true,
-    legend: [
-      { label: 'Satellite now', mark: { kind: 'dot', fill: SATELLITE_STYLE.dot, stroke: SATELLITE_STYLE.dotStroke, strokeWidth: 1.5, radius: SATELLITE_STYLE.dotPx } },
-      { label: 'Ground track', mark: { kind: 'line', color: SATELLITE_STYLE.track, width: SATELLITE_STYLE.trackPx } },
-      { label: 'Swath being imaged', mark: { kind: 'band', fill: SATELLITE_STYLE.swathFill, edge: SATELLITE_STYLE.swathEdge } },
-    ],
   },
   imagery: {
     id: 'imagery',
@@ -185,7 +187,6 @@ export const LAYERS: Record<MapLayerId, LayerDescriptor> = {
     attribution: 'Contains modified Copernicus Sentinel-2 data 2026',
     animated: false,
     defaultOn: false,
-    legend: [],
   },
 };
 

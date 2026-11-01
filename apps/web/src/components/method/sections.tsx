@@ -372,7 +372,7 @@ export async function Smoke() {
           <ul className="m-legend" aria-label="Legend">
             <li>
               <svg width="14" height="14" aria-hidden="true">
-                <circle cx="7" cy="7" r="6" fill="var(--accent)" />
+                <circle cx="7" cy="7" r="6" fill="var(--accent-mark)" />
               </svg>
               BlindSpot smoke model (smoke per km of mixing depth)
             </li>

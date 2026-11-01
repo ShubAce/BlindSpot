@@ -18,7 +18,30 @@
          pills (ink on tint): positive 7.89 · negative 6.69 · warning 8.32 · neutral 10.76
          lines: border vs ground 1.23, vs surface 1.32 · rule vs surface 1.15 · control vs surface 2.05
    Data marks (map, charts) are validated with the dataviz skill's validator; see
-   src/components/map/palette.ts for the numbers. Keep the --mark-* values below equal to it.
+   src/components/map/palette.ts for the numbers. Keep the --mark-* values below equal to it, on
+   both themes.
+
+   The light theme (an option; dark is the default): <html data-theme="light">, set before the first
+   paint and switched by src/lib/theme.ts. Light values live under :root[data-theme="light"], and the
+   app surface's under :root[data-theme="light"] [data-surface="app"] (the app block re-declares
+   --surface, --ink, --muted and --accent, so a :root-only value would not reach it). Every token
+   added for light takes its old value on dark, so dark renders exactly as before. The same checks for
+   the light values (scratch script with the dataviz validator, 2026-11-01):
+   page  ink #1a1612 on bg 15.51:1, on surface 14.17:1 · muted #5c554d on bg 6.33:1, on surface 5.78:1
+         accent #7a5c22 on bg 5.36:1, on surface 4.89:1 (text, links, focus, the 1px line). The brand
+         gold #c9a45a fails as text on light (2.03:1 on bg), so it keeps two jobs only: --accent-fill
+         under its #0c0a08 label (8.41:1, as on dark) and filled data marks as --accent-mark #a67b01
+         (3.32:1 on bg: the deepest gold that still reads as gold and stays apart from fire for
+         colour-blind eyes)
+   app   on ground / surface / raised / active:
+         text #1a1612 15.51 / 17.52 / 16.22 / 14.85 · muted #4f4943 7.65 / 8.64 / 8.00 / 7.32
+         faint #67615a 5.27 / 5.96 / 5.51 / 5.05 · accent 5.36 / 6.05 / 5.60 / 5.13
+         positive #05663e 6.87-5.82 · negative #b93349 5.63-4.77 · warning #8a6005 5.45-4.61
+         pills: positive 7.14 · negative 7.44 · warning 7.31 · neutral 9.57
+         lines: border vs ground 1.20, vs surface 1.36 · rule vs surface 1.14 · control vs surface 3.65,
+         vs ground 3.23 (light raises the control line to 3:1)
+   marks on the ground: fire #b82d0f 5.30:1 (deeper than dark's, so colour-blind eyes still tell it
+         from the gold) · unseen #a67b01 3.32:1 · alerted #67625c 5.21:1 · label on fire 5.98:1
 
    Figures: Work Sans has a real `tnum` feature (checked in the latin subset Google serves: default
    digits have 9 different advances, with tnum all 604 units), so tabular figures stay in the text
@@ -33,8 +56,10 @@
   --surface: #181512;
   --ink: #ffffff;
   --muted: #8f8a84;
-  --accent: #c9a45a;
-  --accent-ink: #0c0a08;
+  --accent: #c9a45a; /* gold as text, links, focus rings, the 1px selection line */
+  --accent-fill: var(--accent); /* gold as a fill under an --accent-ink label (buttons, ::selection) */
+  --accent-mark: var(--accent); /* gold as a filled data mark */
+  --accent-ink: #0c0a08; /* the label on the gold fill */
 
   /* data marks, shared by the map legend, charts and text beside them */
   --mark-fire: #ea5a2e; /* VIIRS / MODIS detections and GK-2A fire pixels */
@@ -42,6 +67,13 @@
   --mark-alerted: #7d776f; /* burns a fire alert explains: muted ink */
   --mark-smoke: #fbf8f3; /* smoke trails, at low alpha */
   --mark-straw: #f3dfa6; /* harvested, not yet burnt: the top of the risk ramp */
+  --on-fire: #0c0a08; /* a label inside a fire mark (5.65:1) */
+
+  /* what floats over the screen (the map's case card and panels, chart readouts): the shadow's
+     colour, its offset and blur stay with each use */
+  --shadow-ink: rgb(0 0 0 / 0.35);
+  /* MapLibre draws its control icons dark; on the dark control they are inverted */
+  --map-icon-filter: invert(0.85);
 
   /* type: next/font sets --font-anton and --font-work-sans on <html> */
   --face-display: var(--font-anton), Impact, "Arial Narrow", sans-serif;
@@ -77,6 +109,39 @@
   --stagger-item: 70ms;
 }
 
+/* Light: bone paper, the landing's own #efeeec (a low-chroma bone; a yellow cream would read as the
+   generated-page look), ink from the deck, the gold split by job (see the note at the top). */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: #efeeec;
+  --surface: #e6e4e0; /* a step darker than the ground, so white paper reads on both */
+  --ink: #1a1612;
+  --muted: #5c554d;
+  --accent: #7a5c22;
+  --accent-fill: #c9a45a;
+  --accent-mark: #a67b01;
+
+  --mark-fire: #b82d0f;
+  --mark-unseen: #a67b01;
+  --mark-alerted: #67625c;
+  --mark-smoke: #57524c; /* a warm grey haze on light, as smoke reads on a pale sky */
+  --mark-straw: #5d420e; /* the top of the light risk ramp: more risk is still more mark */
+  --on-fire: #fcfcfb;
+
+  --shadow-ink: rgb(26 22 18 / 0.14);
+  --map-icon-filter: none;
+}
+
+/* Something drawn in both themes' versions (the nav's theme switch, the map's swatches, whose
+   colours are not tokens): the theme shows one, right in the first paint, before React runs. It only
+   hides, so the version shown keeps its own display; without the attribute (no JavaScript) the dark
+   version shows. display: none also takes the other version out of the accessibility tree. */
+:root:not([data-theme="light"]) .light-only,
+:root[data-theme="light"] .dark-only {
+  display: none;
+}
+
 /* The app surface: mission control and the screens worked in. Cards darker than the ground (the
    data-terminal idea), separated by a 1px line, never a shadow. */
 [data-surface="app"] {
@@ -94,6 +159,7 @@
   --accent: #c9a45a; /* the one selection mark: a 1px line as wide as its label */
   --primary: #ffffff;
   --primary-ink: #0c0a08;
+  --primary-hover: #ece6dc;
   --positive: #5fb38d;
   --negative: #ec6a7c;
   --warning: #e2a948;
@@ -150,6 +216,46 @@
   line-height: 20px;
 }
 
+/* The app surface on light: white cards on the bone ground (the light model of the study: lighter
+   cards, 1px borders), a near-black primary button, status hues deep enough for text. Tokens that
+   point at others (--ink, --chart-2, --chart-3, --chart-mark, --axis-ink) follow by themselves. */
+:root[data-theme="light"] [data-surface="app"] {
+  --ground: #efeeec;
+  --surface: #fcfcfb;
+  --raised: #f4f3f1;
+  --active: #ebe9e6;
+  --border: #dedad4;
+  --rule: #eeedea;
+  --control: #89837d;
+  --text: #1a1612;
+  --muted: #4f4943;
+  --faint: #67615a;
+  --accent: #7a5c22;
+  --primary: #1a1612;
+  --primary-ink: #fcfcfb;
+  --primary-hover: #3a342d;
+  --positive: #05663e;
+  --negative: #b93349;
+  --warning: #8a6005;
+  --pill-positive-bg: #e2f2e8;
+  --pill-positive-ink: #0e5a37;
+  --pill-negative-bg: #fbe9ec;
+  --pill-negative-ink: #8f1f35;
+  --pill-warning-bg: #f7eedc;
+  --pill-warning-ink: #6e4405;
+  --pill-neutral-bg: #ebe9e6;
+  --pill-neutral-ink: #3d3832;
+
+  /* a satellite's window is shaded on light where dark lights it */
+  --chart-1: #2b2621;
+  --chart-4: #57524c;
+  --chart-muted: #b4aea7;
+  --chart-span: 0.08;
+  --chart-track: #cfc9c1;
+  --chart-window: rgb(26 22 18 / 0.18);
+  --grid: #e3ded8;
+}
+
 /* Tailwind reads the tokens; only BlindSpot's palette exists (no stock zinc, no violet). */
 @theme {
   --color-*: initial;
@@ -163,6 +269,8 @@
   --color-ink: var(--ink);
   --color-muted: var(--muted);
   --color-accent: var(--accent);
+  --color-accent-fill: var(--accent-fill);
+  --color-accent-mark: var(--accent-mark);
   --color-accent-ink: var(--accent-ink);
   --color-ground: var(--ground);
   --color-raised: var(--raised);
@@ -224,7 +332,7 @@
     text-wrap: pretty;
   }
   ::selection {
-    background: var(--accent);
+    background: var(--accent-fill);
     color: var(--accent-ink);
   }
   :focus-visible {
@@ -343,19 +451,9 @@
     background: var(--accent);
   }
 
-  /* deck.gl tooltip (getTooltip className): a plain box, label and value, no arrow */
-  .map-tooltip {
-    max-width: 280px;
-    padding: 6px 8px;
-    font: 12px/1.4 var(--face-text);
-    font-variant-numeric: tabular-nums;
-    color: var(--ink);
-    background: var(--bg);
-    border: 1px solid var(--border, #2b2620);
-    border-radius: 4px;
-    white-space: pre-line;
-    pointer-events: none;
-  }
+  /* The deck.gl tooltip (className map-tooltip) takes its look from TOOLTIP_STYLE in
+     components/map/BaseMap.tsx, set inline: deck.gl writes its own colours inline, which no class
+     rule here could override. */
 
   /* MapLibre controls in the warm-black palette: flat, opaque, no blur */
   .maplibregl-map {
@@ -379,7 +477,7 @@
     background: var(--bg);
   }
   .maplibregl-ctrl-attrib-button {
-    filter: invert(0.85);
+    filter: var(--map-icon-filter);
   }
   .maplibregl-ctrl-group {
     background: var(--bg);
@@ -391,7 +489,7 @@
     border-top: 1px solid var(--border, #2b2620);
   }
   .maplibregl-ctrl-group button .maplibregl-ctrl-icon {
-    filter: invert(0.85);
+    filter: var(--map-icon-filter);
   }
 }
 

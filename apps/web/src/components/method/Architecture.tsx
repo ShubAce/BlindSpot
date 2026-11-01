@@ -37,7 +37,8 @@ const Arrow = ({ d, m }: { d: string; m: string }) => <path d={d} fill="none" st
 function Node({ x, y, w, h, title, sub, strong = false }: { x: number; y: number; w: number; h: number; title: string; sub?: string; strong?: boolean }) {
   return (
     <g>
-      <rect x={x} y={y} width={w} height={h} rx={2} fill={strong ? 'var(--accent)' : 'var(--surface)'} />
+      {/* the strong node is a gold fill under a dark label: --accent-fill keeps the straw gold on light, where --accent deepens for text */}
+      <rect x={x} y={y} width={w} height={h} rx={2} fill={strong ? 'var(--accent-fill)' : 'var(--surface)'} />
       <text x={x + 14} y={y + (sub ? h / 2 - 3 : h / 2 + 5)} fontSize={15} fontWeight={600} fill={strong ? 'var(--accent-ink)' : 'var(--ink)'}>
         {title}
       </text>

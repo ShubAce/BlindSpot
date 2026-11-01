@@ -3,8 +3,9 @@ import { ScatterplotLayer, TextLayer } from '@deck.gl/layers';
 
 import type { AirLatestResponse, AirStation } from '@/lib/api';
 import { dateTimeIST, metricText, number, placeName } from '@/lib/format';
+import type { Theme } from '@/lib/theme';
 
-import { AIR_STYLE, HIGHLIGHT, NAQI_BANDS, naqiBand } from '../palette';
+import { NAQI_BANDS, naqiBand, paletteFor } from '../palette';
 import { DATA_ANCHOR, type AnchorProps } from '../types';
 import { mapLabelFont } from './common';
 
@@ -15,6 +16,8 @@ export type AirLayerOptions = {
   labels?: boolean;
   /** Hide readings older than this many minutes (default 360). */
   maxAgeMinutes?: number;
+  /** Colours for this theme's basemap (default dark). */
+  theme?: Theme;
 };
 
 const unitOf = (s: AirStation) => s.pm25_unit ?? s.unit ?? null;
@@ -24,8 +27,9 @@ const DEFAULT_MAX_AGE_MIN = 6 * 60;
 
 /**
  * Ground stations from /api/air/latest: one dot per station on the six CPCB NAQI bands (whiter is
- * worse), ringed in the ground colour; model values (CAMS) are rings with no fill, so a model is
- * never read as a measurement. Each station's PM2.5 is written beside it.
+ * worse on dark, darker is worse on light: the colour smoke has on each), ringed in the ground
+ * colour; model values (CAMS) are rings with no fill, so a model is never read as a measurement.
+ * Each station's PM2.5 is written beside it.
  */
 export function airLayers(data: AirLatestResponse | null | undefined, opts: AirLayerOptions = {}): Layer[] {
   const maxAge = opts.maxAgeMinutes ?? DEFAULT_MAX_AGE_MIN;
@@ -34,6 +38,7 @@ export function airLayers(data: AirLatestResponse | null | undefined, opts: AirL
   );
   if (!stations.length) return [];
   const id = opts.id ?? 'air';
+  const { AIR_STYLE, HIGHLIGHT, theme } = paletteFor(opts.theme);
   const colour = (s: AirStation) => AIR_STYLE.ramp[naqiBand(s.pm25 ?? 0, unitOf(s))];
   const layers: Layer[] = [
     new ScatterplotLayer<AirStation, AnchorProps>({
@@ -53,6 +58,8 @@ export function airLayers(data: AirLatestResponse | null | undefined, opts: AirL
       getFillColor: (s) => (s.is_model ? [0, 0, 0, 0] : colour(s)),
       getLineColor: (s) => (s.is_model ? colour(s) : AIR_STYLE.stroke),
       getLineWidth: AIR_STYLE.strokePx,
+      // deck.gl never compares accessor functions: the theme is what tells it the colours changed
+      updateTriggers: { getFillColor: [theme], getLineColor: [theme] },
     }),
   ];
   if (opts.labels ?? true) {

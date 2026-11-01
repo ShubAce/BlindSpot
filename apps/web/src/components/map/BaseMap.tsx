@@ -11,12 +11,13 @@ import useSWR from 'swr';
 import { AOI_BBOX, MAP_MAX_BOUNDS, type BBox } from '@/lib/aoi';
 import { ApiError, PATHS, readBoundaries, type BoundaryLevel, type BoundarySourceSpec, type GeoBoundariesResponse } from '@/lib/api';
 import { useApi, useBoundaries } from '@/lib/live';
+import type { Theme } from '@/lib/theme';
 
-import { ABROAD_LABEL_LAYER, fallbackStyle, foreignLabelPlan, indiaCompliantStyle, labelMaskFrom, OFM_DARK_STYLE_URL } from './basemap-style';
+import { ABROAD_LABEL_LAYER, basemapStyleUrl, basemapTheme, fallbackStyle, foreignLabelPlan, indiaCompliantStyle, labelMaskFrom } from './basemap-style';
 import { mapClock, usePrefersReducedMotion } from './clock';
 import { ensureMapWorker, patchMapForDeck } from './compat';
 import { DeckOverlay, type TooltipContent } from './DeckOverlay';
-import { BOUNDARY_STYLE } from './palette';
+import { paletteFor } from './palette';
 import { BASE_ATTRIBUTION, describePick, LAYERS, registryIdOf } from './registry';
 import { BOUNDARY_ANCHOR, isAnimated, type MapLayerInput } from './types';
 
@@ -25,6 +26,11 @@ export type BaseMapProps = {
   layers?: readonly MapLayerInput[];
   /** "dark" (default) or "imagery" (EOX Sentinel-2 cloudless 2025 under the labels). */
   basemap?: 'dark' | 'imagery';
+  /** The colour theme of the basemap and our boundary lines (default dark). A page that follows the
+   *  site's theme passes useTheme() here and the same theme to its layer factories, so marks and
+   *  ground always match. The imagery view keeps the dark labels whatever the theme: there the
+   *  photograph is the ground. */
+  theme?: Theme;
   /** Which of our Survey of India boundaries to draw (default both). */
   boundaries?: 'state' | 'district' | 'both' | 'none';
   /** The box to frame on first load (default: Punjab, Haryana and Delhi). */
@@ -60,23 +66,48 @@ const MASK_OPTIONS = { refreshInterval: 0, revalidateOnFocus: false, revalidateI
 // MapLibre 6 needs its worker URL set before the first map exists (./compat.ts).
 ensureMapWorker();
 
+/** Which theme each fetched style was made for. SWR's cache is keyed by the URL alone (the lab reads
+ *  the dark one from it as is), and while one theme's style loads it hands back the other's. */
+const STYLE_THEME = new WeakMap<StyleSpecification, Theme>();
+
 async function fetchStyle(url: string): Promise<StyleSpecification> {
   const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
   if (!res.ok) throw new Error(`basemap style: ${res.status}`);
-  return (await res.json()) as StyleSpecification;
+  const style = (await res.json()) as StyleSpecification;
+  STYLE_THEME.set(style, url === basemapStyleUrl('light') ? 'light' : 'dark');
+  return style;
 }
 
-/** OpenFreeMap's style, fetched once per session and made India-compliant; a plain ground if the
- *  service is down, so the map never blocks on it. */
-function useBasemapStyle(imagery: boolean, foreignLabels: 'show' | 'dim'): { style: StyleSpecification | null; fallback: boolean } {
-  const { data, error } = useSWR(OFM_DARK_STYLE_URL, fetchStyle, {
-    revalidateOnFocus: false,
-    revalidateIfStale: false,
-    revalidateOnReconnect: false,
-    errorRetryCount: 2,
-  });
-  const style = useMemo(() => (data ? indiaCompliantStyle(data, { imagery, foreignLabels }) : error ? fallbackStyle() : null), [data, error, imagery, foreignLabels]);
-  return { style, fallback: !data && !!error };
+const STYLE_FETCH = {
+  revalidateOnFocus: false,
+  revalidateIfStale: false,
+  revalidateOnReconnect: false,
+  errorRetryCount: 2,
+} as const;
+
+/**
+ * OpenFreeMap's style for the theme, fetched once per session and made India-compliant; a plain
+ * ground if the service is down, so the map never blocks on it. A theme switch must never leave the
+ * map without a style (it would unmount and be built again, camera and all), so until the new
+ * theme's style arrives the one on screen stays, in its own theme's colours (`keepPreviousData`).
+ * Once the map has loaded, the other theme's style is fetched too, so a switch is immediate.
+ */
+function useBasemapStyle(
+  theme: Theme,
+  imagery: boolean,
+  foreignLabels: 'show' | 'dim',
+  loaded: boolean,
+): { style: StyleSpecification | null; theme: Theme; fallback: boolean } {
+  const { data, error } = useSWR(basemapStyleUrl(theme), fetchStyle, { ...STYLE_FETCH, keepPreviousData: true });
+  useSWR(loaded && !imagery ? basemapStyleUrl(theme === 'light' ? 'dark' : 'light') : null, fetchStyle, STYLE_FETCH);
+  const dataTheme = data ? (STYLE_THEME.get(data) ?? theme) : null;
+  // the theme of the style on screen: the one asked for, unless the other is held while it loads
+  const shown: Theme = dataTheme === theme || error || !dataTheme ? theme : dataTheme;
+  const style = useMemo(() => {
+    if (data && dataTheme === shown) return indiaCompliantStyle(data, { imagery, foreignLabels, theme: shown });
+    return error ? fallbackStyle(shown) : null;
+  }, [data, dataTheme, shown, error, imagery, foreignLabels]);
+  return { style, theme: shown, fallback: dataTheme !== theme && !!error };
 }
 
 function collectIds(inputs: readonly MapLayerInput[], out: Set<string>): Set<string> {
@@ -89,9 +120,10 @@ function collectIds(inputs: readonly MapLayerInput[], out: Set<string>): Set<str
   return out;
 }
 
-function BoundaryLines({ spec, level }: { spec: BoundarySourceSpec; level: BoundaryLevel }) {
+function BoundaryLines({ spec, level, theme }: { spec: BoundarySourceSpec; level: BoundaryLevel; theme: Theme }) {
   const sourceId = `bs-boundaries-${level}`;
   const state = level === 'state';
+  const { BOUNDARY_STYLE } = paletteFor(theme);
   const paint = {
     'line-color': state ? BOUNDARY_STYLE.state : BOUNDARY_STYLE.district,
     'line-width': (state
@@ -116,9 +148,10 @@ function BoundaryLines({ spec, level }: { spec: BoundarySourceSpec; level: Bound
 }
 
 /** deck.gl writes its own tooltip colours inline (#29323c on #a0a7b4); these override them with the
- *  palette. A plain box, label and value, no arrow. Reuse it in a custom getTooltip. */
+ *  palette. A plain box, label and value, no arrow, on the card surface (the map's own panels share
+ *  it; on dark it is the ground's #0c0a08). Reuse it in a custom getTooltip. */
 export const TOOLTIP_STYLE: Partial<CSSStyleDeclaration> = {
-  backgroundColor: 'var(--bg)',
+  backgroundColor: 'var(--surface, var(--bg))',
   color: 'var(--ink)',
   padding: '6px 8px',
   font: '12px/1.4 var(--face-text)',
@@ -143,15 +176,22 @@ const noteStyle: CSSProperties = {
 };
 
 /**
- * The map every page uses: MapLibre with OpenFreeMap's dark basemap made India-compliant (its own
- * boundary layers removed, our Survey of India lines drawn from /api/geo/boundaries), framed on
- * North India and unable to pan beyond it, with deck.gl layers interleaved under the place labels.
- * Credits follow the active layers. Respects prefers-reduced-motion (animated layers stand still).
- * Size it with `className` or `style`; it fills its box.
+ * The map every page uses: MapLibre with OpenFreeMap's basemap (dark, or positron for the light
+ * theme) made India-compliant (its own boundary layers removed, our Survey of India lines drawn from
+ * /api/geo/boundaries), framed on North India and unable to pan beyond it, with deck.gl layers
+ * interleaved under the place labels. Credits follow the active layers. Respects
+ * prefers-reduced-motion (animated layers stand still). Size it with `className` or `style`; it
+ * fills its box.
+ *
+ * A theme switch swaps the style in place (MapLibre diffs one style into the other), so the map,
+ * its camera and the deck.gl overlay stay: deck.gl's layer group is a custom layer the diff leaves
+ * alone and puts back before its anchor on the next `styledata`, and the sources and layers added
+ * at run time (our boundaries, the page's own) add themselves again on that event.
  */
 export function BaseMap({
   layers = [],
   basemap = 'dark',
+  theme = 'dark',
   boundaries = 'both',
   initialBounds = AOI_BBOX,
   controls = true,
@@ -168,7 +208,9 @@ export function BaseMap({
   foreignLabels = 'show',
   children,
 }: BaseMapProps) {
-  const { style: mapStyle, fallback } = useBasemapStyle(basemap === 'imagery', foreignLabels);
+  const imagery = basemap === 'imagery';
+  const [loaded, setLoaded] = useState(false);
+  const { style: mapStyle, theme: mapTheme, fallback } = useBasemapStyle(basemapTheme(basemap, theme), imagery, foreignLabels, loaded);
   const wantStates = boundaries === 'state' || boundaries === 'both';
   const wantDistricts = boundaries === 'district' || boundaries === 'both';
   const states = useBoundaries({ level: 'state' }, { isPaused: () => !wantStates });
@@ -182,7 +224,6 @@ export function BaseMap({
     mapClock.setReduced(reduced);
   }, [reduced]);
 
-  const [loaded, setLoaded] = useState(false);
   const [mapObj, setMapObj] = useState<MapLibreMap | null>(null);
   // Cache Components keep a page the visitor left inside <Activity>: its effects are torn down and
   // run again on the way back, but its state and DOM are kept. react-map-gl's reuseMaps then moved
@@ -218,7 +259,7 @@ export function BaseMap({
   }, [maskStates.data]);
   useEffect(() => {
     if (!mapObj || !labelMask || !mapStyle) return;
-    const plan = foreignLabelPlan(mapStyle.layers, labelMask);
+    const plan = foreignLabelPlan(mapStyle.layers, labelMask, mapTheme);
     const originals = new Map(mapStyle.layers.map((l) => [l.id, 'filter' in l ? l.filter : undefined]));
     const apply = () => {
       try {
@@ -244,7 +285,7 @@ export function BaseMap({
         // the map is already gone
       }
     };
-  }, [mapObj, labelMask, mapStyle]);
+  }, [mapObj, labelMask, mapStyle, mapTheme]);
 
   const handleClick = useCallback((e: MapLayerMouseEvent) => onMapClick?.({ lng: e.lngLat.lng, lat: e.lngLat.lat }), [onMapClick]);
 
@@ -296,8 +337,8 @@ export function BaseMap({
           {/* key: the control reads its credits once, so remount it when they change */}
           <AttributionControl key={credits.join('|')} position="bottom-right" compact customAttribution={credits} />
           {controls && interactive ? <NavigationControl position="top-right" showCompass={false} /> : null}
-          {districtSpec ? <BoundaryLines spec={districtSpec} level="district" /> : null}
-          {stateSpec ? <BoundaryLines spec={stateSpec} level="state" /> : null}
+          {districtSpec ? <BoundaryLines spec={districtSpec} level="district" theme={mapTheme} /> : null}
+          {stateSpec ? <BoundaryLines spec={stateSpec} level="state" theme={mapTheme} /> : null}
           {loaded ? <DeckOverlay layers={layers} getTooltip={tooltip} onClick={onPick} /> : null}
           {children}
         </MapGL>

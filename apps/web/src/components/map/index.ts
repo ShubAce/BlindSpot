@@ -8,6 +8,9 @@
  *   <BaseMap layers={layers} className="h-[70svh]" />
  *
  * BaseMap is a client component; build layers inside client components (useMemo on the data).
+ * To follow the site's colour theme, read it with useTheme() (lib/theme.ts) and pass it to BaseMap
+ * (`theme`) and to every factory (`{ theme }`), with the theme in the useMemo's dependencies; a
+ * legend reads the same marks from `paletteFor(theme)`. Without it everything draws dark.
  */
 
 export { BaseMap, TOOLTIP_STYLE, type BaseMapProps } from './BaseMap';
@@ -15,9 +18,9 @@ export { DeckOverlay, resolveLayers, type TooltipContent } from './DeckOverlay';
 export { Legend, LegendSwatch } from './Legend';
 export type { LegendItem, Mark } from './marks';
 export { mapClock, useAnimationClock, usePrefersReducedMotion, type ClockFrame } from './clock';
-export { BASE_ATTRIBUTION, describePick, LAYER_LIST, LAYER_ORDER, LAYERS, layerOrder, registryIdOf, type LayerDescriptor, type MapLayerId } from './registry';
+export { BASE_ATTRIBUTION, describePick, LAYER_LIST, LAYER_ORDER, LAYERS, layerLegend, layerOrder, registryIdOf, type LayerDescriptor, type MapLayerId } from './registry';
 export { DATA_ANCHOR, BOUNDARY_ANCHOR, TOP_ANCHOR, isAnimated, type AnimatedLayer, type MapLayerInput } from './types';
-export { MARK, cssColor, rgba, naqiBand, riskBand, NAQI_BANDS, SCAR_TILE_SHARE_EDGES, SCAR_TILE_STYLE, scarTileStep, type RGBA } from './palette';
+export { cssColor, rgba, naqiBand, paletteFor, riskBand, NAQI_BANDS, SCAR_TILE_GEOMETRY, SCAR_TILE_SHARE_EDGES, scarTileStep, type MapPalette, type RGBA } from './palette';
 export { flyTo } from './camera';
 
 export { airLayers, describeStation } from './layers/air';

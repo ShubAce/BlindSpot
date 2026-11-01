@@ -20,7 +20,7 @@ export default function NotFound() {
           BlindSpot has no page at this address. The live map, the daily bulletin and the method are where everything lives.
         </p>
         <p className="mt-10 flex flex-wrap items-center gap-x-8 gap-y-4">
-          <Link href="/live" className="inline-flex min-h-12 items-center bg-accent px-5 font-semibold text-accent-ink">
+          <Link href="/live" className="inline-flex min-h-12 items-center bg-accent-fill px-5 font-semibold text-accent-ink">
             Open mission control
           </Link>
           <Link href="/" className="inline-flex min-h-12 items-center underline underline-offset-4">

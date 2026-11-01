@@ -8,7 +8,8 @@
  * --grid, --axis-ink, --ink, --surface, --raised, --rule, --negative (see app/globals.css).
  *
  * Differences from the original, all for React: every chart returns `destroy()` (disconnects its
- * resize observer and font listeners), numbers use the app's locale (en-IN, like lib/format.ts), and
+ * resize observer, font and theme listeners), a chart draws itself again when the theme changes (its
+ * colours are baked in at draw time), numbers use the app's locale (en-IN, like lib/format.ts), and
  * a label that does not fit warns once per element through a WeakMap. Use them through
  * components/charts/useChart.ts:
  *
@@ -17,6 +18,7 @@
  */
 
 import { LOCALE } from './format';
+import { onThemeChange } from './theme';
 
 type Fmt = (v: number) => string;
 type AttrValue = string | number | null | undefined;
@@ -475,7 +477,9 @@ function paintRect(parent: Element, st: RectStyle, x: number, y: number, w: numb
 const legendCss =
   ':where(.chart-legend){list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;line-height:16px;color:var(--muted,#5f6368)}:where(.chart-legend li){display:inline-flex;align-items:center;gap:6px;white-space:nowrap}:where(.chart-legend svg){flex:none;overflow:visible}@media (max-width:480px){:where(.chart-legend){display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}}';
 type LegendSpec = { label: string; w?: number; draw: (sw: SVGSVGElement) => void };
-function legendEl(items: LegendSpec[], target: LegendTarget): HTMLUListElement {
+/** The legend list. Its swatches read the tokens as they draw, so `repaint` draws them again: the
+ *  chart's lifecycle calls it on a theme change, after the chart. */
+function legendEl(items: LegendSpec[], target: LegendTarget): { ul: HTMLUListElement; repaint: () => void } {
   if (!document.getElementById('charts-legend-css')) {
     const st = document.createElement('style');
     st.id = 'charts-legend-css';
@@ -484,16 +488,24 @@ function legendEl(items: LegendSpec[], target: LegendTarget): HTMLUListElement {
   }
   const ul = document.createElement('ul');
   ul.className = 'chart-legend';
+  const swatches: [SVGSVGElement, LegendSpec][] = [];
   for (const it of items) {
     const li = document.createElement('li');
     const sw = svg('svg', { width: it.w || 14, height: 12, 'aria-hidden': 'true' });
     it.draw(sw);
+    swatches.push([sw, it]);
     li.append(sw, document.createTextNode(it.label));
     ul.appendChild(li);
   }
   const t = typeof target === 'string' ? document.querySelector(target) : target;
   if (t) t.replaceChildren(ul);
-  return ul;
+  const repaint = () => {
+    for (const [sw, it] of swatches) {
+      sw.replaceChildren();
+      it.draw(sw);
+    }
+  };
+  return { ul, repaint };
 }
 const rectSwatch = (st: RectStyle, w = 14, h = 10, r = 2) => (sw: SVGSVGElement) => {
   paintRect(sw, st, 0, (12 - h) / 2, w, h, r);
@@ -501,14 +513,20 @@ const rectSwatch = (st: RectStyle, w = 14, h = 10, r = 2) => (sw: SVGSVGElement)
 
 /**
  * Charts are laid out with measured text: draw again once the fonts arrive, and when the box is
- * resized. Returns the cleanup; after it, nothing draws again.
+ * resized. Their colours are read from the tokens at draw time and baked into the SVG, so they also
+ * draw again when the theme changes (lib/theme.ts announces it once the new tokens apply), followed
+ * by `onTheme` (the legend's swatches). Returns the cleanup; after it, nothing draws again.
  */
-function lifecycle(el: HTMLElement, draw: () => void): () => void {
+function lifecycle(el: HTMLElement, draw: () => void, onTheme?: () => void): () => void {
   let alive = true;
   const safe = () => {
     if (alive) draw();
   };
   safe();
+  const offTheme = onThemeChange(() => {
+    safe();
+    onTheme?.();
+  });
   let ro: ResizeObserver | null = null;
   if (typeof ResizeObserver !== 'undefined') {
     let w = el.clientWidth;
@@ -526,6 +544,7 @@ function lifecycle(el: HTMLElement, draw: () => void): () => void {
   }
   return () => {
     alive = false;
+    offTheme();
     ro?.disconnect();
     document.fonts?.removeEventListener?.('loadingdone', safe);
   };
@@ -716,7 +735,6 @@ export function line(
     });
     s.setAttribute('aria-label', `${series.map((sr) => sr.name).join(', ')}, ${labels[0]} to ${labels[labels.length - 1]}; latest ${lastVal == null ? 'no data' : format(lastVal)}`);
   };
-  const destroy = lifecycle(el, draw);
   const lg =
     series.length > 1
       ? legendEl(
@@ -730,7 +748,7 @@ export function line(
           legend,
         )
       : null;
-  return { legend: lg, destroy };
+  return { legend: lg?.ul ?? null, destroy: lifecycle(el, draw, lg?.repaint) };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -820,10 +838,12 @@ export function diverging(el: HTMLElement, opts: DivergingOptions): ChartWithSvg
   }
   const upV = up || labels.map(() => 0);
   const downV = down || labels.map(() => 0);
-  const st = { above: { fill: css(el, '--chart-1', '#2f6fdf') }, below: { fill: css(el, '--chart-muted', '#c9c9c9') }, mark: { fill: css(el, '--chart-mark', css(el, '--ink', '#111')) } };
+  // read at each draw, so a redraw after a theme change takes the new tokens
+  const styles = () => ({ above: { fill: css(el, '--chart-1', '#2f6fdf') }, below: { fill: css(el, '--chart-muted', '#c9c9c9') }, mark: { fill: css(el, '--chart-mark', css(el, '--ink', '#111')) } });
   const marked = (i: number, side: 'above' | 'below') => mark.includes(i) && (markSide === 'both' || markSide === side);
   const tick = (v: number) => (v > 0 ? '+' : v < 0 ? MINUS : '') + (tickFormat || format)(Math.abs(v));
   const draw = () => {
+    const st = styles();
     const { s, w, h } = frame(el, heightOf(height));
     const hiUp = Math.max(0, ...upV);
     const hiDown = Math.max(0, ...downV);
@@ -863,17 +883,17 @@ export function diverging(el: HTMLElement, opts: DivergingOptions): ChartWithSvg
     notesOver(g, el, N, { padT, h, padB });
     s.setAttribute('aria-label', `${above} above the line and ${below} below it, ${labels[0]} to ${labels[labels.length - 1]}`);
   };
-  const destroy = lifecycle(el, draw);
   const items: LegendSpec[] = [];
-  if (upV.some((v) => v > 0)) items.push({ label: above, draw: rectSwatch(st.above) });
-  if (downV.some((v) => v > 0)) items.push({ label: below, draw: rectSwatch(st.below) });
-  if (mark.length && markLabel) items.push({ label: markLabel, draw: rectSwatch(st.mark) });
+  if (upV.some((v) => v > 0)) items.push({ label: above, draw: (sw) => rectSwatch(styles().above)(sw) });
+  if (downV.some((v) => v > 0)) items.push({ label: below, draw: (sw) => rectSwatch(styles().below)(sw) });
+  if (mark.length && markLabel) items.push({ label: markLabel, draw: (sw) => rectSwatch(styles().mark)(sw) });
+  const lg = legendEl(items, legend);
   return {
     get svg() {
       return el.querySelector<SVGSVGElement>(':scope > svg');
     },
-    legend: legendEl(items, legend),
-    destroy,
+    legend: lg.ul,
+    destroy: lifecycle(el, draw, lg.repaint),
   };
 }
 
@@ -888,8 +908,9 @@ export function ring(el: HTMLElement, { value, label, sub, size = 132, stroke = 
   const wrap = document.createElement('div');
   wrap.style.cssText = `position:relative;width:${size}px;height:${size}px`;
   const s = svg('svg', { viewBox: `0 0 ${size} ${size}`, width: size, height: size, role: 'img', 'aria-label': `${label}${sub ? ` ${sub}` : ''}` }, wrap);
-  svg('circle', { cx: size / 2, cy: size / 2, r, fill: 'none', stroke: css(el, '--grid', '#e8e8e8'), 'stroke-width': stroke }, s);
-  svg('circle', { cx: size / 2, cy: size / 2, r, fill: 'none', stroke: colour || css(el, '--chart-1', '#2f6fdf'), 'stroke-width': stroke, 'stroke-dasharray': `${c * v} ${c}`, transform: `rotate(-90 ${size / 2} ${size / 2})` }, s);
+  // drawn once, so its colours stay token references and follow a theme change by themselves
+  svg('circle', { cx: size / 2, cy: size / 2, r, fill: 'none', stroke: 'var(--grid, #e8e8e8)', 'stroke-width': stroke }, s);
+  svg('circle', { cx: size / 2, cy: size / 2, r, fill: 'none', stroke: colour || 'var(--chart-1, #2f6fdf)', 'stroke-width': stroke, 'stroke-dasharray': `${c * v} ${c}`, transform: `rotate(-90 ${size / 2} ${size / 2})` }, s);
   const t = document.createElement('div');
   t.style.cssText = 'position:absolute;inset:0;display:grid;place-content:center;text-align:center;font-variant-numeric:tabular-nums';
   t.innerHTML = `<div style="font-size:${Math.round(size / 5.5)}px;font-weight:600;line-height:1">${esc(label)}</div>${sub ? `<div style="font-size:12px;opacity:.7;margin-top:4px">${esc(sub)}</div>` : ''}`;
@@ -1133,7 +1154,6 @@ export function timeline(
     }
     s.setAttribute('aria-label', `${rows.filter((r) => !r.group).length} rows across ${days.length} days, ${dayText(days[0])} to ${dayText(days[days.length - 1])}`);
   };
-  const destroy = lifecycle(el, draw);
   const used = new Set(rows.flatMap((r) => (r.bars || []).map((b) => b.kind)));
   const items: LegendSpec[] = Object.entries(kinds)
     .filter(([id]) => used.has(id))
@@ -1152,12 +1172,13 @@ export function timeline(
         svg('line', { x1: 4, x2: 4, y1: 0, y2: 12, stroke: css(el, '--chart-1', '#2f6fdf'), 'stroke-width': 1.5 }, sw);
       },
     });
+  const lg = legendEl(items, legend);
   return {
     get svg() {
       return el.querySelector<SVGSVGElement>(':scope > svg');
     },
-    legend: legendEl(items, legend),
-    destroy,
+    legend: lg.ul,
+    destroy: lifecycle(el, draw, lg.repaint),
   };
 }
 
@@ -1218,18 +1239,24 @@ export function matrix(
     });
     s.setAttribute('aria-label', `Cover against the minimum for ${rows.length} rows across ${cols.length} days`);
   };
-  const destroy = lifecycle(el, draw);
   const seen = new Set<number>(rows.flatMap((r) => r.values.filter((v): v is number => v != null).map(level)));
-  const ST = styles();
   const items: LegendSpec[] = [0, 1, 2, 3]
     .filter((l) => seen.has(l))
-    .map((l) => ({ label: levels[l], w: 14, draw: rectSwatch(l === 0 ? { fill: ST[0].fill, stroke: (ST[0] as { stroke?: string }).stroke } : { fill: ST[l].fill }, 14, 12, 3) }));
+    .map((l) => ({
+      label: levels[l],
+      w: 14,
+      draw: (sw: SVGSVGElement) => {
+        const st = styles()[l];
+        rectSwatch(l === 0 ? { fill: st.fill, stroke: (st as { stroke?: string }).stroke } : { fill: st.fill }, 14, 12, 3)(sw);
+      },
+    }));
+  const lg = legendEl(items, legend);
   return {
     get svg() {
       return el.querySelector<SVGSVGElement>(':scope > svg');
     },
-    legend: legendEl(items, legend),
-    destroy,
+    legend: lg.ul,
+    destroy: lifecycle(el, draw, lg.repaint),
   };
 }
 
@@ -1309,7 +1336,6 @@ export function timeStrip(
     });
     s.setAttribute('aria-label', `${rows.length} rows between ${fmt.clock(o)} and ${fmt.clock(c)}`);
   };
-  const destroy = lifecycle(el, draw);
   const items: LegendSpec[] = [];
   if (rows.some((r) => minutes(r.at) != null))
     items.push({
@@ -1327,12 +1353,13 @@ export function timeStrip(
         tick(sw, 4, 6);
       },
     });
+  const lg = legendEl(items, legend);
   return {
     get svg() {
       return el.querySelector<SVGSVGElement>(':scope > svg');
     },
-    legend: legendEl(items, legend),
-    destroy,
+    legend: lg.ul,
+    destroy: lifecycle(el, draw, lg.repaint),
   };
 }
 

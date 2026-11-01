@@ -5,6 +5,7 @@ import { Fragment, useCallback, useRef, useState, type KeyboardEvent, type React
 import { Freshness } from '@/components/ui/states';
 import { shortUrl } from '@/components/case/audit';
 import { dateIST, dateTimeIST, number } from '@/lib/format';
+import { LANGS } from '@/lib/langs';
 
 import { devanagari, gurmukhi } from './fonts';
 import type { Bulletin, BulletinLangCode, BulletinSet } from './types';
@@ -16,12 +17,6 @@ import type { Bulletin, BulletinLangCode, BulletinSet } from './types';
  * that the API could not serve keeps its tab, marked, and shows one honest line instead of the text.
  * The switch changes the URL (?lang=) so a reader can share the language they chose.
  */
-
-const LANGS: { code: BulletinLangCode; label: string; english: string }[] = [
-  { code: 'en', label: 'English', english: 'English' },
-  { code: 'hi', label: 'हिन्दी', english: 'Hindi' },
-  { code: 'pa', label: 'ਪੰਜਾਬੀ', english: 'Punjabi' },
-];
 
 /** Work Sans stays first (Latin letters, digits, markers); the Noto face fills in the Indian script. */
 const FONT: Record<BulletinLangCode, string> = { en: '', hi: `${devanagari.variable} script-deva`, pa: `${gurmukhi.variable} script-guru` };

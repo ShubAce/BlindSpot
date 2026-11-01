@@ -22,7 +22,7 @@ export default function PageError({ error, retry }: { error: unknown; retry: () 
           Part of this page failed while it was being drawn. Try again; the other pages still work if it keeps failing.
         </p>
         <p className="mt-10 flex flex-wrap items-center gap-x-8 gap-y-4">
-          <button type="button" onClick={() => retry()} className="inline-flex min-h-12 cursor-pointer items-center bg-accent px-5 font-semibold text-accent-ink">
+          <button type="button" onClick={() => retry()} className="inline-flex min-h-12 cursor-pointer items-center bg-accent-fill px-5 font-semibold text-accent-ink">
             Try again
           </button>
           <Link href="/" className="inline-flex min-h-12 items-center underline underline-offset-4">

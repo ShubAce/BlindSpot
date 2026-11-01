@@ -3,9 +3,10 @@ import { GeoJsonLayer, PathLayer } from '@deck.gl/layers';
 
 import type { AreaGeometry, Feature, SmokeBackResponse, SmokeForwardResponse } from '@/lib/api';
 import { fromUnixSeconds } from '@/lib/format';
+import type { Theme } from '@/lib/theme';
 
 import type { ClockFrame } from '../clock';
-import { SMOKE_STYLE, type RGBA } from '../palette';
+import { paletteFor, type RGBA } from '../palette';
 import { DATA_ANCHOR, type AnchorProps, type AnimatedLayer, type MapLayerInput } from '../types';
 
 type Trail = { id: string; path: [number, number][]; t: number[]; weight: number; model?: string };
@@ -51,14 +52,18 @@ export type SmokeLayerOptions = {
   trailHours?: number;
   /** Draw the spread between the two forecast models when the API sends it (default true). */
   showCone?: boolean;
+  /** Colours for this theme's basemap (default dark): warm white on dark, a warm grey haze on light. */
+  theme?: Theme;
 };
 
 /** Where the animation clock `t` (seconds) is in the run: the simulated moment and how far along. */
 export function smokeTimeAt(data: SmokeForwardResponse | SmokeBackResponse | null | undefined, t: number, opts: SmokeLayerOptions = {}): { at: Date; progress: number } | null {
   const prep = data ? prepare(data) : null;
   if (!prep) return null;
-  const loop = opts.loopSeconds ?? SMOKE_STYLE.loopSeconds;
-  const trail = (opts.trailHours ?? SMOKE_STYLE.trailHours) * 3600;
+  // the same timing on both themes, read where smokeLayers reads it
+  const { SMOKE_STYLE: S } = paletteFor(opts.theme);
+  const loop = opts.loopSeconds ?? S.loopSeconds;
+  const trail = (opts.trailHours ?? S.trailHours) * 3600;
   const cycle = prep.duration + trail;
   const sim = ((t * prep.duration) / loop) % cycle;
   const clamped = Math.min(sim, prep.duration);
@@ -76,12 +81,16 @@ export function smokeLayers(data: SmokeForwardResponse | SmokeBackResponse | nul
   if (!data || !prep) return [];
   const id = opts.id ?? 'smoke';
   const visible = opts.visible ?? true;
-  const loop = opts.loopSeconds ?? SMOKE_STYLE.loopSeconds;
-  const trail = (opts.trailHours ?? SMOKE_STYLE.trailHours) * 3600;
+  const { SMOKE_STYLE: S, theme } = paletteFor(opts.theme);
+  const loop = opts.loopSeconds ?? S.loopSeconds;
+  const trail = (opts.trailHours ?? S.trailHours) * 3600;
   const cycle = prep.duration + trail;
-  const [r, g, b, a] = SMOKE_STYLE.color;
+  const [r, g, b, a] = S.color;
   const colour = (d: Trail): RGBA => [r, g, b, Math.round(a * (0.45 + 0.55 * Math.sqrt(d.weight / prep.maxWeight)))];
-  const width = (d: Trail) => SMOKE_STYLE.minWidthPx + (SMOKE_STYLE.maxWidthPx - SMOKE_STYLE.minWidthPx) * Math.sqrt(d.weight / prep.maxWeight);
+  // a new layer every frame, with new accessor functions deck.gl never compares: the theme is what
+  // tells it the trails' colours changed
+  const updateTriggers = { getColor: [theme] };
+  const width = (d: Trail) => S.minWidthPx + (S.maxWidthPx - S.minWidthPx) * Math.sqrt(d.weight / prep.maxWeight);
   const getPath = (d: Trail) => d.path;
   const getTimestamps = (d: Trail) => d.t;
 
@@ -95,7 +104,7 @@ export function smokeLayers(data: SmokeForwardResponse | SmokeBackResponse | nul
           visible,
           filled: true,
           stroked: false,
-          getFillColor: SMOKE_STYLE.coneFill,
+          getFillColor: S.coneFill,
           pickable: false,
         })
       : null;
@@ -119,6 +128,7 @@ export function smokeLayers(data: SmokeForwardResponse | SmokeBackResponse | nul
           getWidth: width,
           capRounded: true,
           jointRounded: true,
+          updateTriggers,
         });
       }
       return new TripsLayer<Trail, AnchorProps>({
@@ -133,6 +143,7 @@ export function smokeLayers(data: SmokeForwardResponse | SmokeBackResponse | nul
         getWidth: width,
         capRounded: true,
         jointRounded: true,
+        updateTriggers,
         fadeTrail: true,
         trailLength: trail,
         currentTime: ((frame.t * prep.duration) / loop) % cycle,

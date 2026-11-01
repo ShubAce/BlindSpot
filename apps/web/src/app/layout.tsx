@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from 'next';
 import { Anton, Work_Sans } from 'next/font/google';
 import type { ReactNode } from 'react';
 
+import { ThemeScript } from '@/lib/theme';
+
 import './globals.css';
 
 // Anton: one heavy condensed cut for the display moments. Work Sans: the text face, also used for
@@ -38,14 +40,24 @@ export const metadata: Metadata = {
   robots: { index: true, follow: true },
 };
 
+// The dark default, which is also what a visitor without JavaScript gets. The light theme overrides
+// both in the browser (lib/theme.ts): the colour scheme on <html>, the toolbar colour with its own
+// theme-color meta ahead of this one, since two media-less values cannot express a choice.
 export const viewport: Viewport = {
   themeColor: '#0c0a08',
   colorScheme: 'dark',
 };
 
+// ThemeScript sets <html data-theme> before the first paint (the saved or asked-for theme), so the
+// light theme never flashes dark. It changes <html> after the server rendered it, hence
+// suppressHydrationWarning there (it covers <html>'s own attributes only). The layout itself reads
+// nothing from the request, so every page stays static.
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
-    <html lang="en" className={`${anton.variable} ${workSans.variable}`}>
+    <html lang="en" className={`${anton.variable} ${workSans.variable}`} suppressHydrationWarning>
+      <head>
+        <ThemeScript />
+      </head>
       <body>{children}</body>
     </html>
   );

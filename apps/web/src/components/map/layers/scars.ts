@@ -3,8 +3,9 @@ import { GeoJsonLayer, ScatterplotLayer } from '@deck.gl/layers';
 
 import { centroidOf, type AreaGeometry, type Feature, type LonLat, type ScarProps, type ScarsResponse } from '@/lib/api';
 import { dateIST, metricText, number, placeName } from '@/lib/format';
+import type { Theme } from '@/lib/theme';
 
-import { HIGHLIGHT, SCAR_STYLE } from '../palette';
+import { paletteFor, type RGBA } from '../palette';
 import { DATA_ANCHOR, type AnchorProps } from '../types';
 
 export type ScarFeature = Feature<AreaGeometry, ScarProps>;
@@ -17,6 +18,8 @@ export type ScarsLayerOptions = {
   selectedId?: number | string | null;
   /** Also draw the burns a FIRMS alert explains, in muted ink (default true). */
   showAlerted?: boolean;
+  /** Colours for this theme's basemap (default dark). */
+  theme?: Theme;
 };
 
 /** A polygon's first ring averaged: good enough to place a 2.5 px dot when the API omits `centroid`. */
@@ -38,16 +41,6 @@ const isSelected = (f: ScarFeature, id: ScarsLayerOptions['selectedId']) => id !
 export type ScarState = 'unseen' | 'alerted' | 'unchecked';
 export const scarState = (p: ScarProps): ScarState => (p.unseen === true ? 'unseen' : p.unseen === false ? 'alerted' : 'unchecked');
 
-const FILL: Record<ScarState, (typeof SCAR_STYLE)['unseenFill']> = {
-  unseen: SCAR_STYLE.unseenFill,
-  alerted: SCAR_STYLE.alertedFill,
-  unchecked: SCAR_STYLE.uncheckedFill,
-};
-const STROKE: Record<ScarState, (typeof SCAR_STYLE)['unseenStroke']> = {
-  unseen: SCAR_STYLE.unseenStroke,
-  alerted: SCAR_STYLE.alertedStroke,
-  unchecked: SCAR_STYLE.uncheckedStroke,
-};
 /** Draw order: unchecked first, then alerted, unseen on top. */
 const ORDER: Record<ScarState, number> = { unchecked: 0, alerted: 1, unseen: 2 };
 
@@ -65,6 +58,9 @@ export function scarsLayers(data: ScarsResponse | null | undefined, opts: ScarsL
     .sort((a, b) => ORDER[scarState(a.properties)] - ORDER[scarState(b.properties)]);
   if (!features.length) return [];
   const id = opts.id ?? 'scars';
+  const { SCAR_STYLE, HIGHLIGHT, theme } = paletteFor(opts.theme);
+  const FILL: Record<ScarState, RGBA> = { unseen: SCAR_STYLE.unseenFill, alerted: SCAR_STYLE.alertedFill, unchecked: SCAR_STYLE.uncheckedFill };
+  const STROKE: Record<ScarState, RGBA> = { unseen: SCAR_STYLE.unseenStroke, alerted: SCAR_STYLE.alertedStroke, unchecked: SCAR_STYLE.uncheckedStroke };
   const fill = (f: ScarFeature) => FILL[scarState(f.properties)];
   const dots = features
     .map((f) => ({ f, c: centroidOf(f.properties.centroid) ?? ringCentroid(f.geometry) }))
@@ -81,6 +77,8 @@ export function scarsLayers(data: ScarsResponse | null | undefined, opts: ScarsL
       getPosition: (d) => d.c,
       getRadius: SCAR_STYLE.dotPx,
       getFillColor: (d) => fill(d.f),
+      // deck.gl never compares accessor functions: the theme is what tells it the colours changed
+      updateTriggers: { getFillColor: [theme] },
     }),
     new GeoJsonLayer<ScarProps, AnchorProps>({
       id: `${id}:fields`,
@@ -97,7 +95,7 @@ export function scarsLayers(data: ScarsResponse | null | undefined, opts: ScarsL
       getLineColor: (f) =>
         isSelected(f as ScarFeature, opts.selectedId) ? SCAR_STYLE.selectedStroke : STROKE[scarState(f.properties)],
       getLineWidth: (f) => (isSelected(f as ScarFeature, opts.selectedId) ? SCAR_STYLE.selectedStrokePx : SCAR_STYLE.strokePx),
-      updateTriggers: { getLineColor: [opts.selectedId ?? null], getLineWidth: [opts.selectedId ?? null] },
+      updateTriggers: { getFillColor: [theme], getLineColor: [opts.selectedId ?? null, theme], getLineWidth: [opts.selectedId ?? null] },
     }),
   ];
 }

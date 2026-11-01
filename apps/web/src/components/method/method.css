@@ -24,6 +24,29 @@
   color: var(--ink);
 }
 
+/* Light: the same steps in tone, mirrored (bone page #efeeec, chart panels a step down at #e6e4e0,
+   the architecture panel a step further), every mark re-measured on its own ground (WCAG 2):
+   axis text 5.78:1 on a panel · gridlines 1.15 (a hairline, as on dark) · pass windows 1.42 (dark
+   1.41) · fire bars 4.84, and 3.42 inside a window · the main series 11.8 · ranges 2.01 (recessive by
+   design, as dark's 1.96). Two values sit a step deeper than the palette study's (#7f7a73, #a1790c)
+   so the architecture panel's arrows (3.21:1) and its amber key square (3.11:1) clear 3:1 there;
+   the amber still parts from the green by Delta E 15.1 in normal vision. Status marks on the nodes
+   #e6e4e0: answering 4.09, late 3.49, failing 3.39. */
+:root[data-theme="light"] .method {
+  --line: #7a756e;
+  --grid: #dad5cf;
+  --axis-ink: #5c554d;
+  --chart-1: #2b2621;
+  --chart-muted: #a7a19a;
+  --chart-window: rgb(26 22 18 / 0.17); /* shaded on light where dark lights it */
+  --chart-hover: rgb(26 22 18 / 0.05);
+  --border: #dad5cf;
+  --raised: #dbd8d2;
+  --positive-mark: #067d4d;
+  --warning-mark: #987206;
+  --negative-mark: #d24a5d;
+}
+
 /* ---- hero ------------------------------------------------------------------------------------- */
 
 .m-hero {

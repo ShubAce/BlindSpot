@@ -1,35 +1,18 @@
 /**
  * The key for each of mission control's layers, built from the same style objects the layer
- * factories draw with (components/map/palette.ts), so a swatch is always the mark it explains.
+ * factories draw with (components/map/palette.ts), so a swatch is always the mark it explains. Each
+ * takes the theme's palette (`paletteFor(theme)`, dark when none is given): the marks change colour
+ * with the basemap under them.
  * Kept apart from components/map/registry.ts because the registry imports deck.gl, and this file is
  * read by the parts of the screen that render before the map chunk loads.
  */
 
 import type { LegendItem } from '@/components/map/marks';
-import {
-  AIR_STYLE,
-  FIRE_STYLE,
-  fireRadiusPx,
-  MARK,
-  NAQI_BANDS,
-  rgba,
-  RISK_RAMP,
-  RISK_STYLE,
-  SATELLITE_STYLE,
-  SCAR_STYLE,
-  SCAR_TILE_SHARE_EDGES,
-  SCAR_TILE_STYLE,
-  SMOKE_STYLE,
-  WIND_STYLE,
-} from '@/components/map/palette';
+import { fireRadiusPx, NAQI_BANDS, paletteFor, SCAR_TILE_SHARE_EDGES, type MapPalette } from '@/components/map/palette';
 
 import type { LiveLayer } from './live-state';
 
-export const BACK_STYLE = {
-  line: rgba(MARK.smoke, 200),
-  line2: rgba(MARK.smoke, 110),
-  cone: rgba(MARK.smoke, 26),
-};
+const DARK = paletteFor('dark');
 
 export type LayerKey = { label: string; legend: LegendItem[] };
 
@@ -40,7 +23,8 @@ export type LayerKeyMeta = { windLevel?: string | null; backHours?: number | nul
 /** "925hPa" -> "925 hPa" */
 export const levelText = (level: string | null | undefined): string | null => (level ? level.replace(/^(\d+)\s*hPa$/i, '$1 hPa') : null);
 
-export function layerKey(layer: LiveLayer, city = 'Delhi', meta: LayerKeyMeta = {}): LayerKey {
+export function layerKey(layer: LiveLayer, city = 'Delhi', meta: LayerKeyMeta = {}, palette: MapPalette = DARK): LayerKey {
+  const { FIRE_STYLE, SCAR_STYLE, RISK_STYLE, SMOKE_STYLE, BACK_STYLE, WIND_STYLE, AIR_STYLE, SATELLITE_STYLE } = palette;
   switch (layer) {
     case 'fires':
       return {
@@ -110,7 +94,8 @@ export function layerKey(layer: LiveLayer, city = 'Delhi', meta: LayerKeyMeta = 
  * colour steps (share of a tile's checked hectares that is candidate unseen burn), then the
  * unchecked outline and what a tile's size means. Same style objects as the tiles themselves.
  */
-export function scarTileKey(view: 'districts' | 'tiles' = 'tiles'): { rampTitle: string; ramp: LegendItem[]; legend: LegendItem[] } {
+export function scarTileKey(view: 'districts' | 'tiles' = 'tiles', palette: MapPalette = DARK): { rampTitle: string; ramp: LegendItem[]; legend: LegendItem[] } {
+  const { SCAR_TILE_STYLE } = palette;
   const edges = SCAR_TILE_SHARE_EDGES.map((e) => Math.round(e * 100));
   const steps = SCAR_TILE_STYLE.steps.map((fill, i) => ({
     label: i === 0 ? `under ${edges[0]}%` : i === edges.length ? `${edges[i - 1]}% or more` : `${edges[i - 1]}–${edges[i]}%`,
@@ -134,8 +119,7 @@ export function scarTileKey(view: 'districts' | 'tiles' = 'tiles'): { rampTitle:
 }
 
 /** One swatch per toggle: the layer's main mark. */
-export function toggleSwatch(layer: LiveLayer) {
-  return layerKey(layer).legend[0].mark;
+export function toggleSwatch(layer: LiveLayer, palette: MapPalette = DARK) {
+  return layerKey(layer, undefined, undefined, palette).legend[0].mark;
 }
 
-export { RISK_RAMP };

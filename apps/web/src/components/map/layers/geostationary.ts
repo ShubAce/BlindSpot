@@ -2,8 +2,9 @@ import { PolygonLayer } from '@deck.gl/layers';
 
 import { readGeoPixels, type GeostationaryLatestResponse, type GeoPixelProps } from '@/lib/api';
 import { dateTimeIST, number } from '@/lib/format';
+import type { Theme } from '@/lib/theme';
 
-import { GEO_PIXEL_STYLE, HIGHLIGHT } from '../palette';
+import { GEO_PIXEL_HALF_KM, paletteFor } from '../palette';
 import { DATA_ANCHOR, type AnchorProps } from '../types';
 
 type PixelDatum = { ring: [number, number][]; props: GeoPixelProps; centre: [number, number] };
@@ -29,7 +30,7 @@ export function geostationaryPixels(data: GeostationaryLatestResponse | null | u
     const g = f.geometry;
     if (g.type === 'Point') {
       const c: [number, number] = [g.coordinates[0], g.coordinates[1]];
-      out.push({ ring: squareAround(c, GEO_PIXEL_STYLE.halfSizeKm), props: f.properties ?? {}, centre: c });
+      out.push({ ring: squareAround(c, GEO_PIXEL_HALF_KM), props: f.properties ?? {}, centre: c });
     } else {
       const ring = (g.type === 'Polygon' ? g.coordinates[0] : g.coordinates[0]?.[0])?.map((p) => [p[0], p[1]] as [number, number]);
       if (!ring?.length) continue;
@@ -46,9 +47,11 @@ export function geostationaryPixels(data: GeostationaryLatestResponse | null | u
  * satellites miss, but a pixel holds many fields: it is an evening fire-activity index, never a
  * fire count (SYNTHESIS.md, build-time updates).
  */
-export function geostationaryLayer(data: GeostationaryLatestResponse | null | undefined, opts: { id?: string; visible?: boolean; pickable?: boolean } = {}) {
+export function geostationaryLayer(data: GeostationaryLatestResponse | null | undefined, opts: { id?: string; visible?: boolean; pickable?: boolean; theme?: Theme } = {}) {
   const pixels = geostationaryPixels(data);
   if (!pixels.length) return null;
+  // constant colours: deck.gl compares those itself, so a theme change repaints without a trigger
+  const { GEO_PIXEL_STYLE: S, HIGHLIGHT } = paletteFor(opts.theme);
   return new PolygonLayer<PixelDatum, AnchorProps>({
     id: opts.id ?? 'geostationary',
     beforeId: DATA_ANCHOR,
@@ -61,9 +64,9 @@ export function geostationaryLayer(data: GeostationaryLatestResponse | null | un
     stroked: true,
     lineWidthUnits: 'pixels',
     getPolygon: (d) => d.ring,
-    getFillColor: GEO_PIXEL_STYLE.fill,
-    getLineColor: GEO_PIXEL_STYLE.stroke,
-    getLineWidth: GEO_PIXEL_STYLE.strokePx,
+    getFillColor: S.fill,
+    getLineColor: S.stroke,
+    getLineWidth: S.strokePx,
   });
 }
 

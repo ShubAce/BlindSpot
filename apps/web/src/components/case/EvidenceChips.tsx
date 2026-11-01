@@ -17,6 +17,9 @@ import type { CaseFire, CaseImageryPass, CaseProps } from './types';
  * The chips are plain <img> with their real size (512 x 512 from the API), so nothing shifts while
  * they load; a picture that fails (the renderer can be missing on a serverless deployment) is
  * replaced by one sentence in its frame.
+ *
+ * The marks on the pictures take the --photo-* colours (app-screen.css), the same on both themes:
+ * a photograph does not change with the page. The key below draws them the same way.
  */
 
 type BBox = [number, number, number, number];
@@ -36,7 +39,7 @@ function pathFor(g: CaseProps['geometry'], bbox: BBox): string {
     .join('');
 }
 
-const STROKE: Record<CaseState, string> = { unseen: 'var(--accent)', alerted: '#ffffff', unchecked: '#ffffff' };
+const STROKE: Record<CaseState, string> = { unseen: 'var(--photo-unseen)', alerted: 'var(--photo-seen)', unchecked: 'var(--photo-seen)' };
 
 function Chip({
   src,
@@ -86,7 +89,7 @@ function Chip({
               />
             ) : null}
             {dots.map((d) => (
-              <circle key={d.key} cx={d.x} cy={d.y} r={14} fill="var(--mark-fire)" stroke="#0c0a08" strokeWidth={4} vectorEffect="non-scaling-stroke" />
+              <circle key={d.key} cx={d.x} cy={d.y} r={14} fill="var(--photo-fire)" stroke="var(--photo-ring)" strokeWidth={4} vectorEffect="non-scaling-stroke" />
             ))}
           </svg>
         ) : null}
@@ -147,14 +150,14 @@ export function EvidenceChips({
           <span>Outline the scar</span>
         </label>
         <span className="evidence__key">
-          <svg width="22" height="12" aria-hidden="true">
+          <svg className="evidence__swatch" width="22" height="12" aria-hidden="true">
             <rect x="1" y="1" width="20" height="10" fill="none" stroke={STROKE[state]} strokeWidth="2" strokeDasharray={state === 'unchecked' ? '4 3' : undefined} />
           </svg>
           The scar as mapped
           {dots.length ? (
             <>
-              <svg width="12" height="12" aria-hidden="true" style={{ marginLeft: 16 }}>
-                <circle cx="6" cy="6" r="4.5" fill="var(--mark-fire)" />
+              <svg className="evidence__swatch" width="12" height="12" aria-hidden="true" style={{ marginLeft: 16 }}>
+                <circle cx="6" cy="6" r="4.5" fill="var(--photo-fire)" />
               </svg>
               Fire alert inside this square
             </>

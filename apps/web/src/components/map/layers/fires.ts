@@ -2,8 +2,9 @@ import { ScatterplotLayer } from '@deck.gl/layers';
 
 import type { Feature, FireProps, FiresResponse, PointGeometry } from '@/lib/api';
 import { dateTimeIST, metricText, placeName } from '@/lib/format';
+import type { Theme } from '@/lib/theme';
 
-import { FIRE_STYLE, fireRadiusPx, HIGHLIGHT } from '../palette';
+import { fireRadiusPx, paletteFor } from '../palette';
 import { DATA_ANCHOR, type AnchorProps } from '../types';
 
 export type FireFeature = Feature<PointGeometry, FireProps>;
@@ -15,6 +16,8 @@ export type FiresLayerOptions = {
   pickable?: boolean;
   visible?: boolean;
   opacity?: number;
+  /** Colours for this theme's basemap (default dark). */
+  theme?: Theme;
 };
 
 /**
@@ -28,6 +31,7 @@ export function firesLayer(data: FiresResponse | null | undefined, opts: FiresLa
   // Big fires first, so a small one beside a big one stays on top and visible.
   const sorted = features.slice().sort((a, b) => (b.properties.frp_mw ?? 0) - (a.properties.frp_mw ?? 0));
   const nowMs = opts.now ? opts.now.getTime() : null;
+  const { FIRE_STYLE, HIGHLIGHT, theme } = paletteFor(opts.theme);
   const recentMs = FIRE_STYLE.recentHours * 3600_000;
   return new ScatterplotLayer<FireFeature, AnchorProps>({
     id: opts.id ?? 'fires',
@@ -47,8 +51,9 @@ export function firesLayer(data: FiresResponse | null | undefined, opts: FiresLa
     getFillColor: (f) => (nowMs != null && nowMs - Date.parse(f.properties.acq_utc) > recentMs ? FIRE_STYLE.fillOld : FIRE_STYLE.fill),
     getLineColor: FIRE_STYLE.stroke,
     getLineWidth: FIRE_STYLE.strokePx,
-    // Re-colour the age classes every ten minutes, not every render.
-    updateTriggers: { getFillColor: [nowMs == null ? 0 : Math.floor(nowMs / 600_000)] },
+    // Re-colour the age classes every ten minutes, not every render, and when the theme changes (deck.gl
+    // never compares accessor functions, so a new palette inside one repaints only on a trigger).
+    updateTriggers: { getFillColor: [nowMs == null ? 0 : Math.floor(nowMs / 600_000), theme] },
   });
 }
 

@@ -5,6 +5,8 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactN
 
 import { LegendSwatch } from '@/components/map/Legend';
 import { lookOffsetText, nextLookParts } from '@/components/map/look';
+import type { LegendItem, Mark } from '@/components/map/marks';
+import { paletteFor, type MapPalette } from '@/components/map/palette';
 import { EmptyNote, ErrorNote, Freshness, Skeleton } from '@/components/ui/states';
 import { PATHS, type ApiError, type Envelope, type RiskResponse, type SmokeForwardResponse, type WindFieldResponse } from '@/lib/api';
 import { dateIST, metricText, number, timeIST } from '@/lib/format';
@@ -82,6 +84,43 @@ function LayerStatus({ st }: { st: Status }) {
   );
 }
 
+const DARK = paletteFor('dark');
+const LIGHT = paletteFor('light');
+
+/**
+ * A mark's swatch in both themes' colours, with the page's theme showing one (.dark-only and
+ * .light-only, app/globals.css). The marks are palette.ts colours, not CSS tokens, so this is how the
+ * toggles and the key are right in the very first paint, before React runs, and follow a theme switch
+ * without a render.
+ */
+function Swatch({ dark, light }: { dark: Mark; light: Mark }) {
+  return (
+    <>
+      <LegendSwatch mark={dark} className="dark-only" />
+      <LegendSwatch mark={light} className="light-only" />
+    </>
+  );
+}
+
+// A toggle's swatch is its layer's first mark, the same whatever the panel shows: built once here, so
+// the panel's one-second clock neither rebuilds two keys per layer nor redraws the swatches.
+const TOGGLE_SWATCHES = Object.fromEntries(LIVE_LAYERS.map((l) => [l, <Swatch key={l} dark={toggleSwatch(l, DARK)} light={toggleSwatch(l, LIGHT)} />])) as Record<LiveLayer, ReactNode>;
+
+/** A key's rows, each swatch in both themes: `items` builds the list from a theme's palette. */
+function KeyRows({ items }: { items: (p: MapPalette) => LegendItem[] }) {
+  const light = items(LIGHT);
+  return (
+    <>
+      {items(DARK).map((it, i) => (
+        <li key={it.label}>
+          <Swatch dark={it.mark} light={light[i]?.mark ?? it.mark} />
+          <span>{it.label}</span>
+        </li>
+      ))}
+    </>
+  );
+}
+
 /** The tiles' colour steps, highest share first, under what they measure. */
 function TileRamp({ view }: { view: 'districts' | 'tiles' }) {
   const k = scarTileKey(view);
@@ -89,15 +128,7 @@ function TileRamp({ view }: { view: 'districts' | 'tiles' }) {
     <figure className={styles.keyRamp}>
       <figcaption>{k.rampTitle}</figcaption>
       <ul className={styles.keyList}>
-        {k.ramp
-          .slice()
-          .reverse()
-          .map((it) => (
-            <li key={it.label}>
-              <LegendSwatch mark={it.mark} />
-              <span>{it.label}</span>
-            </li>
-          ))}
+        <KeyRows items={(p) => scarTileKey(view, p).ramp.slice().reverse()} />
       </ul>
     </figure>
   );
@@ -315,7 +346,7 @@ export function MapPanel() {
                 onClick={() => dispatch({ type: 'toggle', layer: l })}
               >
                 <span className={styles.toggleSwatch} aria-hidden="true">
-                  <LegendSwatch mark={toggleSwatch(l)} />
+                  {TOGGLE_SWATCHES[l]}
                 </span>
                 <span className={on[l] ? `${styles.toggleLabel} selected-line` : styles.toggleLabel}>{k.label}</span>
               </button>
@@ -350,12 +381,7 @@ export function MapPanel() {
                     <LayerStatus st={statuses[l]} />
                     {l === 'scars' && s.scarsView !== 'fields' ? <TileRamp view={s.scarsView} /> : null}
                     <ul className={styles.keyList}>
-                      {(l === 'scars' && s.scarsView !== 'fields' ? scarTileKey(s.scarsView).legend : k.legend).map((it) => (
-                        <li key={it.label}>
-                          <LegendSwatch mark={it.mark} />
-                          <span>{it.label}</span>
-                        </li>
-                      ))}
+                      <KeyRows items={(p) => (l === 'scars' && s.scarsView !== 'fields' ? scarTileKey(s.scarsView, p).legend : layerKey(l, s.smokeBackCity, keyMeta, p).legend)} />
                     </ul>
                   </section>
                 );

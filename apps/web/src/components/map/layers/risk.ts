@@ -3,21 +3,28 @@ import { GeoJsonLayer, ScatterplotLayer } from '@deck.gl/layers';
 
 import { centroidOf, type AreaGeometry, type Feature, type LonLat, type RiskProps, type RiskResponse } from '@/lib/api';
 import { dateIST, metricText, number, placeName } from '@/lib/format';
+import type { Theme } from '@/lib/theme';
 
-import { HIGHLIGHT, RISK_STYLE, riskBand, type RGBA } from '../palette';
+import { paletteFor, riskBand, type RGBA } from '../palette';
 import { DATA_ANCHOR, type AnchorProps } from '../types';
 
 export type RiskFeature = Feature<AreaGeometry, RiskProps>;
 
-export type RiskLayerOptions = { id?: string; pickable?: boolean; visible?: boolean; selectedId?: number | string | null };
+export type RiskLayerOptions = {
+  id?: string;
+  pickable?: boolean;
+  visible?: boolean;
+  selectedId?: number | string | null;
+  /** Colours for this theme's basemap (default dark). */
+  theme?: Theme;
+};
 
-const colourFor = (score: number): RGBA => RISK_STYLE.ramp[riskBand(score)];
 const withAlpha = ([r, g, b]: RGBA, a: number): RGBA => [r, g, b, a];
 
 /**
  * Harvested fields not yet burnt (/api/risk), ranked by risk score: outlines on one straw ramp
- * (pale = highest), never filled, so they cannot be mistaken for burn scars. Zoomed out, a ring at
- * the centroid stands in for each field.
+ * (on dark pale = highest, on light deepest = highest), never filled, so they cannot be mistaken for
+ * burn scars. Zoomed out, a ring at the centroid stands in for each field.
  */
 export function riskLayers(data: RiskResponse | null | undefined, opts: RiskLayerOptions = {}): Layer[] {
   const features = (data?.features?.features ?? [])
@@ -27,6 +34,8 @@ export function riskLayers(data: RiskResponse | null | undefined, opts: RiskLaye
     .sort((a, b) => a.properties.risk_score - b.properties.risk_score);
   if (!features.length) return [];
   const id = opts.id ?? 'risk';
+  const { RISK_STYLE, HIGHLIGHT, theme } = paletteFor(opts.theme);
+  const colourFor = (score: number): RGBA => RISK_STYLE.ramp[riskBand(score)];
   const rings = features
     .map((f) => ({ f, c: centroidOf(f.properties.centroid) }))
     .filter((d): d is { f: RiskFeature; c: LonLat } => d.c != null);
@@ -47,6 +56,8 @@ export function riskLayers(data: RiskResponse | null | undefined, opts: RiskLaye
       getRadius: RISK_STYLE.ringPx,
       getLineColor: (d) => colourFor(d.f.properties.risk_score),
       getLineWidth: RISK_STYLE.strokePx,
+      // deck.gl never compares accessor functions: the theme is what tells it the colours changed
+      updateTriggers: { getLineColor: [theme] },
     }),
     new GeoJsonLayer<RiskProps, AnchorProps>({
       id: `${id}:fields`,
@@ -62,7 +73,7 @@ export function riskLayers(data: RiskResponse | null | undefined, opts: RiskLaye
       getFillColor: (f) => withAlpha(colourFor(f.properties.risk_score), RISK_STYLE.fillAlpha),
       getLineColor: (f) => (selected(f) ? RISK_STYLE.selectedStroke : colourFor(f.properties.risk_score)),
       getLineWidth: (f) => (selected(f) ? 2 : RISK_STYLE.strokePx),
-      updateTriggers: { getLineColor: [opts.selectedId ?? null], getLineWidth: [opts.selectedId ?? null] },
+      updateTriggers: { getFillColor: [theme], getLineColor: [opts.selectedId ?? null, theme], getLineWidth: [opts.selectedId ?? null] },
     }),
   ];
 }

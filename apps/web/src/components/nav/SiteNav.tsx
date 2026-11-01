@@ -1,19 +1,22 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 
+import { ThemeToggle } from './ThemeToggle';
 import './nav.css';
 
 /**
  * The one navigation of every page (landing, mission control, case files, bulletin, method, 404).
  *
  * Desktop and tablet: a 56px bar pinned to the top: the mark and name (home) on the left, the three
- * places as text links and the one action on the right; the current place carries the site's one
- * selection mark, a 1px gold line as wide as its label, sitting on the bar's rule.
- * Phone (700px and under): the bar keeps only the mark and name and scrolls away; the four places
- * move to a bar fixed at the bottom with short labels, the current one marked by the same gold line.
+ * places as text links, the theme switch and the one action on the right; the current place carries
+ * the site's one selection mark, a 1px gold line as wide as its label, sitting on the bar's rule.
+ * Phone (700px and under): the bar keeps only the mark and name, with the theme switch at its right
+ * end, and scrolls away; the four places move to a bar fixed at the bottom with short labels, the
+ * current one marked by the same gold line.
  *
- * Its colours are its own, not the surface's, so it is the same bar on the page and the app surface.
- * A page aligns it with its content through --sn-max and --sn-pad. A Server Component: no state.
+ * Its colours are its own, not the surface's, so it is the same bar on the page and the app surface
+ * (one set per theme, in nav.css). A page aligns it with its content through --sn-max and --sn-pad.
+ * A Server Component; the theme switch is its one client part.
  */
 
 export type Place = 'home' | 'live' | 'bulletin' | 'method';
@@ -54,13 +57,18 @@ const PLACES: { place: Place; href: string; label: string }[] = [
   { place: 'method', href: '/method', label: 'Method' },
 ];
 
-/** The mark (the favicon's): a ring, a satellite's footprint, with a dark notch where it cannot see. */
+/**
+ * The mark (the favicon's): a ring, a satellite's footprint, with a notch where it cannot see. The
+ * ring and dot are the gold of a mark (--accent-mark): the brand gold on dark; on light its deepest
+ * shade that still reads as gold (3.32:1 on the bone bar, where the brand gold, 2.03:1, washed out
+ * beside the ink name). The notch is the bar showing through.
+ */
 export function BlindSpotMark({ size = 22 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 20 20" aria-hidden="true" focusable="false">
-      <circle cx="10" cy="10" r="7.5" fill="none" stroke="var(--accent)" strokeWidth="2" />
-      <circle cx="13.6" cy="6.4" r="3.6" fill="#0c0a08" />
-      <circle cx="10" cy="10" r="2" fill="var(--accent)" />
+      <circle cx="10" cy="10" r="7.5" fill="none" stroke="var(--accent-mark)" strokeWidth="2" />
+      <circle cx="13.6" cy="6.4" r="3.6" fill="var(--sn-ground)" />
+      <circle cx="10" cy="10" r="2" fill="var(--accent-mark)" />
     </svg>
   );
 }
@@ -88,6 +96,7 @@ export function SiteNav({ current, within = false }: { current?: Place; within?:
               </Link>
             ))}
           </nav>
+          <ThemeToggle />
           {current === 'live' && !within ? null : (
             <Link href="/live" className="sn-action" transitionTypes={['to-live']}>
               Open mission control

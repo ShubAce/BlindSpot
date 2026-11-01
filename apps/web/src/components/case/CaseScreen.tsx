@@ -7,9 +7,10 @@ import { serverGet } from '@/lib/api-server';
 import { CADENCE } from '@/lib/cadence';
 import { dateIST, dateTimeIST, metric, metricText, MISSING, number, placeName, timeIST } from '@/lib/format';
 
-import { auditPhrase, caseState, platformName, shortUrl, type CaseState } from './audit';
+import { auditPhrase, caseState, platformName, shortUrl, uniqueSources, type CaseState } from './audit';
 import { EvidenceChips } from './EvidenceChips';
 import { Locator } from './Locator';
+import { Kpi, ProvItem } from './parts';
 import type { CaseFile, CaseFire, HeadlineAudit } from './types';
 import { WeatherChart } from './WeatherChart';
 
@@ -75,19 +76,6 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function Kpi({ label, value, unit, sub }: { label: string; value: string; unit?: string; sub?: ReactNode }) {
-  return (
-    <div className="kpi">
-      <span className="kpi__label">{label}</span>
-      <span className={`kpi__value nums${value === MISSING ? ' missing' : ''}`}>
-        {value}
-        {unit && value !== MISSING ? <span className="kpi__unit"> {unit}</span> : null}
-      </span>
-      {sub ? <span className="kpi__sub nums">{sub}</span> : null}
-    </div>
-  );
-}
-
 function fireVerdict(f: CaseFire): string {
   if (f.explains_scar) return 'Explains the scar';
   if (!f.in_window) return 'Outside the burn window';
@@ -144,7 +132,7 @@ export function CaseScreen({ data }: { data: CaseFile }) {
         ? `${areaText(c.area_ha)} burnt between ${windowText}. ${c.fire_matches === 1 ? 'A fire alert explains' : `${number(c.fire_matches)} fire alerts explain`} it: a fire satellite counted this one.`
         : `${areaText(c.area_ha)} burnt between ${windowText}. It has not been checked against the fire alerts yet, so it is not called unseen.`;
 
-  const sources = Array.from(new Map((data.sources ?? []).map((s) => [`${s.key}|${s.url}`, s])).values());
+  const sources = uniqueSources(data.sources);
 
   return (
     <>
@@ -291,18 +279,7 @@ export function CaseScreen({ data }: { data: CaseFile }) {
         <Card title="Provenance" id="provenance" className="o-6 span-12" aside={<span>{`${sources.length} inputs`}</span>}>
           <ol className="prov prov--cols">
             {sources.map((s, i) => (
-              <li key={`${s.key}-${i}`} className="prov__item">
-                <span className="prov__label">{s.label === s.key ? (shortUrl(s.url, 40)?.split('/')[0] ?? s.key) : s.label}</span>
-                <span className="prov__meta nums">
-                  {s.fetched_at ? `fetched ${dateTimeIST(s.fetched_at, { suffix: true })}` : 'fetch time not recorded'}
-                  {s.fetch_id != null ? ` · fetch ${s.fetch_id}` : ''}
-                </span>
-                {s.url ? (
-                  <a className="prov__url" href={s.url} rel="noreferrer noopener" target="_blank" title={s.url}>
-                    {shortUrl(s.url)}
-                  </a>
-                ) : null}
-              </li>
+              <ProvItem key={`${s.key}-${i}`} source={s} label={s.label === s.key ? (shortUrl(s.url, 40)?.split('/')[0] ?? s.key) : s.label} />
             ))}
             {pre?.item_id || post?.item_id ? (
               <li className="prov__item">

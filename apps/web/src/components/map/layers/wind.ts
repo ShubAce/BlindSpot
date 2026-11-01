@@ -2,9 +2,10 @@ import { TripsLayer } from '@deck.gl/geo-layers';
 import { PathLayer } from '@deck.gl/layers';
 
 import type { WindFieldResponse } from '@/lib/api';
+import type { Theme } from '@/lib/theme';
 
 import type { ClockFrame } from '../clock';
-import { WIND_STYLE, type RGBA } from '../palette';
+import { paletteFor, type RGBA } from '../palette';
 import { DATA_ANCHOR, type AnchorProps, type AnimatedLayer } from '../types';
 
 /** A wind grid as flat arrays: u/v in m/s at lon0 + i*dlon, lat0 + j*dlat, index j*nx + i. */
@@ -112,7 +113,14 @@ export function windStreamlines(f: WindField, opts: { seeds?: number; stepMinute
 
 const cache = new WeakMap<object, { field: WindField; lines: Streamline[]; period: number } | null>();
 
-export type WindLayerOptions = { id?: string; visible?: boolean; seeds?: number; loopSeconds?: number };
+export type WindLayerOptions = {
+  id?: string;
+  visible?: boolean;
+  seeds?: number;
+  loopSeconds?: number;
+  /** Colours for this theme's basemap (default dark). */
+  theme?: Theme;
+};
 
 /**
  * Wind (/api/met/wind-field, 925 hPa by default: the level the smoke rides) as faint streaks that
@@ -130,8 +138,12 @@ export function windLayer(data: WindFieldResponse | null | undefined, opts: Wind
   const { lines, period } = entry;
   const id = opts.id ?? 'wind';
   const visible = opts.visible ?? true;
+  const { WIND_STYLE, theme } = paletteFor(opts.theme);
   const loop = opts.loopSeconds ?? WIND_STYLE.loopSeconds;
   const [r, g, b, a] = WIND_STYLE.color;
+  // a new layer every frame, with new accessor functions deck.gl never compares: the theme is what
+  // tells it the streaks' colours changed
+  const updateTriggers = { getColor: [theme] };
   const colour = (d: Streamline): RGBA => [r, g, b, Math.round(a * (0.35 + 0.65 * Math.min(1, d.speed / 12)))];
   const getPath = (d: Streamline) => d.path;
   const getTimestamps = (d: Streamline) => d.t;
@@ -154,6 +166,7 @@ export function windLayer(data: WindFieldResponse | null | undefined, opts: Wind
               return [c[0], c[1], c[2], Math.round(c[3] * 0.5)];
             },
             getWidth: WIND_STYLE.widthPx,
+            updateTriggers,
           })
         : new TripsLayer<Streamline, AnchorProps>({
             id: `${id}:streaks`,
@@ -165,6 +178,7 @@ export function windLayer(data: WindFieldResponse | null | undefined, opts: Wind
             getTimestamps,
             getColor: colour,
             getWidth: WIND_STYLE.widthPx,
+            updateTriggers,
             fadeTrail: true,
             trailLength: period * 0.35,
             currentTime: ((frame.t * period) / loop) % period,

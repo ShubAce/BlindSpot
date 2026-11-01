@@ -1,30 +1,56 @@
 /**
  * The basemap, made India-compliant and warm (docs/research/geography-and-basemaps.md sections 8-9).
  *
- * OpenFreeMap "dark" (keyless, no request limits, OpenMapTiles schema) with:
+ * OpenFreeMap (keyless, no request limits, OpenMapTiles schema): "dark" for the dark theme,
+ * "positron" for the light one. Positron, not "bright": it is greys only, so every hue on the light
+ * map is data (bright paints its roads in the orange and yellow of fire and gold). Either style gets:
  * - every boundary layer removed: the national and state lines on our maps come only from
  *   /api/geo/boundaries (Survey of India), never from a basemap's own depiction;
  * - the "Azad Kashmir", "Gilgit-Baltistan" and "Aksai Chin" region labels filtered out;
- * - its neutral greys turned toward the warm black of the page (#0c0a08 ground);
+ * - its neutral greys turned toward the page's warm greys (the #0c0a08 ground on dark, the #efeeec
+ *   bone on light);
  * - two invisible anchor layers before the first place label, so deck.gl data and our boundary lines
  *   sit above land and roads but under the labels;
  * - an optional EOX Sentinel-2 cloudless 2025 raster (keyless, CC BY-NC-SA 4.0) for the imagery view.
+ * Both styles share OpenFreeMap's tiles, sprite and fonts, and the edits key on the OpenMapTiles
+ * schema (source layers and name fields), not on layer ids, so they hold for either.
  * If OpenFreeMap cannot be reached, `fallbackStyle` keeps the map working on a plain ground: our
  * boundaries and data still draw, and the page says the basemap is missing.
  */
 
 import type { LayerSpecification, StyleSpecification } from 'maplibre-gl';
 
-import { MARK } from './palette';
+import type { Theme } from '@/lib/theme';
+
+import { paletteFor } from './palette';
 import { BOUNDARY_ANCHOR, DATA_ANCHOR, TOP_ANCHOR } from './types';
 
 export const OFM_DARK_STYLE_URL = 'https://tiles.openfreemap.org/styles/dark';
+export const OFM_LIGHT_STYLE_URL = 'https://tiles.openfreemap.org/styles/positron';
+
+/** The OpenFreeMap style each theme starts from. */
+export const basemapStyleUrl = (theme: Theme): string => (theme === 'light' ? OFM_LIGHT_STYLE_URL : OFM_DARK_STYLE_URL);
+
+/** The theme of the style under a basemap: the imagery view keeps dark's labels whatever the page's
+ *  theme (white text on a dark halo reads on the photograph). */
+export const basemapTheme = (basemap: 'dark' | 'imagery', theme: Theme): Theme => (basemap === 'imagery' ? 'dark' : theme);
+
+/**
+ * The basemap's own text, per theme, in the page's greys. Dark: cities in the muted ink (5.78:1 on
+ * the ground), smaller places a step darker (3.69:1), the quiet abroad layer between. Light holds the
+ * same contrasts on bone: cities 5.80:1, smaller places 3.71:1, abroad 4.81:1, on a bone halo.
+ */
+const LABELS: Readonly<Record<Theme, { city: string; minor: string; abroad: string; halo: string }>> = {
+  dark: { city: '#8f8a84', minor: '#6f6a63', abroad: '#7e7972', halo: 'rgba(12,10,8,0.85)' },
+  light: { city: '#605b55', minor: '#7f7973', abroad: '#6d6761', halo: 'rgba(239,238,236,0.85)' },
+};
 
 export const EOX_ATTRIBUTION =
   '<a href="https://cloudless.eox.at" target="_blank" rel="noopener">Sentinel-2 cloudless 2025</a> by EOX IT Services GmbH (contains modified Copernicus Sentinel data 2025), CC BY-NC-SA 4.0';
 
-/** Boundary layers in OpenFreeMap's dark and fiord styles (research doc 8.2). Any other layer drawn
- *  from the `boundary` source layer is removed as well, in case the style changes. */
+/** Boundary layers in OpenFreeMap's dark, fiord and positron styles (research doc 8.2; positron uses
+ *  fiord's ids). Any other layer drawn from the `boundary` source layer is removed as well, in case a
+ *  style changes. */
 const BOUNDARY_LAYER_IDS = new Set(['boundary_state', 'boundary_country_z0-4', 'boundary_country_z5-', 'boundary_3', 'boundary_2', 'boundary_disputed']);
 const BAD_REGION_LABELS = ['Azad Kashmir', 'Gilgit-Baltistan', 'Aksai Chin'];
 const NAME_FIELDS = ['name', 'name_en', 'name:en', 'name:latin', 'name_int'];
@@ -57,28 +83,31 @@ function parseColor(input: string): RGBA | null {
 const css = ([r, g, b, a]: RGBA) => (a < 1 ? `rgba(${r},${g},${b},${a})` : `rgb(${r},${g},${b})`);
 const clamp = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
 
-/** A near-neutral grey moved toward the palette's warm greys (#0c0a08, #181512, #8f8a84 sit about
- *  +3 red and -4 blue from neutral). Coloured values are left alone. */
-function warm(color: string): string {
+/** A near-neutral grey moved toward the palette's warm greys. Dark: #0c0a08, #181512 and #8f8a84 sit
+ *  about +3 red and -4 blue from neutral, so the tilt grows with lightness. Light: the bone #efeeec
+ *  sits +1 red and -2 blue, and dark's tilt would turn positron's near-whites cream (up to +7 red and
+ *  -10 blue), so it is gentler and grows toward the dark end instead. Coloured values are left alone. */
+function warm(color: string, theme: Theme): string {
   const c = parseColor(color);
   if (!c) return color;
   const [r, g, b, a] = c;
   if (Math.max(r, g, b) - Math.min(r, g, b) > 12) return color;
   const v = (r + g + b) / 3;
+  if (theme === 'light') return css([clamp(v + 1 + 0.01 * (255 - v)), clamp(v), clamp(v - 2 - 0.03 * (255 - v)), a]);
   return css([clamp(v + 2 + 0.02 * v), clamp(v), clamp(v - 2 - 0.035 * v), a]);
 }
 
 /** Walk a paint value (a colour string or an expression) and warm every colour in it. */
-function warmValue(v: unknown): unknown {
-  if (typeof v === 'string') return warm(v);
-  if (Array.isArray(v)) return v.map(warmValue);
+function warmValue(v: unknown, theme: Theme): unknown {
+  if (typeof v === 'string') return warm(v, theme);
+  if (Array.isArray(v)) return v.map((x) => warmValue(x, theme));
   return v;
 }
 
-function warmPaint(layer: LayerSpecification): LayerSpecification {
+function warmPaint(layer: LayerSpecification, theme: Theme): LayerSpecification {
   if (!('paint' in layer) || !layer.paint) return layer;
   const paint: Record<string, unknown> = { ...(layer.paint as Record<string, unknown>) };
-  for (const k of Object.keys(paint)) if (k.endsWith('-color')) paint[k] = warmValue(paint[k]);
+  for (const k of Object.keys(paint)) if (k.endsWith('-color')) paint[k] = warmValue(paint[k], theme);
   return { ...layer, paint } as LayerSpecification;
 }
 
@@ -92,17 +121,56 @@ function withoutBadLabels(layer: LayerSpecification): LayerSpecification {
   return { ...layer, filter } as LayerSpecification;
 }
 
-/** Place labels in the page's greys: cities in the muted ink, smaller places a step darker. */
-function placeLabelColours(layer: LayerSpecification): LayerSpecification {
+/** Place labels in the page's greys: cities in the muted ink, smaller places a step darker. On light
+ *  the dot positron sets beside a town or city goes as well: dark's style asks for a dot its sprite
+ *  does not have, so the dark map shows none, and on light a near-black dot would read as one of our
+ *  marks (a satellite, a fire). */
+function placeLabelColours(layer: LayerSpecification, theme: Theme): LayerSpecification {
   if (layer.type !== 'symbol' || sourceLayer(layer) !== 'place') return layer;
   const minor = /village|other|suburb/.test(layer.id);
-  return {
+  const c = LABELS[theme];
+  const out = {
     ...layer,
-    paint: { ...(layer.paint ?? {}), 'text-color': minor ? '#6f6a63' : '#8f8a84', 'text-halo-color': 'rgba(12,10,8,0.85)', 'text-halo-width': 1 },
+    paint: { ...(layer.paint ?? {}), 'text-color': minor ? c.minor : c.city, 'text-halo-color': c.halo, 'text-halo-width': 1 },
   } as LayerSpecification;
+  if (theme === 'light' && out.layout && 'icon-image' in out.layout) {
+    const layout: Record<string, unknown> = { ...out.layout };
+    delete layout['icon-image'];
+    return { ...out, layout } as LayerSpecification;
+  }
+  return out;
 }
 
-const anchor = (id: string): LayerSpecification => ({ id, type: 'background', layout: { visibility: 'none' }, paint: { 'background-color': MARK.ground } });
+/** Light only: positron writes rivers and lakes in blue, the one hue on it that is not ours; they
+ *  take the minor place grey, so every hue on the light map is data. */
+function greyWaterNames(layer: LayerSpecification, theme: Theme): LayerSpecification {
+  if (theme !== 'light' || layer.type !== 'symbol' || sourceLayer(layer) !== 'water_name') return layer;
+  return { ...layer, paint: { ...(layer.paint ?? {}), 'text-color': LABELS.light.minor, 'text-halo-color': LABELS.light.halo } } as LayerSpecification;
+}
+
+/** Light only: positron stacks its state names under the city names, and MapLibre places the upper
+ *  layer's labels first, so at region zoom the larger city names (Amritsar, Ludhiana) took the room
+ *  and PUNJAB was never drawn; it also sets them in a spaced italic that read faint on bone. Dark
+ *  stacks states over cities in small upright capitals: the state layer moves to just above the
+ *  last city layer and takes dark's type (its colour is already the city grey, 5.80:1). */
+function statesOverCities(layers: LayerSpecification[], theme: Theme): LayerSpecification[] {
+  if (theme !== 'light') return layers;
+  const isPlace = (l: LayerSpecification) => l.type === 'symbol' && sourceLayer(l) === 'place';
+  const states = layers.filter((l) => isPlace(l) && /state/.test(l.id));
+  const rest = layers.filter((l) => !states.includes(l));
+  const lastCity = rest.findLastIndex((l) => isPlace(l) && /city/.test(l.id));
+  if (!states.length || lastCity < 0) return layers;
+  const upright = states.map((l) => {
+    const layout: Record<string, unknown> = { ...(l.layout ?? {}), 'text-font': ['Noto Sans Regular'], 'text-size': 10 };
+    delete layout['text-letter-spacing'];
+    return { ...l, layout } as LayerSpecification;
+  });
+  return [...rest.slice(0, lastCity + 1), ...upright, ...rest.slice(lastCity + 1)];
+}
+
+// The anchors are the same in every style (invisible, so their colour is never seen: dark's ground),
+// which lets a theme switch keep them in place instead of replacing them.
+const anchor = (id: string): LayerSpecification => ({ id, type: 'background', layout: { visibility: 'none' }, paint: { 'background-color': paletteFor().MARK.ground } });
 
 function addAnchorsAndImagery(layers: LayerSpecification[], imagery: boolean): LayerSpecification[] {
   const out = layers.slice();
@@ -127,15 +195,24 @@ function addAnchorsAndImagery(layers: LayerSpecification[], imagery: boolean): L
 
 /** OpenFreeMap's style, made India-compliant and warm. Pure: returns a new object.
  *  `foreignLabels: 'dim'` starts the style in the state before the Indian states are known (see
- *  `withForeignLabelsHeld`): no full-size place label anywhere, cities only, small and dim. */
-export function indiaCompliantStyle(input: StyleSpecification, opts: { imagery?: boolean; foreignLabels?: 'show' | 'dim' } = {}): StyleSpecification {
+ *  `withForeignLabelsHeld`): no full-size place label anywhere, cities only, small and dim.
+ *  `theme` is the theme the input style was made for (OpenFreeMap dark for 'dark', the default;
+ *  positron for 'light'): it picks the warm tilt, the label greys and the ground. */
+export function indiaCompliantStyle(input: StyleSpecification, opts: { imagery?: boolean; foreignLabels?: 'show' | 'dim'; theme?: Theme } = {}): StyleSpecification {
+  const { theme, MARK } = paletteFor(opts.theme);
+  const ground = MARK.ground;
   let layers = input.layers
     .filter((l) => !BOUNDARY_LAYER_IDS.has(l.id) && sourceLayer(l) !== 'boundary')
+    // positron's road-number shields: dark has none, they would sit over the fields at field zoom,
+    // and their filters log a warning for every road without a number
+    .filter((l) => theme !== 'light' || !/shield/.test(l.id))
     .map(withoutBadLabels)
-    .map(warmPaint)
-    .map(placeLabelColours)
-    .map((l) => (l.type === 'background' ? ({ ...l, paint: { ...(l.paint ?? {}), 'background-color': MARK.ground } } as LayerSpecification) : l));
-  if (opts.foreignLabels === 'dim') layers = withForeignLabelsHeld(layers);
+    .map((l) => warmPaint(l, theme))
+    .map((l) => placeLabelColours(l, theme))
+    .map((l) => greyWaterNames(l, theme))
+    .map((l) => (l.type === 'background' ? ({ ...l, paint: { ...(l.paint ?? {}), 'background-color': ground } } as LayerSpecification) : l));
+  layers = statesOverCities(layers, theme);
+  if (opts.foreignLabels === 'dim') layers = withForeignLabelsHeld(layers, theme);
   return {
     ...input,
     sources: {
@@ -153,11 +230,11 @@ export function indiaCompliantStyle(input: StyleSpecification, opts: { imagery?:
 }
 
 /** A plain ground with the anchors, for when the basemap service is unreachable. */
-export function fallbackStyle(): StyleSpecification {
+export function fallbackStyle(theme: Theme = 'dark'): StyleSpecification {
   return {
     version: 8,
     sources: {},
-    layers: [{ id: 'background', type: 'background', paint: { 'background-color': MARK.ground } }, anchor(DATA_ANCHOR), anchor(BOUNDARY_ANCHOR), anchor(TOP_ANCHOR)],
+    layers: [{ id: 'background', type: 'background', paint: { 'background-color': paletteFor(theme).MARK.ground } }, anchor(DATA_ANCHOR), anchor(BOUNDARY_ANCHOR), anchor(TOP_ANCHOR)],
   };
 }
 
@@ -241,10 +318,11 @@ const ownFilter = (l: LayerSpecification): unknown => {
   return 'filter' in l ? l.filter : undefined;
 };
 
-/** The quiet city layer: Latin script, small, dim (4.6:1 on the ground: the size and case carry
- *  the step down from India's own city names, not unreadable contrast). */
-function abroadLayer(city: LayerSpecification, filter: unknown): LayerSpecification | null {
+/** The quiet city layer: Latin script, small, dim (4.6:1 on the dark ground, 4.8:1 on bone: the size
+ *  and case carry the step down from India's own city names, not unreadable contrast). */
+function abroadLayer(city: LayerSpecification, filter: unknown, theme: Theme): LayerSpecification | null {
   if (!('source' in city)) return null;
+  const c = LABELS[theme];
   return {
     id: ABROAD_LABEL_LAYER,
     type: 'symbol',
@@ -256,8 +334,12 @@ function abroadLayer(city: LayerSpecification, filter: unknown): LayerSpecificat
       'text-font': (city.layout as Record<string, unknown> | undefined)?.['text-font'] ?? ['Noto Sans Regular'],
       'text-size': 10,
       'text-max-width': 8,
+      // Light: positron centres its larger city names above their point, where dark sets them small
+      // beside it, so Amritsar's name covered Lahore's; a name that cannot sit on its point tries
+      // below it, then above, then beside, before it gives way (India's own names still go first).
+      ...(theme === 'light' ? { 'text-variable-anchor': ['center', 'top', 'bottom', 'right', 'left'], 'text-radial-offset': 0.5 } : {}),
     },
-    paint: { 'text-color': '#7e7972', 'text-halo-color': 'rgba(12,10,8,0.85)', 'text-halo-width': 1 },
+    paint: { 'text-color': c.abroad, 'text-halo-color': c.halo, 'text-halo-width': 1 },
   } as unknown as LayerSpecification;
 }
 
@@ -267,10 +349,10 @@ function abroadLayer(city: LayerSpecification, filter: unknown): LayerSpecificat
  * the quiet city layer shows, everywhere. So no country or province name ("PAKISTAN", "PUNJAB
  * پنجاب") and no full-size foreign city ever paints, even for a moment or when the states fail.
  */
-export function withForeignLabelsHeld(layers: readonly LayerSpecification[]): LayerSpecification[] {
+export function withForeignLabelsHeld(layers: readonly LayerSpecification[], theme: Theme = 'dark'): LayerSpecification[] {
   const places = layers.filter(isPlaceLabel);
   const city = places.find((l) => /city/.test(l.id)) ?? places[0];
-  const abroad = city ? abroadLayer(city, CITY) : null;
+  const abroad = city ? abroadLayer(city, CITY, theme) : null;
   const out: LayerSpecification[] = [];
   for (const l of layers) {
     if (l.id === ABROAD_LABEL_LAYER) continue;
@@ -292,7 +374,11 @@ export function withForeignLabelsHeld(layers: readonly LayerSpecification[]): La
  * without its country and province names standing in the frame. No boundary is drawn from this.
  * `abroadFilter` is set on the quiet layer when the style already has it (a held style).
  */
-export function foreignLabelPlan(layers: readonly LayerSpecification[], mask: LabelMask): { filters: { id: string; filter: unknown }[]; abroad: LayerSpecification | null; abroadFilter: unknown; beforeId: string | null } {
+export function foreignLabelPlan(
+  layers: readonly LayerSpecification[],
+  mask: LabelMask,
+  theme: Theme = 'dark',
+): { filters: { id: string; filter: unknown }[]; abroad: LayerSpecification | null; abroadFilter: unknown; beforeId: string | null } {
   const places = layers.filter(isPlaceLabel);
   const inside = ['within', mask];
   const filters = places.map((l) => {
@@ -301,7 +387,7 @@ export function foreignLabelPlan(layers: readonly LayerSpecification[], mask: La
   });
   const abroadFilter = ['all', CITY, ['!', inside]];
   const city = places.find((l) => /city/.test(l.id)) ?? places[0];
-  const abroad = city ? abroadLayer(city, abroadFilter) : null;
+  const abroad = city ? abroadLayer(city, abroadFilter, theme) : null;
   return { filters, abroad, abroadFilter, beforeId: places[0]?.id ?? null };
 }
 

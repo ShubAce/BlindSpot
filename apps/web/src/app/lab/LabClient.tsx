@@ -13,8 +13,9 @@ import {
   geostationaryPixels,
   imageryLayer,
   LAYER_LIST,
+  layerLegend,
   Legend,
-  MARK,
+  paletteFor,
   riskLayers,
   satelliteLayers,
   scarsLayers,
@@ -25,7 +26,7 @@ import {
   type MapLayerId,
   type MapLayerInput,
 } from '@/components/map';
-import { hasBasemapBoundaries, indiaCompliantStyle, OFM_DARK_STYLE_URL } from '@/components/map/basemap-style';
+import { basemapStyleUrl, basemapTheme, hasBasemapBoundaries, indiaCompliantStyle } from '@/components/map/basemap-style';
 import { readWindField } from '@/components/map/layers/wind';
 import { EmptyNote, ErrorNote, Freshness, Skeleton } from '@/components/ui/states';
 import { REFERENCE_SITE } from '@/lib/aoi';
@@ -47,6 +48,7 @@ import {
 import { istDayKey, number, relative, startOfIstDay, timeIST } from '@/lib/format';
 import { CADENCE, useApi, useNow, useOrbitsTle, usePasses, useSources } from '@/lib/live';
 import { liveStatus, parseTles, predictPasses, type Satellite } from '@/lib/orbits';
+import { onThemeChange, readTheme, useTheme } from '@/lib/theme';
 import { liveSentence } from '@/lib/use-orbits';
 
 type Toggles = Record<MapLayerId, boolean>;
@@ -86,19 +88,15 @@ const asLive = (r: { data?: Partial<Envelope>; error?: unknown; mutate: () => Pr
 // ---------------------------------------------------------------------------------------------
 // checks that read the page itself
 
-const MARK_TOKENS: [string, string][] = [
-  ['--mark-fire', MARK.fire],
-  ['--mark-unseen', MARK.unseen],
-  ['--mark-alerted', MARK.alerted],
-  ['--mark-smoke', MARK.smoke],
-  ['--mark-straw', MARK.straw],
-];
-const noop = () => () => {};
+// Each --mark-* token against the palette of the theme on screen (it is read again when the theme changes).
+const MARK_TOKENS = ['fire', 'unseen', 'alerted', 'smoke', 'straw'] as const;
 function tokenDrift(): string {
   if (typeof document === 'undefined') return 'pending';
+  const theme = readTheme();
+  const { MARK } = paletteFor(theme);
   const root = getComputedStyle(document.documentElement);
-  const off = MARK_TOKENS.filter(([name, hex]) => root.getPropertyValue(name).trim().toLowerCase() !== hex.toLowerCase());
-  return off.length ? `Out of sync with palette.ts: ${off.map(([n]) => n).join(', ')}` : 'CSS --mark-* tokens match palette.ts';
+  const off = MARK_TOKENS.filter((k) => root.getPropertyValue(`--mark-${k}`).trim().toLowerCase() !== MARK[k].toLowerCase());
+  return off.length ? `Out of sync with palette.ts (${theme}): ${off.map((k) => `--mark-${k}`).join(', ')}` : `CSS --mark-* tokens match palette.ts (${theme})`;
 }
 
 export function LabClient() {
@@ -108,6 +106,8 @@ export function LabClient() {
   const [tileErrors, setTileErrors] = useState(0);
   const now = useNow(1_000);
   const clock = useAnimationClock(4);
+  // the map, its marks and their keys follow the site's theme, as on mission control
+  const theme = useTheme();
 
   // data: each layer's endpoint, fetched only while its layer is on (fires always: the strip uses it)
   const fires = useApi<FiresResponse>(PATHS.fires, { hours: 24 }, { refreshInterval: CADENCE.fires, timeoutMs: SLOW });
@@ -136,39 +136,41 @@ export function LabClient() {
 
   const onTileError = useCallback(() => setTileErrors((n) => n + 1), []);
 
-  // static layers: rebuilt when their data or toggles change
+  // static layers: rebuilt when their data, toggles or the theme change
   const dataLayers = useMemo<MapLayerInput[]>(
     () => [
       on.imagery && item ? imageryLayer({ item, kind: imageryKind, onTileError }) : null,
-      on.risk ? riskLayers(risk.data) : null,
-      on.scars ? scarsLayers(scars.data) : null,
-      on.geostationary ? geostationaryLayer(geo.data) : null,
-      on.smoke ? smokeLayers(smoke.data) : null,
-      on.wind ? windLayer(wind.data) : null,
-      on.air ? airLayers(air.data) : null,
+      on.risk ? riskLayers(risk.data, { theme }) : null,
+      on.scars ? scarsLayers(scars.data, { theme }) : null,
+      on.geostationary ? geostationaryLayer(geo.data, { theme }) : null,
+      on.smoke ? smokeLayers(smoke.data, { theme }) : null,
+      on.wind ? windLayer(wind.data, { theme }) : null,
+      on.air ? airLayers(air.data, { theme }) : null,
     ],
-    [on, item, imageryKind, onTileError, risk.data, scars.data, geo.data, smoke.data, wind.data, air.data],
+    [on, item, imageryKind, onTileError, risk.data, scars.data, geo.data, smoke.data, wind.data, air.data, theme],
   );
   // fires re-colour their age classes every ten minutes; satellites move every second
   const fireBucket = now ? Math.floor(now.getTime() / 600_000) : 0;
-  const fireLayer = useMemo(() => (on.fires ? firesLayer(fires.data, { now: new Date(fireBucket * 600_000) }) : null), [on.fires, fires.data, fireBucket]);
+  const fireLayer = useMemo(() => (on.fires ? firesLayer(fires.data, { now: new Date(fireBucket * 600_000), theme }) : null), [on.fires, fires.data, fireBucket, theme]);
   const passOverlay = useMemo(() => {
     if (!now) return [];
     const last = dayPasses.filter((p) => p.end.getTime() < now.getTime()).pop();
     const next = dayPasses.find((p) => p.start.getTime() > now.getTime());
     return [last, next].filter((p): p is NonNullable<typeof p> => !!p);
   }, [dayPasses, now]);
-  const satLayer = useMemo(() => (on.satellites ? satelliteLayers(sats, now, { passes: passOverlay }) : null), [on.satellites, sats, now, passOverlay]);
+  const satLayer = useMemo(() => (on.satellites ? satelliteLayers(sats, now, { passes: passOverlay, theme }) : null), [on.satellites, sats, now, passOverlay, theme]);
   const layers = useMemo(() => [...dataLayers, fireLayer, satLayer], [dataLayers, fireLayer, satLayer]);
 
   // self-checks
-  const drift = useSyncExternalStore(noop, tokenDrift, () => 'pending');
-  const ofm = useSWR<StyleSpecification>(OFM_DARK_STYLE_URL, null);
+  const drift = useSyncExternalStore(onThemeChange, tokenDrift, () => 'pending');
+  // the style the map is showing (BaseMap fetched it into this cache, by the same rule)
+  const styleTheme = basemapTheme(basemap, theme);
+  const ofm = useSWR<StyleSpecification>(basemapStyleUrl(styleTheme), null);
   const compliance = useMemo(() => {
     if (!ofm.data) return null;
-    const s = indiaCompliantStyle(ofm.data);
+    const s = indiaCompliantStyle(ofm.data, { theme: styleTheme });
     return { boundaries: hasBasemapBoundaries(s), raw: hasBasemapBoundaries(ofm.data) };
-  }, [ofm.data]);
+  }, [ofm.data, styleTheme]);
   const server = usePasses({ lat: REFERENCE_SITE.lat, lon: REFERENCE_SITE.lon, hours_back: 0, hours_ahead: 24 });
   const agreement = useMemo(() => {
     const api = server.data?.passes;
@@ -239,7 +241,7 @@ export function LabClient() {
                   {on[l.id] ? (
                     <>
                       <LayerStatus live={st.live} what={st.what} count={st.count} cadenceMs={l.cadenceMs} empty={st.empty} />
-                      <Legend items={l.legend} />
+                      <Legend items={layerLegend(l.id, theme)} />
                       {l.id === 'imagery' ? (
                         <div className="flex items-center gap-3" style={{ fontSize: 12 }}>
                           {(['truecolor', 'swir', 'nbr'] as ImageryKind[]).map((k) => (
@@ -272,7 +274,7 @@ export function LabClient() {
           <div className="flex gap-4">
             {(['dark', 'imagery'] as const).map((b) => (
               <button key={b} type="button" className={`text-button ${basemap === b ? 'selected-line' : ''}`} aria-pressed={basemap === b} onClick={() => setBasemap(b)}>
-                {b === 'dark' ? 'Dark' : 'Sentinel-2 cloudless 2025'}
+                {b === 'dark' ? (theme === 'light' ? 'Light' : 'Dark') : 'Sentinel-2 cloudless 2025'}
               </button>
             ))}
           </div>
@@ -326,7 +328,7 @@ export function LabClient() {
 
       <div className="flex h-svh min-w-0 flex-col max-[900px]:h-auto">
         <div className="relative min-h-[420px] flex-1">
-          <BaseMap layers={layers} basemap={basemap} label="Lab map: every BlindSpot layer over Punjab, Haryana and Delhi" />
+          <BaseMap layers={layers} basemap={basemap} theme={theme} label="Lab map: every BlindSpot layer over Punjab, Haryana and Delhi" />
         </div>
         <div className="border-t border-border bg-surface px-6 pb-5 pt-4">
           {tle.data || fires.data ? (

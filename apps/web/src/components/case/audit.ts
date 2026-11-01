@@ -1,5 +1,5 @@
 /**
- * Small readers shared by the case file, the bulletin and the method page.
+ * Small readers shared by the case file, the bulletin, the method page and the field brief.
  *
  * - `auditPhrase` is the one way the site states the audit precision of candidate unseen burns,
  *   which must stand beside every count, area or share of them (contract notes, "unseen_burns").
@@ -32,6 +32,10 @@ export function platformName(itemId: string | null | undefined): string | null {
   const m = itemId?.match(/^S2([A-D])[_]/i);
   return m ? `Sentinel-2${m[1].toUpperCase()}` : null;
 }
+
+/** An answer's sources with each input once: the API can list the same key and URL twice. */
+export const uniqueSources = <T extends { key: string; url: string | null }>(sources: readonly T[] | null | undefined): T[] =>
+  Array.from(new Map((sources ?? []).map((s) => [`${s.key}|${s.url}`, s])).values());
 
 /** "earth-search.aws.element84.com/v1/collections/…" for a long source URL: host plus a short path. */
 export function shortUrl(u: string | null | undefined, max = 64): string | null {

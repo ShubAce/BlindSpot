@@ -2,7 +2,9 @@
    App screens outside mission control: the case file (detail) and the bulletin (report).
    Style "data-terminal" with the page palette (.taste-skill/app/direction.json): cards darker than
    the ground, 1px borders, tabular figures in Work Sans, and one selection mark, a 1px gold line as
-   wide as its label. Every value comes from the tokens in app/globals.css ([data-surface="app"]).
+   wide as its label. Every value comes from the tokens in app/globals.css ([data-surface="app"]),
+   so the light theme (white cards on bone) needs no rule here, except for what is drawn over a
+   photograph: see the pictures below.
 
    Grid arithmetic (1440 wide): canvas 1440 - 2 x 32 = 1376; 12 columns with 24px gaps:
    12 x 92.67 + 11 x 24 = 1376. Spans 8 + 4: 8 x 92.67 + 7 x 24 = 909.3, 4 x 92.67 + 3 x 24 = 442.7,
@@ -22,10 +24,11 @@
   position: absolute;
   left: 8px;
   top: -48px;
-  z-index: 20;
+  z-index: 70; /* above the site bar (.sn-top, 60): under it, the focused link would never show */
   padding: 8px 12px;
-  background: var(--primary);
-  color: var(--primary-ink);
+  /* the method page uses this link outside the app surface, where the primary tokens do not exist */
+  background: var(--primary, var(--ink));
+  color: var(--primary-ink, var(--bg));
   font-weight: 600;
   border-radius: var(--radius-control);
 }
@@ -98,7 +101,7 @@
   transition: background-color var(--t-hover) var(--ease-out), transform var(--t-press) var(--ease-out);
 }
 .button-primary:hover {
-  background: #ece6dc;
+  background: var(--primary-hover);
 }
 .button-primary:active {
   transform: translateY(1px);
@@ -308,6 +311,16 @@
 
 /* ---- the pictures ------------------------------------------------------------------------- */
 
+/* What is drawn over the Sentinel-2 pictures (the scar's outline, the fire alerts) keeps one set of
+   colours on both themes: its ground is the photograph, not the page. */
+.evidence {
+  --photo-unseen: var(--accent-fill); /* the straw gold, #c9a45a on both themes */
+  --photo-seen: #ffffff;
+  --photo-fire: #ea5a2e; /* the dark theme's fire: light's deeper red would sink into a burnt field */
+  --photo-ring: #0c0a08;
+  --photo-ground: #2b2620; /* a picture in miniature, for the key on light (below) */
+}
+
 .evidence__grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -371,6 +384,17 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+/* The key shows each mark exactly as the pictures carry it. On dark the card is as dark as a
+   picture, so the swatches sit on it as they are; on light a white outline would vanish into the
+   white card, so each swatch gets a small dark tile (white 15:1, gold 6.4:1, fire 4.3:1 on it). The
+   tile's margin is a spread shadow, not padding, so it takes no room: the key wraps exactly as on
+   dark (with padding it no longer fitted beside the switch on a phone and took a row of its own).
+   2px of it leaves the label 4px clear of the tile. */
+:root[data-theme="light"] .evidence__swatch {
+  border-radius: 2px;
+  background: var(--photo-ground);
+  box-shadow: 0 0 0 2px var(--photo-ground); /* taste-skill-ignore: the tile's edge, not a shadow */
 }
 .evidence__cloud {
   margin-left: auto;
@@ -443,12 +467,12 @@
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 4px;
-  background: var(--bg, #0c0a08);
+  background: var(--surface); /* the card's own ground, so the box reads by its edge and shadow on both themes */
   color: var(--text);
   font-size: 12px;
   line-height: 18px;
   pointer-events: none;
-  box-shadow: 0 8px 20px rgb(0 0 0 / 0.35); /* taste-skill-ignore: the hover read-out floats over the chart */
+  box-shadow: 0 8px 20px var(--shadow-ink); /* taste-skill-ignore: the hover read-out floats over the chart */
 }
 .chart-readout__head {
   color: var(--muted);
@@ -674,6 +698,55 @@
 /* ---- print -------------------------------------------------------------------------------- */
 
 @media print {
+  /* Paper takes the light theme's colours whichever theme is on screen. From dark, the cards printed
+     white (below) under the dark theme's white text, so the lead, every figure and every card title
+     vanished, the state map printed solid black and the page margins black. So the app tokens, and
+     the three marks these screens read, take their light values (keep them equal to the light blocks
+     in app/globals.css), one step above both themes' own rules so the two print alike; the brief's
+     sheet (brief.css) ranks above this. The page drops the dark canvas, whose colour scheme the
+     theme script also sets inline on <html>, hence !important. */
+  :root:has(.app-screen),
+  :root:has(.app-screen) body {
+    color-scheme: light !important;
+    background: #fff !important;
+  }
+  :root body .app-screen[data-surface="app"] {
+    --mark-fire: #b82d0f;
+    --mark-unseen: #a67b01;
+    --mark-alerted: #67625c;
+    --ground: #efeeec;
+    --surface: #fcfcfb;
+    --raised: #f4f3f1;
+    --active: #ebe9e6;
+    --border: #dedad4;
+    --rule: #eeedea;
+    --control: #89837d;
+    --text: #1a1612;
+    --muted: #4f4943;
+    --faint: #67615a;
+    --accent: #7a5c22;
+    --primary: #1a1612;
+    --primary-ink: #fcfcfb;
+    --primary-hover: #3a342d;
+    --positive: #05663e;
+    --negative: #b93349;
+    --warning: #8a6005;
+    --pill-positive-bg: #e2f2e8;
+    --pill-positive-ink: #0e5a37;
+    --pill-negative-bg: #fbe9ec;
+    --pill-negative-ink: #8f1f35;
+    --pill-warning-bg: #f7eedc;
+    --pill-warning-ink: #6e4405;
+    --pill-neutral-bg: #ebe9e6;
+    --pill-neutral-ink: #3d3832;
+    --chart-1: #2b2621;
+    --chart-4: #57524c;
+    --chart-muted: #b4aea7;
+    --chart-span: 0.08;
+    --chart-track: #cfc9c1;
+    --chart-window: rgb(26 22 18 / 0.18);
+    --grid: #e3ded8;
+  }
   [data-print="hide"],
   .skip-link {
     display: none !important;

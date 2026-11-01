@@ -3,8 +3,9 @@ import { PolygonLayer } from '@deck.gl/layers';
 
 import { centroidOf, type LonLat, type ScarProps } from '@/lib/api';
 import { metricText, number, percent } from '@/lib/format';
+import type { Theme } from '@/lib/theme';
 
-import { HIGHLIGHT, SCAR_TILE_STYLE, scarTileStep } from '../palette';
+import { paletteFor, SCAR_TILE_GEOMETRY, scarTileStep } from '../palette';
 import { DATA_ANCHOR, type AnchorProps } from '../types';
 import type { ScarFeature } from './scars';
 
@@ -98,7 +99,7 @@ function ringCentroid(f: ScarFeature): LonLat | null {
  * Bin scars into hexagons of radius `radiusPx` screen pixels at `zoom`. Each scar counts where its
  * centroid falls, with its full area (a field never straddles two 5 km cells by much).
  */
-export function binScars(features: readonly ScarFeature[], zoom: number, radiusPx = SCAR_TILE_STYLE.radiusPx): ScarTile[] {
+export function binScars(features: readonly ScarFeature[], zoom: number, radiusPx = SCAR_TILE_GEOMETRY.radiusPx): ScarTile[] {
   const s = radiusPx * mercatorMetresPerPixel(zoom);
   const cells = new Map<string, Omit<ScarTile, 'ring' | 'drawn' | 'unseenShare' | 'bounds' | 'center' | 'id'> & { q: number; r: number }>();
   for (const f of features) {
@@ -131,7 +132,7 @@ export function binScars(features: readonly ScarFeature[], zoom: number, radiusP
     const cy = s * (1.5 * c.r);
     const ring = corners(cx, cy, s);
     const k = max > 0 ? Math.min(1, Math.sqrt(c.areaHa / max)) : 1;
-    const drawn = corners(cx, cy, s * SCAR_TILE_STYLE.gap * Math.max(SCAR_TILE_STYLE.minScale, k));
+    const drawn = corners(cx, cy, s * SCAR_TILE_GEOMETRY.gap * Math.max(SCAR_TILE_GEOMETRY.minScale, k));
     const checked = c.unseenHa + c.alertedHa;
     const lons = ring.map((p) => p[0]);
     const lats = ring.map((p) => p[1]);
@@ -154,11 +155,19 @@ export function binScars(features: readonly ScarFeature[], zoom: number, radiusP
   return out.sort((a, b) => a.areaHa - b.areaHa);
 }
 
-export type ScarTilesOptions = { id?: string; visible?: boolean; pickable?: boolean };
+export type ScarTilesOptions = {
+  id?: string;
+  visible?: boolean;
+  pickable?: boolean;
+  /** Colours for this theme's basemap (default dark). */
+  theme?: Theme;
+};
 
 /** The hexagon tiles as one deck.gl layer (id `scars:tiles`, so the registry credits Sentinel-2). */
 export function scarTilesLayer(tiles: readonly ScarTile[], opts: ScarTilesOptions = {}): Layer[] {
   if (!tiles.length) return [];
+  // only the colours follow the theme: the sizes (SCAR_TILE_GEOMETRY) are the same on both
+  const { SCAR_TILE_STYLE: S, HIGHLIGHT, theme } = paletteFor(opts.theme);
   return [
     new PolygonLayer<ScarTile, AnchorProps>({
       id: `${opts.id ?? 'scars'}:tiles`,
@@ -172,9 +181,11 @@ export function scarTilesLayer(tiles: readonly ScarTile[], opts: ScarTilesOption
       stroked: true,
       lineWidthUnits: 'pixels',
       getPolygon: (t) => t.drawn,
-      getFillColor: (t) => (t.unseenShare == null ? SCAR_TILE_STYLE.uncheckedFill : SCAR_TILE_STYLE.steps[scarTileStep(t.unseenShare)]),
-      getLineColor: (t) => (t.unseenShare == null ? SCAR_TILE_STYLE.uncheckedStroke : SCAR_TILE_STYLE.stroke),
+      getFillColor: (t) => (t.unseenShare == null ? S.uncheckedFill : S.steps[scarTileStep(t.unseenShare)]),
+      getLineColor: (t) => (t.unseenShare == null ? S.uncheckedStroke : S.stroke),
       getLineWidth: (t) => (t.unseenShare == null ? 1 : 0),
+      // deck.gl never compares accessor functions: the theme is what tells it the colours changed
+      updateTriggers: { getFillColor: [theme], getLineColor: [theme] },
     }),
   ];
 }
@@ -275,8 +286,8 @@ export function districtTiles(rows: readonly DistrictSeasonRow[], shapes: readon
     const cx = toX(lon);
     const cy = toY(lat);
     // km of ground in Mercator metres at this latitude, with a floor in screen pixels
-    const full = Math.max((SCAR_TILE_STYLE.districtRadiusKm * 1000) / Math.cos(lat * D2R), SCAR_TILE_STYLE.districtMinPx * mpp);
-    const k = max > 0 ? Math.max(SCAR_TILE_STYLE.districtMinScale, Math.sqrt(r.area_ha / max)) : 1;
+    const full = Math.max((SCAR_TILE_GEOMETRY.districtRadiusKm * 1000) / Math.cos(lat * D2R), SCAR_TILE_GEOMETRY.districtMinPx * mpp);
+    const k = max > 0 ? Math.max(SCAR_TILE_GEOMETRY.districtMinScale, Math.sqrt(r.area_ha / max)) : 1;
     const share = r.unseen_share != null && Number.isFinite(r.unseen_share) ? r.unseen_share : null;
     // checked hectares from the summary's own share (unseen / checked); alerted is the rest of them
     const checked = share != null && share > 0 ? r.unseen_area_ha / share : null;
@@ -284,7 +295,7 @@ export function districtTiles(rows: readonly DistrictSeasonRow[], shapes: readon
       id: `d:${r.state}:${r.district}`,
       center: [lon, lat],
       ring: corners(cx, cy, full),
-      drawn: corners(cx, cy, full * SCAR_TILE_STYLE.gap * k),
+      drawn: corners(cx, cy, full * SCAR_TILE_GEOMETRY.gap * k),
       scars: r.clusters,
       areaHa: r.area_ha,
       unseenHa: r.unseen_area_ha,

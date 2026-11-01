@@ -3,9 +3,10 @@ import { PathLayer, PolygonLayer, ScatterplotLayer, TextLayer } from '@deck.gl/l
 
 import { timeIST } from '@/lib/format';
 import { FIRE_INSTRUMENTS, groundTrack, positions, subpoint, swathForPass, swathPolygons, type LatLon, type PassWindow, type Ring, type Satellite } from '@/lib/orbits';
+import type { Theme } from '@/lib/theme';
 
 import { nextLookParts } from '../look';
-import { SATELLITE_STYLE } from '../palette';
+import { paletteFor } from '../palette';
 import { DATA_ANCHOR, TOP_ANCHOR, type AnchorProps } from '../types';
 import { mapLabelFont } from './common';
 
@@ -27,6 +28,8 @@ export type SatelliteLayerOptions = {
    *  either side of that moment, and a label with the time and how far off the track the site lies. */
   nextLook?: { pass: PassWindow; site: LatLon; /** Draw its label here (default true); false when the
    *  page writes it as a basemap symbol instead, so town names make way for it. */ label?: boolean } | null;
+  /** Colours for this theme's basemap (default dark). */
+  theme?: Theme;
 };
 
 type TrackDatum = { sat: Satellite; path: [number, number][] };
@@ -44,6 +47,7 @@ export function satelliteLayers(sats: readonly Satellite[], now: Date | null, op
   if (!now || !sats.length) return [];
   const id = opts.id ?? 'satellites';
   const visible = opts.visible ?? true;
+  const { SATELLITE_STYLE, theme } = paletteFor(opts.theme);
   const chosen = opts.instruments ? sats.filter((s) => opts.instruments?.includes(s.instrument)) : sats.slice();
   const out: Layer[] = [];
 
@@ -183,6 +187,9 @@ export function satelliteLayers(sats: readonly Satellite[], now: Date | null, op
         getPath: (d) => d.path,
         getColor: (d) => (isFire(d.sat) ? SATELLITE_STYLE.track : SATELLITE_STYLE.trackImaging),
         getWidth: SATELLITE_STYLE.trackPx,
+        // the one accessor function here: deck.gl never compares those, so the theme tells it the
+        // colours changed (the constant colours elsewhere repaint by themselves)
+        updateTriggers: { getColor: [theme] },
       }),
     );
   }

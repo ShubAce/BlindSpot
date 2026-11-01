@@ -7,7 +7,7 @@ const W = 16;
 const H = 12;
 
 /** One mark, drawn at swatch size from its own style. */
-export function LegendSwatch({ mark, size = 1 }: { mark: Mark; size?: number }) {
+export function LegendSwatch({ mark, size = 1, className }: { mark: Mark; size?: number; className?: string }) {
   const w = W * size;
   const h = H * size;
   const c = (x: RGBA) => cssColor(x);
@@ -65,7 +65,7 @@ export function LegendSwatch({ mark, size = 1 }: { mark: Mark; size?: number }) 
       break;
   }
   return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} aria-hidden="true" style={{ flex: 'none', overflow: 'visible' }}>
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} aria-hidden="true" className={className} style={{ flex: 'none', overflow: 'visible' }}>
       {body}
     </svg>
   );

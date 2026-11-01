@@ -1,9 +1,13 @@
 /* The site navigation (SiteNav.tsx), the same on every page. A global stylesheet, classes prefixed
    sn- (the app's Turbopack CSS rule compiles .module.css files as plain global CSS).
 
-   Its colours are fixed, not read from the page or app surface tokens, so the bar is identical on
-   both: warm black #0c0a08, the line #2b2620, links #b6b0a7 (9.2:1 on the bar), the current place and
-   hover in white, the gold only as the 1px selection line and the action.
+   Its colours are its own, not read from the page or app surface tokens, so the bar is identical on
+   both surfaces. Dark: warm black #0c0a08, the line #2b2620, links #b6b0a7 (9.18:1 on the bar), the
+   current place and hover in white. Light: the page's bone #efeeec (so the bar and the phone's
+   toolbar colour, lib/theme.ts, follow the first field), the line #dedad4, links #4f4943 (7.65:1),
+   tab labels #5c574f (6.18:1), the current place and hover in ink #1a1612 (15.51:1). On both, the gold
+   is only the 1px selection line (--accent: 5.36:1 on the light bar) and the action (the fill gold
+   under its black label, 8.41:1).
 
    Heights are custom properties so pages can make room: --sn-top-h is the top bar, --sn-tabs-h the
    phone's bottom bar (0 where there is none). A page aligns the bar with its own content with
@@ -16,6 +20,14 @@
   --sn-line: #2b2620;
   --sn-link: #b6b0a7;
   --sn-tab: #958f87;
+  --sn-ink: #ffffff;
+}
+:root[data-theme="light"] {
+  --sn-ground: #efeeec;
+  --sn-line: #dedad4;
+  --sn-link: #4f4943;
+  --sn-tab: #5c574f;
+  --sn-ink: #1a1612;
 }
 
 /* the top bar: pinned on desktop and tablet, so every page keeps its way out */
@@ -41,7 +53,7 @@
   align-items: center;
   gap: 10px;
   min-height: 44px;
-  color: #ffffff;
+  color: var(--sn-ink);
   font-size: 16px;
   font-weight: 600;
   line-height: 1;
@@ -67,7 +79,7 @@
 }
 .sn-link:hover,
 .sn-link[aria-current] {
-  color: #ffffff;
+  color: var(--sn-ink);
 }
 /* the selection mark: a 1px gold line as wide as the label, laid on the bar's rule */
 .sn-link[aria-current]::after {
@@ -79,13 +91,44 @@
   height: 1px;
   background: var(--accent);
 }
+/* the theme switch: a 20px icon in a 40px target, 32px from its neighbours like the bar's other
+   items (the negative margin takes the target's padding back); the icon is the theme it switches to */
+.sn-theme {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  margin: 0 -10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--sn-link);
+  cursor: pointer;
+  transition: color var(--t-hover) var(--ease-out);
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.sn-theme:hover {
+  color: var(--sn-ink);
+}
+.sn-theme:active svg {
+  transform: translateY(1px);
+}
+/* without JavaScript nothing can switch the theme: the button shows once the boot script (which runs
+   before the first paint) has set the attribute */
+:root:not([data-theme]) .sn-theme {
+  display: none;
+}
+
+/* the action: the gold as a fill (--accent-fill, the brand gold on both themes) under its black label */
 .sn-action {
   display: inline-flex;
   align-items: center;
   min-height: 40px;
   padding: 0 16px;
-  background: var(--accent);
-  color: var(--sn-ground);
+  background: var(--accent-fill);
+  color: var(--accent-ink);
   font-size: 14px;
   font-weight: 600;
   line-height: 1;
@@ -103,6 +146,7 @@
 }
 .sn-brand:focus-visible,
 .sn-link:focus-visible,
+.sn-theme:focus-visible,
 .sn-action:focus-visible,
 .sn-tab:focus-visible {
   outline: 2px solid var(--accent);
@@ -135,6 +179,12 @@
   .sn-links,
   .sn-action {
     display: none;
+  }
+  /* alone at the right end of the phone bar: a 44px target, the icon on the bar's padding edge */
+  .sn-theme {
+    width: 44px;
+    height: 44px;
+    margin: 0 -12px 0 auto;
   }
   .sn-tabs {
     display: block;
@@ -172,7 +222,7 @@
     touch-action: manipulation;
   }
   .sn-tab[aria-current] {
-    color: #ffffff;
+    color: var(--sn-ink);
   }
   .sn-tab[aria-current]::before {
     content: "";

@@ -20,7 +20,7 @@
   position: absolute;
   left: 8px;
   top: 8px;
-  z-index: 50;
+  z-index: 70; /* above the site bar (.sn-top, 60): under it, the focused link would never show */
   padding: 8px 12px;
   background: var(--surface);
   color: var(--text);
@@ -480,7 +480,7 @@
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
-  box-shadow: 0 12px 28px rgb(0 0 0 / 0.35); /* taste-skill-ignore: floats over the map or the page */
+  box-shadow: 0 12px 28px var(--shadow-ink); /* taste-skill-ignore: floats over the map or the page */
 }
 .lv-caseHead {
   display: flex;
@@ -689,7 +689,7 @@
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
-  box-shadow: 0 12px 28px rgb(0 0 0 / 0.35); /* taste-skill-ignore: floats over the map or the page */
+  box-shadow: 0 12px 28px var(--shadow-ink); /* taste-skill-ignore: floats over the map or the page */
 }
 .lv-sourcesPanelHead {
   margin: 0;
@@ -974,16 +974,23 @@
   display: inline-block;
   flex: none;
 }
+/* the strip's passes are --chart-1 at 0.55 (charts/PassStrip.tsx): light ink lit on dark, a dark
+   shade on light */
 .lv-keyWindow {
   width: 14px;
   height: 10px;
-  background: rgb(244 239 232 / 0.55);
+  background: color-mix(in srgb, var(--chart-1) 55%, transparent);
 }
 .lv-keyBlind {
   width: 14px;
   height: 10px;
   background: var(--raised);
   box-shadow: inset 0 0 0 1px var(--border); /* taste-skill-ignore: the swatch of the strip's dark span, drawn with its edge */
+}
+/* On light the raised ground is one step off the white card (1.06:1) and the border barely more
+   (1.36:1), so the swatch read as words with no box: its edge takes the control line (3.65:1) */
+:root[data-theme="light"] .lv-keyBlind {
+  box-shadow: inset 0 0 0 1px var(--control); /* taste-skill-ignore: the swatch's edge */
 }
 .lv-keyTick {
   width: 2px;
@@ -1163,7 +1170,7 @@
     contain: none;
     border-radius: var(--radius-card) var(--radius-card) 0 0;
     border-bottom: 0;
-    box-shadow: 0 -8px 24px rgb(0 0 0 / 0.35); /* taste-skill-ignore: the sheet floats over the page */
+    box-shadow: 0 -8px 24px var(--shadow-ink); /* taste-skill-ignore: the sheet floats over the page */
     transition: max-height var(--t-ui) var(--ease-out);
   }
   .lv-listCard[data-open] {
