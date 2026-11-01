@@ -1,0 +1,1058 @@
+/* ==============================================================================================
+   The field brief (/brief and /brief/[district]), on top of components/case/app-screen.css (canvas,
+   title row, KPIs, cards, provenance). Every colour is an app token from app/globals.css, so the
+   light theme needs nothing here; the print block alone sets paper colours.
+
+   One gutter, 24px, between every block, as on the case file. Tables: 44px rows, 12px grey
+   sentence-case headers on one 1px rule, 1px row rules, right-aligned tabular figures; only the
+   identity (the name) and the key figure (the hectares, or the top-tenth count) take the full ink.
+   At 900px and below a table becomes a list of rows: the name and the key figure on line 1, the
+   bar, the other figures in grey with their words, then the row's links (each 44px tall).
+   ============================================================================================== */
+
+/* ---- the title row: the window, its switch, freshness ----------------------------------- */
+
+.br-eyebrow {
+  margin: 0 0 2px;
+  font-size: 13px;
+  line-height: 20px;
+}
+.br-eyebrow__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  color: var(--muted);
+  text-decoration: none;
+  transition: color var(--t-hover) var(--ease-out);
+}
+.br-eyebrow__link:hover {
+  color: var(--text);
+}
+.br-h1-state {
+  color: var(--muted);
+  font-size: 20px;
+  font-weight: 400;
+}
+/* as long a line as the finding above it (measured: 72ch at 16px is about 80ch at 14px) */
+.br-audit {
+  min-height: 0;
+  max-width: 80ch;
+}
+
+.br-scope {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.br-scope__window {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 20px;
+  text-align: right;
+}
+.br-scope__fresh {
+  min-height: 16px;
+  line-height: 16px;
+}
+
+/* the window: a segmented control of links, as wide as its options */
+.br-days {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+}
+.br-days__opt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 60px;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 3px;
+  color: var(--muted);
+  font-size: 13px;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color var(--t-hover) var(--ease-out), background-color var(--t-hover) var(--ease-out);
+}
+.br-days__opt:hover {
+  color: var(--text);
+}
+.br-days__opt[aria-current] {
+  background: var(--active);
+  color: var(--text);
+  font-weight: 500;
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+/* ---- actions: the CSVs, print, and the two ways into mission control ---------------------- */
+
+.br-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 24px;
+  margin: 0 0 24px;
+}
+.br-csv {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.br-csv__label {
+  margin-right: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.br-actions__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 24px;
+  margin-left: auto;
+}
+.br-textlink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  color: var(--text);
+  font-size: 14px;
+  text-decoration: underline;
+  text-decoration-color: var(--control);
+  text-underline-offset: 4px;
+  transition: text-decoration-color var(--t-hover) var(--ease-out);
+}
+.br-textlink:hover {
+  text-decoration-color: currentColor;
+}
+
+/* an outlined button; the filled one (--primary) is used once, for Retry */
+.br-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--control);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--t-hover) var(--ease-out), border-color var(--t-hover) var(--ease-out), transform var(--t-press) var(--ease-out);
+}
+.br-button:hover {
+  background: var(--active);
+  border-color: var(--muted);
+}
+.br-button:active {
+  transform: translateY(1px);
+}
+.br-button svg {
+  flex: none;
+  color: var(--muted);
+}
+.br-button--primary {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--primary-ink);
+}
+.br-button--primary:hover {
+  border-color: var(--primary-hover);
+  background: var(--primary-hover);
+}
+
+/* ---- totals and their qualification ------------------------------------------------------- */
+
+.kpis.br-kpis--4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+/* the labels, the values and the sublines of a strip each share one row, however their words wrap
+   ("Candidate unseen burns" takes two lines where "Their area" takes one): each cell spans three
+   rows of the strip and lays its parts on them */
+.br-screen .kpis {
+  grid-auto-rows: auto;
+}
+.br-screen .kpis > .kpi {
+  display: grid;
+  grid-row: span 3;
+  grid-template-rows: subgrid;
+  row-gap: 2px;
+  align-content: start;
+}
+/* the smaller unit ("ha") would otherwise take the value's 34px line box on its own baseline and
+   push its subline 4px below its neighbours' */
+.br-screen .kpi__unit {
+  line-height: 0;
+}
+
+/* the honesty of the numbers, directly under them */
+.br-qual {
+  margin: 0 0 24px;
+  padding: 12px 16px;
+  border-left: 2px solid var(--accent);
+  background: var(--raised);
+}
+.br-qual p {
+  margin: 0;
+  max-width: 128ch;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 22px;
+}
+.br-qual p + p {
+  margin-top: 4px;
+  color: var(--muted);
+}
+
+/* ---- cards ---------------------------------------------------------------------------------- */
+
+.br-card,
+.br-notes {
+  margin-bottom: 24px;
+}
+.br-card__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px 24px;
+  margin-bottom: 16px;
+}
+.br-card__titles {
+  min-width: 0;
+}
+.br-card__sub {
+  margin: 2px 0 0;
+  max-width: 96ch;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 20px;
+}
+.br-card__aside {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0 16px;
+  max-width: 48ch;
+}
+/* the watchlist's way to every one of its rows (?watch=all), and back to the first 50 */
+.br-asidelink {
+  font-size: 13px;
+}
+
+/* the CSV language of the index: three links, the chosen one filled like the window's */
+.br-langs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 13px;
+}
+.br-langs__label {
+  margin-right: 6px;
+  color: var(--faint);
+}
+.br-langs__opt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 10px;
+  border-radius: var(--radius-control);
+  color: var(--muted);
+  text-decoration: none;
+  transition: color var(--t-hover) var(--ease-out), background-color var(--t-hover) var(--ease-out);
+}
+.br-langs__opt:hover {
+  color: var(--text);
+}
+.br-langs__opt[aria-current] {
+  background: var(--active);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.br-notes__title {
+  margin-bottom: 12px;
+}
+/* numbered (the site's base styles drop list markers), so a reader can point at "note 4" */
+.br-notes__list {
+  margin: 0;
+  padding: 0 0 0 18px;
+  list-style: decimal outside;
+  columns: 2;
+  column-gap: 48px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 20px;
+}
+.br-notes__list li {
+  margin: 0 0 10px;
+  padding-left: 4px;
+  break-inside: avoid;
+}
+.br-notes__list li::marker {
+  color: var(--faint);
+}
+
+/* the watchlist's ranking: how it did in its backtest, above its rows */
+.br-reliability {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--raised);
+}
+.br-reliability p {
+  margin: 0;
+  max-width: 128ch;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 20px;
+}
+.br-pill {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.br-pill--warning {
+  background: var(--pill-warning-bg);
+  color: var(--pill-warning-ink);
+}
+
+/* an empty block keeps its frame and says what is missing in one sentence */
+.br-empty {
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 22px;
+}
+.br-empty a {
+  color: var(--text);
+  text-decoration: underline;
+  text-decoration-color: var(--control);
+  text-underline-offset: 3px;
+}
+
+/* ---- tables --------------------------------------------------------------------------------- */
+
+/* between 641 and 1100px a table may be wider than its card: it scrolls inside the card, never the
+   page. The scroll box clips at its padding edge, so 4px of padding (taken back by the margin, the
+   table does not move) leave room for the focus ring of a link in the last column (2px at 2px out). */
+.br-tablebox {
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  margin-inline: -4px;
+  padding-inline: 4px;
+}
+.br-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  line-height: 20px;
+  font-variant-numeric: tabular-nums;
+}
+.br-table thead {
+  border-bottom: 1px solid var(--border);
+}
+.br-table thead th {
+  padding: 0 12px 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+  text-align: left;
+  vertical-align: bottom;
+  white-space: nowrap;
+}
+.br-table thead .br-group {
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--rule);
+  color: var(--text);
+}
+.br-group__note {
+  margin-left: 4px;
+  color: var(--faint);
+}
+.br-th-sub {
+  display: block;
+  color: var(--faint);
+}
+.br-table tbody tr {
+  border-top: 1px solid var(--rule);
+}
+.br-table tbody tr:first-child {
+  border-top: 0;
+}
+.br-table td,
+.br-table tbody th {
+  height: 44px;
+  padding: 0 12px;
+  color: var(--muted);
+  font-weight: 400;
+  text-align: left;
+  vertical-align: middle;
+}
+/* the outer columns sit on the card's padding line (only rows that span every column: the
+   districts' second header row starts at "Burns" and must keep its padding) */
+.br-table tbody tr > :first-child,
+.br-table thead tr:first-child > :first-child {
+  padding-left: 0;
+}
+.br-table tbody tr > :last-child,
+.br-table thead tr:first-child > :last-child {
+  padding-right: 0;
+}
+.br-num {
+  text-align: right !important;
+  white-space: nowrap;
+}
+.br-table .br-c-rank {
+  width: 28px;
+  color: var(--faint);
+}
+.br-table .br-c-name {
+  color: var(--text);
+  font-weight: 500;
+}
+.br-table--districts .br-c-name {
+  width: 20%;
+}
+.br-table--villages .br-c-name,
+.br-table--watch .br-c-name {
+  width: 24%;
+}
+.br-table .br-c-key {
+  color: var(--text);
+}
+.br-table .is-zero {
+  color: var(--faint);
+}
+.br-c-bar {
+  width: 15%;
+  min-width: 72px;
+  padding-left: 0 !important;
+}
+.br-bar {
+  display: block;
+  height: 6px;
+  min-width: 2px;
+  border-radius: 1px;
+  background: var(--mark-unseen);
+}
+.br-c-act {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.br-namelink {
+  color: var(--text);
+  text-decoration: none;
+}
+.br-namelink:hover {
+  text-decoration: underline;
+  text-decoration-color: var(--control);
+  text-underline-offset: 3px;
+}
+.br-rowlink {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  color: var(--text);
+  text-decoration: underline;
+  text-decoration-color: var(--control);
+  text-underline-offset: 3px;
+  transition: text-decoration-color var(--t-hover) var(--ease-out);
+}
+.br-rowlink:hover {
+  text-decoration-color: currentColor;
+}
+.br-ext {
+  flex: none;
+  color: var(--muted);
+}
+.br-unnamed {
+  color: var(--muted);
+  font-weight: 400;
+}
+.br-unnamed__why {
+  margin-left: 4px;
+  color: var(--faint);
+  font-size: 12px;
+}
+
+/* the watchlist's two groups: the top tenth, then the villages listed by their best rank only */
+.br-table tbody .br-grouprow {
+  border-top: 0;
+}
+.br-grouprow th {
+  height: auto !important;
+  padding: 12px 0 8px !important;
+  color: var(--text) !important;
+  font-size: 12px;
+  font-weight: 600 !important;
+  line-height: 16px;
+}
+.br-table tbody + tbody .br-grouprow {
+  border-top: 1px solid var(--border);
+}
+.br-table tbody + tbody .br-grouprow th {
+  padding-top: 20px !important;
+}
+.br-below .br-c-name {
+  color: var(--muted);
+  font-weight: 400;
+}
+.br-below .br-c-key {
+  color: var(--faint);
+}
+
+/* words that only a phone's list rows need (the desktop table has its headers) */
+.br-ph {
+  display: none;
+}
+/* a row's grey figures as one line: phones and portrait tablets only (see the 900px block) */
+.br-line {
+  display: none;
+}
+
+/* ---- sources and freshness ------------------------------------------------------------------ */
+
+.br-fresh {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 48px;
+  margin: 0 0 20px;
+}
+.br-fresh__item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.br-fresh dt {
+  color: var(--faint);
+  font-size: 12px;
+}
+.br-fresh dd {
+  margin: 0;
+  color: var(--text);
+}
+
+/* ---- a district the API does not know -------------------------------------------------------- */
+
+.br-known {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 48px;
+  max-width: 920px;
+}
+.br-known__caption {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--muted);
+}
+.br-known__title {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+}
+.br-known__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  columns: 2;
+  column-gap: 24px;
+}
+.br-known__link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  color: var(--text);
+  text-decoration: underline;
+  text-decoration-color: var(--control);
+  text-underline-offset: 3px;
+}
+.br-known__link:hover {
+  text-decoration-color: currentColor;
+}
+
+/* ---- loading ---------------------------------------------------------------------------------- */
+
+/* the title block of a skeleton has no words to size it, so it takes the row's free width */
+.br-skel-text {
+  flex: 1 1 auto;
+}
+/* bars inside the qualification box need a step off its own fill to be seen */
+.br-qual .skeleton {
+  background: var(--active);
+}
+.br-skel-rows {
+  margin-top: 16px;
+}
+.br-skel-row {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  height: 44px;
+  border-top: 1px solid var(--rule);
+}
+
+.br-print-only {
+  display: none;
+}
+
+/* ---- tablet --------------------------------------------------------------------------------- */
+
+@media (max-width: 1100px) {
+  .br-notes__list {
+    columns: 1;
+  }
+}
+/* a 901-1023px card holds every column but the bar (the hectares stay, as figures). The bar's
+   column folds to nothing rather than going: removing its cells would shift the colspans of the
+   districts' column groups by one. */
+@media screen and (min-width: 901px) and (max-width: 1023px) {
+  .br-table .br-c-bar {
+    width: 0;
+    min-width: 0;
+    padding: 0;
+  }
+  .br-c-bar > .br-bar {
+    display: none;
+  }
+}
+
+/* ---- phone ------------------------------------------------------------------------------------ */
+
+@media screen and (max-width: 640px) {
+  .br-scope {
+    align-items: stretch;
+  }
+  .br-scope__window {
+    text-align: left;
+  }
+  .br-days {
+    display: flex;
+  }
+  .br-days__opt {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 44px;
+  }
+  .br-skel-switch {
+    width: 100% !important;
+    height: 50px !important;
+  }
+  .br-eyebrow__link {
+    min-height: 44px;
+  }
+  .br-h1-state {
+    font-size: 16px;
+  }
+
+  .kpis.br-kpis--4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .kpis.br-kpis--4 > .kpi:nth-child(3) {
+    border-bottom: 0;
+  }
+  /* the source links keep their small type but take a 44px target, overlapping the quiet lines
+     around them instead of spreading the list */
+  .br-prov .prov__url {
+    display: inline-block;
+    padding: 12px 0;
+    margin: -12px 0;
+  }
+
+  .br-actions {
+    gap: 12px;
+  }
+  .br-csv {
+    width: 100%;
+  }
+  .br-csv__label {
+    width: 100%;
+  }
+  .br-csv .br-button {
+    flex: 1 1 0;
+    padding: 0 8px;
+  }
+  .br-button {
+    min-height: 44px;
+  }
+  .br-actions__links {
+    width: 100%;
+    margin-left: 0;
+  }
+  .br-textlink {
+    min-height: 44px;
+  }
+
+  .br-card__head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .br-card__aside {
+    justify-content: flex-start;
+    max-width: none;
+    text-align: left;
+  }
+  .br-langs__opt {
+    flex: 1 1 0;
+    min-height: 44px;
+  }
+  .br-reliability {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .br-fresh {
+    flex-direction: column;
+  }
+  .br-known {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .br-known__link {
+    min-height: 44px;
+  }
+}
+
+/* ---- phone and tablet portrait: the tables become lists of rows ------------------------------ */
+/* up to 900px: the tables need about 790-880px of card (measured from their columns), and a
+   portrait tablet's card is 650-720px wide; a table would otherwise scroll inside its card with
+   the last column cut at the edge */
+
+@media screen and (max-width: 900px) {
+  .br-tablebox {
+    overflow: visible;
+  }
+  .br-table {
+    display: block;
+    min-width: 0;
+  }
+  .br-table thead {
+    display: none;
+  }
+  .br-table tbody {
+    display: block;
+  }
+  .br-table tbody tr {
+    position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: 6px;
+    padding: 10px 0 10px 30px;
+  }
+  /* two zero-height line breaks: after line 1 (the name and the key figure; a table without a bar
+     would otherwise let the grey figures join it) and between the grey figures (order 3) and the
+     row's links (order 4) */
+  .br-table tbody tr::before {
+    content: "";
+    order: 2;
+    flex-basis: 100%;
+    height: 0;
+  }
+  .br-table tbody tr::after {
+    content: "";
+    order: 3;
+    flex-basis: 100%;
+    height: 0;
+  }
+  .br-table td,
+  .br-table tbody th {
+    display: block;
+    width: auto !important;
+    min-width: 0;
+    height: auto;
+    padding: 0 !important;
+    text-align: left !important;
+  }
+  .br-table .br-c-rank {
+    position: absolute;
+    top: 10px;
+    left: 0;
+    width: 22px !important;
+    line-height: 24px;
+    text-align: right !important;
+  }
+  .br-table .br-c-name {
+    order: 1;
+    flex: 1 1 0;
+    font-size: 15px;
+    line-height: 24px;
+  }
+  .br-table .br-c-key {
+    order: 1;
+    flex: none;
+    font-size: 15px;
+    line-height: 24px;
+  }
+  .br-table .br-c-bar {
+    order: 2;
+    flex-basis: 100%;
+    margin: 4px 0 6px;
+  }
+  .br-table colgroup {
+    display: none;
+  }
+  /* the grey figures: their cells stay for screen readers (read in order, each with its words) but
+     leave the layout, and the eye gets them as one line (RowLine, in the row's first figure cell).
+     As separate items they wrapped one by one, taking their dot to the start of the next line. */
+  .br-table .br-c-meta,
+  .br-c-lead > .br-cell {
+    position: absolute;
+    width: 1px !important;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .br-table .br-c-lead {
+    order: 3;
+    flex: 1 1 100%;
+  }
+  .br-line {
+    display: block;
+    overflow: hidden;
+  }
+  /* every figure has its dot before it, and the line starts one dot's width left of its box: the
+     dot of whichever figure begins a line falls outside the box and is clipped, so no line starts
+     or ends with one. A figure never breaks inside (nowrap); the line breaks between figures. */
+  .br-line__in {
+    display: block;
+    margin-left: -14px;
+  }
+  .br-line__in > span {
+    display: inline-block;
+    white-space: nowrap;
+  }
+  .br-line__in > span::before {
+    content: "·";
+    display: inline-block;
+    width: 14px;
+    color: var(--faint);
+    text-align: center;
+  }
+  .br-table .br-c-tt,
+  .br-table .br-c-act {
+    order: 4;
+  }
+  .br-table .br-c-act {
+    margin-right: 20px;
+  }
+  .br-table--districts .br-c-act {
+    margin-right: 0;
+    margin-left: auto;
+  }
+  .br-rowlink {
+    min-height: 44px;
+  }
+  /* the district's name is the row's way in: a 44px target that overlaps the row's padding
+     instead of making line 1 taller */
+  .br-table--districts .br-c-name .br-namelink {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    margin: -10px 0;
+  }
+  .br-table .br-dt-cell {
+    display: none;
+  }
+  .br-ph {
+    display: inline;
+  }
+  .br-dt {
+    display: none;
+  }
+  .br-table tbody .br-grouprow {
+    display: block;
+    padding: 0;
+  }
+  .br-table tbody .br-grouprow::before,
+  .br-table tbody .br-grouprow::after {
+    content: none;
+  }
+  .br-table tbody .br-grouprow th {
+    padding: 14px 0 6px !important;
+  }
+  .br-table tbody + tbody .br-grouprow th {
+    padding-top: 18px !important;
+  }
+}
+
+/* ---- print: A4, light, the tables and their qualifications, no bars or buttons ------------- */
+/* On top of app-screen.css's print block, which already gives the paper its white page and light
+   colours and hides [data-print="hide"] and the skip link. The rules on the shared app-screen classes
+   (.title-row, .kpi, .card, .prov) stay inside .br-canvas: a stylesheet stays loaded after the visitor
+   moves on, and a bare rule here would reshape a case file or bulletin printed later in the visit. */
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm 11mm;
+  }
+  /* paper is white whatever the theme on screen; this beats both themes' app tokens */
+  :root .br-screen.br-screen[data-surface="app"] {
+    --ground: #ffffff;
+    --surface: #ffffff;
+    --raised: #ffffff;
+    --active: #ffffff;
+    --border: #9a9a9a;
+    --rule: #d4d4d4;
+    --control: #9a9a9a;
+    --text: #000000;
+    --muted: #2b2b2b;
+    --faint: #4a4a4a;
+    --accent: #000000;
+    --pill-warning-bg: #ffffff;
+    --pill-warning-ink: #000000;
+    min-height: 0;
+  }
+  .br-canvas {
+    max-width: none;
+    padding: 0;
+  }
+  .br-c-bar > .br-bar {
+    display: none !important;
+  }
+  /* the bar's column folds to nothing (its cells stay, so the column groups keep their spans) */
+  .br-table .br-c-bar {
+    width: 0;
+    min-width: 0;
+    padding: 0 !important;
+  }
+  .br-print-only {
+    display: inline !important;
+  }
+  p.br-print-only {
+    display: block !important;
+  }
+  .br-title {
+    display: block;
+    margin-bottom: 10pt;
+  }
+  .br-scope {
+    align-items: flex-start;
+    margin-top: 6pt;
+  }
+  .br-scope__window {
+    text-align: left;
+  }
+  .br-canvas .title-row h1 {
+    font-size: 20pt;
+    line-height: 24pt;
+  }
+  .br-canvas .kpis {
+    margin-bottom: 10pt;
+    break-inside: avoid;
+  }
+  .br-canvas .kpi {
+    padding: 6pt 10pt;
+  }
+  .br-canvas .kpi__value {
+    font-size: 15pt;
+    line-height: 20pt;
+  }
+  .br-qual,
+  .br-reliability {
+    padding: 6pt 10pt;
+    break-inside: avoid;
+  }
+  .br-canvas .card {
+    padding: 0;
+    border: 0;
+  }
+  .br-card,
+  .br-notes {
+    margin-bottom: 14pt;
+  }
+  .br-card__head {
+    margin-bottom: 6pt;
+    break-after: avoid;
+  }
+  /* The watchlist, the other kind of evidence, starts its own sheet. Chrome does not keep the
+     break-after above here: the watchlist's heading ended one page and its ranking's qualification
+     began the next. On a new sheet the heading, the qualification and the first rows stay together. */
+  .br-card--watch {
+    break-before: page;
+  }
+  .br-pill {
+    border: 1px solid var(--border);
+  }
+  .br-notes__list {
+    columns: 2;
+    font-size: 8.5pt;
+    line-height: 11pt;
+  }
+  .br-table {
+    min-width: 0;
+    font-size: 8.5pt;
+    line-height: 11pt;
+  }
+  .br-table thead {
+    display: table-header-group;
+  }
+  /* headers may wrap on paper, so the names keep their width */
+  .br-table thead th {
+    white-space: normal;
+  }
+  .br-table td,
+  .br-table tbody th {
+    height: auto;
+    padding: 2.5pt 5pt;
+  }
+  .br-rowlink {
+    min-height: 0;
+  }
+  .br-table tr {
+    break-inside: avoid;
+  }
+  .br-tablebox {
+    overflow: visible;
+  }
+  .br-table a,
+  .br-eyebrow__link {
+    color: inherit !important;
+    text-decoration: none !important;
+  }
+  .br-canvas .prov--cols {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .br-canvas .prov__url {
+    text-decoration: none;
+  }
+  .br-printed {
+    margin-top: 8pt;
+    color: var(--muted);
+    font-size: 8pt;
+    overflow-wrap: anywhere;
+  }
+}
