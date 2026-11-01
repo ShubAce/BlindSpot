@@ -6,12 +6,13 @@ import { ErrorNote, Skeleton } from '@/components/ui/states';
 import type { SourceStatus } from '@/lib/api';
 import { number, relative } from '@/lib/format';
 import { useNow } from '@/lib/live';
+import { onePerUpstream } from '@/lib/sources';
 
 import { useSourcesLive } from './data';
 import styles from './styles';
 
 /**
- * Each upstream's freshness (/api/sources), compactly: one line in the title row ("21 of 22 sources
+ * Each upstream's freshness (/api/sources), compactly: one line in the title row ("N of M sources
  * fresh", with the first problem named) that opens the full list, problems first. Every number on
  * the screen comes from one of these sources.
  */
@@ -45,11 +46,11 @@ export function SourcesStatus() {
   const id = useId();
 
   const rows = useMemo(
-    () =>
-      (src.data?.sources ?? [])
-        .filter((s) => s.kind !== 'unregistered')
-        .slice()
-        .sort((a, b) => (ORDER[a.status] ?? 9) - (ORDER[b.status] ?? 9) || shortLabel(a).localeCompare(shortLabel(b))),
+    () => {
+      // onePerUpstream returns a fresh array, so sorting it in place is safe.
+      const merged = onePerUpstream((src.data?.sources ?? []).filter((s) => s.kind !== 'unregistered'));
+      return merged.sort((a, b) => (ORDER[a.status] ?? 9) - (ORDER[b.status] ?? 9) || shortLabel(a).localeCompare(shortLabel(b)));
+    },
     [src.data],
   );
   const ok = rows.filter((r) => r.status === 'ok').length;

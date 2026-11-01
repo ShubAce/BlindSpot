@@ -1,9 +1,12 @@
 'use client';
 
+import { useMemo } from 'react';
+
 import { ErrorNote } from '@/components/ui/states';
 import type { SourcesResponse } from '@/lib/api';
 import { number, relative, toDate } from '@/lib/format';
 import { useNow, useSources } from '@/lib/live';
+import { onePerUpstream } from '@/lib/sources';
 
 import { s } from './styles';
 import { shortLabel } from './words';
@@ -17,7 +20,7 @@ const HOUR_MS = 3_600_000;
 export function SourcesLine({ initial }: { initial: SourcesResponse | null }) {
   const q = useSources({ fallbackData: initial ?? undefined });
   const now = useNow(30_000);
-  const list = q.data?.sources ?? [];
+  const list = useMemo(() => onePerUpstream(q.data?.sources ?? []), [q.data]);
   if (!q.data) {
     return q.error ? <ErrorNote what="the source status" error={q.error} onRetry={() => void q.mutate()} /> : null;
   }

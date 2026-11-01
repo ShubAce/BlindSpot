@@ -6,12 +6,13 @@ import { loadFailed } from '@/components/pwa/LoadFailed';
 import { PATHS } from '@/lib/api';
 import { serverGet, type ApiResult } from '@/lib/api-server';
 import { dateIST, dateTimeIST, metric, MISSING, number, percent } from '@/lib/format';
+import { onePerUpstream } from '@/lib/sources';
 
 import { Architecture } from './Architecture';
 import { AucStrip, AuditForest, DiurnalChart, PassErrorChart, SmokeDots, type ForestRow } from './charts';
 import { FrameImage } from './FrameImage';
 import { Relative } from './Relative';
-import type { Featured, GeoDiurnal, GeoGroup, Headline, OrbitValidation, RiskMethod, ScarsSummary, SmokeCityRow, SmokeValidation, SourceRow, SourcesList } from './types';
+import type { Featured, GeoDiurnal, GeoGroup, Headline, OrbitValidation, RiskMethod, ScarsSummary, SmokeCityRow, SmokeValidation, SourcesList } from './types';
 
 /**
  * The method page's sections. Each is an async Server Component that reads its own endpoints (cached
@@ -693,24 +694,6 @@ function cadence(min: number | null): string {
   if (min === 1440) return 'Daily';
   if (min === 10080) return 'Weekly';
   return min % 60 === 0 ? `Every ${min / 60} h` : `Every ${min} min`;
-}
-
-/** One row per upstream: the API registers some upstreams under two keys (the Sentinel-2 COGs on
- *  AWS, as `s2_cog` and `s2_cog_e84`, share one address), which read as a duplicate. Rows with the
- *  same docs address merge into the one with the newest good data, which keeps its own status, label
- *  and last good time; a cadence missing there comes from its twin. */
-function onePerUpstream(rows: SourceRow[]): SourceRow[] {
-  const groups = new Map<string, SourceRow[]>();
-  for (const r of rows) {
-    const k = r.docs_url ?? `key:${r.key}`;
-    groups.set(k, [...(groups.get(k) ?? []), r]);
-  }
-  return [...groups.values()].map((g) => {
-    if (g.length === 1) return g[0];
-    const t = (r: SourceRow) => (r.last_success_at ? Date.parse(r.last_success_at) : -Infinity);
-    const best = g.reduce((a, b) => (t(b) > t(a) ? b : a));
-    return { ...best, cadence_minutes: best.cadence_minutes ?? g.find((r) => r.cadence_minutes != null)?.cadence_minutes ?? null };
-  });
 }
 
 export async function Sources() {
