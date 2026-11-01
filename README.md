@@ -10,7 +10,8 @@ measures the evening burning from a geostationary satellite, and follows the smo
 explains the past week's air with cited, number-checked answers.
 
 - **Live site:** https://blindspot-web-five.vercel.app (mission control at
-  [/live](https://blindspot-web-five.vercel.app/live), the daily bulletin at
+  [/live](https://blindspot-web-five.vercel.app/live), district field briefs at
+  [/brief](https://blindspot-web-five.vercel.app/brief), the daily bulletin at
   [/bulletin](https://blindspot-web-five.vercel.app/bulletin))
 - **Live API:** https://blindspot-api-azure.vercel.app/api/stats/headline (every response lists its sources)
 - **Method and accuracy:** [/method](https://blindspot-web-five.vercel.app/method), with every validation number read
@@ -49,9 +50,17 @@ time farmers burn, not how much they burn.
    and the IITM DSS estimate of stubble's share of Delhi's PM2.5.
 7. **An investigator you can question.** Gemini calls 11 tools that read the database. Every number in an answer is
    checked against the tool outputs before it is shown, every claim cites its source, and the map follows the
-   investigation as it runs.
-8. **A daily bulletin** in English, Hindi and Punjabi, verified the same way. A script check rejects Punjabi text
-   that contains letters from other scripts.
+   investigation as it runs. Follow-up questions keep the thread; a question can be spoken in English, Hindi or
+   Punjabi, and an answer read aloud. The site shows the investigator's own record, live (see below).
+8. **A daily bulletin** in English, Hindi and Punjabi, verified the same way, and read aloud on request. A script
+   check rejects Punjabi text that contains letters from other scripts.
+9. **Field briefs for the field teams.** For each district, the villages with candidate unseen burns and a watchlist
+   of harvested fields that rank highest for burning next, for the Punjab and Haryana pollution control boards'
+   teams: a CSV in English, Hindi or Punjabi, an A4 print, and links that open the district on the live map or ask
+   the investigator about it.
+10. **Built for a live demo.** Pages this browser has seen keep working offline from the last data, with a notice
+    saying how old it is (an installable web app with a hand-written service worker); a section that fails while the
+    API wakes up retries by itself; one identical navigation on every page; dark and light themes.
 
 ## Measured so far
 
@@ -64,6 +73,7 @@ As of 31 October 2026. The site's `/method` page shows the current values, read 
 | Smoke index vs measured PM2.5 (16 cities, 25–31 Oct)                                       | median r = 0.43 (Delhi 0.60); the CAMS model 0.62, ventilation alone 0.14; few independent hours, so not yet robust |
 | Burn-risk ranking vs the burns that followed (risk-v3, 213 pass pairs)                      | AUC 0.57 (95% CI 0.50–0.65; 0.5 is chance): weak, about what burning nearby predicts alone; the top tenth burnt 1.4× as often as average |
 | GK-2A fire pixels vs MODIS on Aqua (strong afternoon fires)                                 | 78% detected (n = 37); 15% of GK-2A's pixels unconfirmed                                   |
+| Investigator answers, last 30 days (read 1 Nov 2026, 14:37 IST; `/api/agent/stats`)          | 299 of 300 figures matched the tool outputs before display, in 23 answers; 1 answer corrected after its first draft, then passed |
 
 ## Architecture
 
