@@ -149,7 +149,9 @@ self.addEventListener('message', (event) => {
   const msg = event.data;
   if (!msg || msg.source !== 'blindspot') return;
   // A page that loaded before this worker controlled it (a first visit, a hard reload) lists what it
-  // loaded, so those answers are saved too.
+  // loaded, so those answers are saved too. LoadRecovery.tsx sends the same message, with no files,
+  // once a refresh has healed a page whose first load failed: the page is fetched and saved again,
+  // and keepRendered lets that good copy replace the failed one.
   if (msg.type === 'warm' && !off) event.waitUntil(warm(typeof msg.page === 'string' ? msg.page : null, Array.isArray(msg.urls) ? msg.urls : []));
   // The page's own kill switch (?sw=off reached it without passing through this worker).
   if (msg.type === 'off') event.waitUntil(turnOff());

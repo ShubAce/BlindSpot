@@ -15,6 +15,9 @@ import { atMost, siteAnswers, useConnectivity } from './connectivity';
  * on a page, and on leaving the page. It shows nothing: a section that recovers simply fills in, and
  * one that does not keeps its own note and Retry.
  *
+ * Once a refresh has left no mark, it asks the service worker to save this address again ('warm',
+ * public/sw.js), so the offline copy is no longer the failed first load.
+ *
  * Why three, so far apart: a failed read is cached for about a second and then served once more
  * while the server asks again in the background (lib/api-server.ts), so the first refresh can still
  * bring the failure back and start the fresh read that the second one picks up; 30 s covers an API
@@ -62,16 +65,22 @@ export function LoadRecovery() {
     let since = 0; // when this page's first mark was seen
     let timer = 0;
     let look = 0;
+    let healing = false; // a refresh went out on this page: once it lands without a mark, resave it
 
     const reset = () => {
       visit = window.location.pathname;
       tries = 0;
       since = 0;
+      healing = false;
       window.clearTimeout(timer);
       timer = 0;
     };
     const check = () => {
       if (window.location.pathname !== visit) reset();
+      if (healing && now.current.eligible && !now.current.pending && !hasFailedMark()) {
+        healing = false;
+        resavePage();
+      }
       if (timer || tries >= DELAYS.length || !hasFailedMark()) return;
       if (!since) since = Date.now();
       timer = window.setTimeout(() => void fire(), Math.max(500, since + DELAYS[tries] - Date.now()));
@@ -83,11 +92,12 @@ export function LoadRecovery() {
       if (!now.current.eligible || now.current.pending || document.visibilityState !== 'visible') return;
       if (!hasFailedMark()) {
         since = 0;
-        return;
+        return check(); // resaves the page if a refresh healed it
       }
       tries += 1;
       const page = visit;
       if (!(await siteAnswers()) || window.location.pathname !== page || !atMost(`${LOG_KEY}:${page}`, CAP, CAP_WINDOW, true)) return check();
+      healing = true;
       startTransition(() => router.refresh());
       // the next look is due at the next delay; by then the refreshed content has usually landed
       check();
@@ -122,6 +132,15 @@ export function LoadRecovery() {
 }
 
 const MARK = '[data-load-failed]';
+
+/** Ask the worker controlling this page, if any, to fetch and save this address again. */
+function resavePage() {
+  try {
+    navigator.serviceWorker?.controller?.postMessage({ source: 'blindspot', type: 'warm', page: window.location.href });
+  } catch {
+    // reading navigator.serviceWorker can throw where storage is blocked (Firefox): nothing to save
+  }
+}
 
 function bringsMark(r: MutationRecord): boolean {
   if (r.type === 'attributes') return true;
