@@ -120,8 +120,10 @@ export const useSmokeReceptors = () => useApi<SmokeReceptorsLive>('/api/smoke/re
 export const useSmokeBackLive = (city: string | null) =>
   useApi<SmokeBackLive>(city ? PATHS.smokeBack : null, city ? { city } : undefined, { refreshInterval: CADENCE.smoke, timeoutMs: SLOW });
 export const useSourcesLive = () => useApi<SourcesResponse>(PATHS.sources, undefined, { refreshInterval: CADENCE.sources });
+/** One scar's case, and never another's: SWR's keepPreviousData would show the case opened before
+ *  while this one loads, and keep showing it if this one fails. */
 export const useScarCaseLive = (id: number | string | null) =>
-  useApi<LiveScarCase>(id == null ? null : PATHS.scarCase(id), undefined, { refreshInterval: CADENCE.scars });
+  useApi<LiveScarCase>(id == null ? null : PATHS.scarCase(id), undefined, { refreshInterval: CADENCE.scars, keepPreviousData: false });
 
 /**
  * The forward smoke run is 2.5 MB gzip: requested only while the smoke layer is on, thinned with

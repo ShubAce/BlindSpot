@@ -530,7 +530,7 @@ export function MapPanel() {
           </div>
         ) : null}
 
-        <CaseSummary />
+        <CaseSummary drawn={data.scars} />
       </div>
 
       <SeasonReplay />

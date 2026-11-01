@@ -10,7 +10,8 @@ export default function CaseNotFound() {
       <div className="title-row__text">
         <h1>No case with this number</h1>
         <p className="finding">
-          The BlindSpot API has no burn scar with this id. Case numbers come from the scars on the live map; open one there to read its file.
+          The BlindSpot API has no burn scar with this number. The daily Sentinel-2 run re-measures the newest passes and stores their fields under new numbers, so a link
+          made before a run can name a number that is gone. Open the field on the live map to read its current file.
         </p>
         <p className="not-found__links">
           <Link className="button-primary" href="/live">

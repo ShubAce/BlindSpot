@@ -5,6 +5,7 @@ import { centroidOf, type LonLat, type ScarProps } from '@/lib/api';
 import { metricText, number, percent } from '@/lib/format';
 import type { Theme } from '@/lib/theme';
 
+import { inShape, type Ring } from '../geometry';
 import { paletteFor, SCAR_TILE_GEOMETRY, scarTileStep } from '../palette';
 import { DATA_ANCHOR, type AnchorProps } from '../types';
 import type { ScarFeature } from './scars';
@@ -227,8 +228,6 @@ export type DistrictShape = {
   geometry?: { type: string; coordinates: unknown } | null;
 };
 
-type Ring = [number, number][];
-
 /** Area-weighted centroid of a district's largest outer ring, and the box of all its rings (planar
  *  in degrees: close enough for a mark placed on a district tens of km across). */
 function shapeCentre(g: DistrictShape['geometry']): { c: LonLat; box: [number, number, number, number] } | null {
@@ -259,24 +258,6 @@ function shapeCentre(g: DistrictShape['geometry']): { c: LonLat; box: [number, n
 }
 
 const norm = (s: string | null | undefined) => (s ?? '').trim().toLowerCase();
-
-/** Whether (x, y) lies inside a ring: ray casting, planar in degrees (fine at district scale). */
-function inRing(ring: Ring, x: number, y: number): boolean {
-  let inside = false;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const [xi, yi] = ring[i];
-    const [xj, yj] = ring[j];
-    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
-  }
-  return inside;
-}
-
-/** Inside one of the shape's polygons: within its outer ring and outside its holes. */
-function inShape(g: DistrictShape['geometry'], x: number, y: number): boolean {
-  if (!g) return false;
-  const polys: Ring[][] = g.type === 'Polygon' ? [g.coordinates as Ring[]] : g.type === 'MultiPolygon' ? (g.coordinates as Ring[][]) : [];
-  return polys.some((p) => !!p[0] && inRing(p[0], x, y) && !p.slice(1).some((hole) => inRing(hole, x, y)));
-}
 
 /**
  * The season summary's name for the district under a point: its Survey of India polygon, matched to

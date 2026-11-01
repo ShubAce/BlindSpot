@@ -34,8 +34,9 @@ export type MapCommands = {
   hideLayers: (layers: readonly LiveLayer[]) => void;
   /** Remove every highlight and place mark. */
   clearHighlights: () => void;
-  /** Open (or with null, close) a scar's case summary and fly to it; `reveal` as for showLayers. */
-  openCase: (id: number | null, opts?: { reveal?: boolean }) => void;
+  /** Open (or with null, close) a scar's case summary and fly to it; `reveal` as for showLayers.
+   *  `replaces`: the gone case number this one is the field's current number for. */
+  openCase: (id: number | null, opts?: { reveal?: boolean; replaces?: number }) => void;
   /** Leave the season replay and show live data again. */
   goLive: () => void;
   /** Apply an agent `map` event ({action, payload}) as the API sends it. Returns false if it was not understood. */
@@ -114,7 +115,7 @@ export function useMapCommands(): MapCommands {
     const hideLayers: MapCommands['hideLayers'] = (layers) => dispatch({ type: 'layers', off: layers });
     const clearHighlights = () => dispatch({ type: 'clear' });
     const openCase: MapCommands['openCase'] = (id, opts = {}) => {
-      dispatch({ type: 'select', id });
+      dispatch({ type: 'select', id, from: opts.replaces });
       if (id != null) {
         dispatch({ type: 'layers', on: ['scars'] });
         dispatch({ type: 'highlight', kind: 'scar', ids: [id], replace: true, focus: true });

@@ -158,7 +158,8 @@ export function UnseenList() {
               ? null // the day's read failed: the note above says so, with no other day's rows under it
               : ranked.slice(0, shown).map((f, i) => {
                   const p = f.properties;
-                  const selected = s.selectedScar === p.id;
+                  // a row whose number the daily run gave up stays marked while its field's current case is open
+                  const selected = s.selectedScar === p.id || s.selectedFrom === p.id;
                   return (
                     <li key={p.id}>
                       <button

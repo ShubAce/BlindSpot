@@ -532,7 +532,8 @@ export class ApiError extends Error {
       case 'parse':
         return 'The API sent a reply this page could not read.';
       default:
-        if (this.status === 404) return 'The API does not serve this yet.';
+        // FastAPI says "Not Found" for a path it has no route for; a route that found no such row says which
+        if (this.status === 404) return detail && detail !== 'Not Found' ? `The API found nothing: ${detail}.` : 'The API does not serve this yet.';
         if (this.status === 429) return 'The API asked us to slow down.';
         if (this.status === 503 && detail === 'database unavailable') return 'The API is up, but its database is not answering.';
         if (this.status === 502 || this.status === 503) return detail ? `An upstream source is unavailable (${detail}).` : 'An upstream source is unavailable.';

@@ -28,6 +28,9 @@ export type LiveState = {
   replayDay: string | null;
   /** The scar whose case summary is open. */
   selectedScar: number | null;
+  /** The case number it stands in for: the field was opened under a number the daily Sentinel-2 run
+   *  has since given up, and this is its current one (scar-successor.ts). */
+  selectedFrom: number | null;
   /** The scar under the pointer in the ranked list (outlined on the map). */
   hoverScar: number | null;
   /** Ids per kind, as strings (the API mixes numeric and "openaq:6964" ids). */
@@ -64,6 +67,7 @@ const initialState: LiveState = {
   layers: DEFAULT_LAYERS,
   replayDay: null,
   selectedScar: null,
+  selectedFrom: null,
   hoverScar: null,
   highlights: EMPTY_HIGHLIGHTS,
   places: [],
@@ -77,7 +81,7 @@ type Action =
   | { type: 'layers'; on?: readonly LiveLayer[]; off?: readonly LiveLayer[]; only?: boolean }
   | { type: 'toggle'; layer: LiveLayer }
   | { type: 'replay'; day: string | null }
-  | { type: 'select'; id: number | null }
+  | { type: 'select'; id: number | null; from?: number }
   | { type: 'hover'; id: number | null }
   | { type: 'highlight'; kind: HighlightKind; ids: readonly (string | number)[]; replace: boolean; focus: boolean }
   | { type: 'place'; place: PlaceMark; replace: boolean }
@@ -97,9 +101,9 @@ function reducer(s: LiveState, a: Action): LiveState {
     case 'toggle':
       return { ...s, layers: { ...s.layers, [a.layer]: !s.layers[a.layer] } };
     case 'replay':
-      return { ...s, replayDay: a.day, selectedScar: a.day === s.replayDay ? s.selectedScar : null };
+      return a.day === s.replayDay ? s : { ...s, replayDay: a.day, selectedScar: null, selectedFrom: null };
     case 'select':
-      return { ...s, selectedScar: a.id };
+      return { ...s, selectedScar: a.id, selectedFrom: a.from ?? null };
     case 'hover':
       return s.hoverScar === a.id ? s : { ...s, hoverScar: a.id };
     case 'highlight': {
