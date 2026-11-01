@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { Suspense, type CSSProperties, type ReactNode } from 'react';
 
+import { LoadFailed } from '@/components/pwa/LoadFailed';
 import { Skeleton } from '@/components/ui/states';
 import { absoluteApiUrl } from '@/lib/api';
 import { dateIST, metricText, number, percent, timeIST } from '@/lib/format';
@@ -142,31 +143,39 @@ async function Moments() {
       ? `Of the ${number(h.total)} fire detections of the last ${number(h.days)} days, ${percent(h.daytime_share)} were made on daytime passes.`
       : null;
 
+  // Marked from the reads, not from a missing picture: a good case file can come without one, and
+  // there may be no case yet. The row (a client component) shows what is missing; the mark keeps this
+  // render from replacing a good offline copy (components/pwa/LoadFailed).
+  const failed = cases.failed || !dayFires || !dayDrift || !dayNight;
+
   return (
-    <DragRow title="One day over Punjab" titleId="day-h" aside={aside}>
-      {moments.map((m, i) => (
-        <li key={m.key} className={s.moment} style={{ '--gap': `${GAPS[i % GAPS.length]}px` } as CSSProperties}>
-          <h3 className={s.momentTitle}>{m.title}</h3>
-          <p className={s.momentText}>{m.text}</p>
-          <figure className={s.momentPic}>
-            {m.pic ? (
-              <>
-                {m.href ? (
-                  <Link href={m.href} className={s.momentLink} aria-label={`Open ${m.pic.caption.replace(/\.$/, '')}`}>
+    <>
+      <DragRow title="One day over Punjab" titleId="day-h" aside={aside}>
+        {moments.map((m, i) => (
+          <li key={m.key} className={s.moment} style={{ '--gap': `${GAPS[i % GAPS.length]}px` } as CSSProperties}>
+            <h3 className={s.momentTitle}>{m.title}</h3>
+            <p className={s.momentText}>{m.text}</p>
+            <figure className={s.momentPic}>
+              {m.pic ? (
+                <>
+                  {m.href ? (
+                    <Link href={m.href} className={s.momentLink} aria-label={`Open ${m.pic.caption.replace(/\.$/, '')}`}>
+                      <Pic src={m.pic.src} width={m.pic.width} height={m.pic.height} alt={m.pic.alt} className={s.cover} sizes="(max-width: 760px) 72vw, 280px" failText={m.pic.fail} local={m.pic.local} frame="lp-box-portrait" />
+                    </Link>
+                  ) : (
                     <Pic src={m.pic.src} width={m.pic.width} height={m.pic.height} alt={m.pic.alt} className={s.cover} sizes="(max-width: 760px) 72vw, 280px" failText={m.pic.fail} local={m.pic.local} frame="lp-box-portrait" />
-                  </Link>
-                ) : (
-                  <Pic src={m.pic.src} width={m.pic.width} height={m.pic.height} alt={m.pic.alt} className={s.cover} sizes="(max-width: 760px) 72vw, 280px" failText={m.pic.fail} local={m.pic.local} frame="lp-box-portrait" />
-                )}
-                <figcaption className={s.caption}>{m.pic.caption}</figcaption>
-              </>
-            ) : (
-              <span className={s.momentMissing}>No picture for this moment right now: its source did not answer.</span>
-            )}
-          </figure>
-        </li>
-      ))}
-    </DragRow>
+                  )}
+                  <figcaption className={s.caption}>{m.pic.caption}</figcaption>
+                </>
+              ) : (
+                <span className={s.momentMissing}>No picture for this moment right now: its source did not answer.</span>
+              )}
+            </figure>
+          </li>
+        ))}
+      </DragRow>
+      {failed ? <LoadFailed /> : null}
+    </>
   );
 }
 

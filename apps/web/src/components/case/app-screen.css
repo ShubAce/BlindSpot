@@ -759,4 +759,14 @@
     color: #000 !important;
     border-color: #bbb !important;
   }
+  /* The pictures' key prints alike from both themes: each swatch on its small dark tile, as the light
+     theme shows it on screen, so a white outline (an alerted or unchecked scar) stays visible on
+     white paper. The tile prints even with the browser's "background graphics" off. */
+  .evidence__swatch {
+    border-radius: 2px;
+    background: var(--photo-ground);
+    box-shadow: 0 0 0 2px var(--photo-ground); /* taste-skill-ignore: the tile's edge, not a shadow */
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
 }

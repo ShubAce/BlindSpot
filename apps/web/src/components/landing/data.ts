@@ -36,10 +36,13 @@ export const SLIPS = 6;
 /**
  * Candidate unseen burns for the slips: the API's most confident unseen scars, one per village so the
  * six slips are six places, largest first. Then each one's case file, for its picture.
+ * `failed`: a read behind them failed (the list, or a case file, whose slip then has no picture), so
+ * the page carries the failure mark (components/pwa/LoadFailed) and the offline worker keeps its good
+ * copy instead of this one.
  */
-export async function getCases(): Promise<{ list: ApiResult<ScarList>; cases: ScarCase[] }> {
+export async function getCases(): Promise<{ list: ApiResult<ScarList>; cases: ScarCase[]; failed: boolean }> {
   const list = await serverGet<ScarList>(PATHS.scars, { unseen: true, min_confidence: 0.9, limit: 120 }, 15_000);
-  if (!list.ok) return { list, cases: [] };
+  if (!list.ok) return { list, cases: [], failed: true };
   const seen = new Set<string>();
   const picked = list.data.features.features
     .map((f) => f.properties)
@@ -58,5 +61,5 @@ export async function getCases(): Promise<{ list: ApiResult<ScarList>; cases: Sc
     const r = files[i];
     return r.ok ? r.data : ({ case: p, imagery: null, generated_at: list.data.generated_at, sources: [] } as ScarCase);
   });
-  return { list, cases };
+  return { list, cases, failed: files.some((r) => !r.ok) };
 }

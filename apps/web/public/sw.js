@@ -48,7 +48,9 @@
 // deletes every store of another version. DATA covers the API's answers, pictures and map tiles,
 // which do not change with the site's code; bump it only when old answers would mislead a newer page.
 // .2: failed renders and prefetches are no longer saved (the .1 stores may hold both).
-const SHELL = '2026-11-01.2';
+// .3: pages are saved under their address without ?theme= (the .2 stores may hold both variants),
+// and with their title in a header (TITLE).
+const SHELL = '2026-11-01.3';
 const DATA = '2026-11-01.1';
 
 const PREFIX = 'blindspot-';
@@ -77,6 +79,11 @@ const STAMP = 'x-blindspot-saved';
 const FAILED_MARK = /data-load-failed(?:=""|":""|\\":\\"\\")/;
 /** Set on a saved page that carried FAILED_MARK, so a good answer replaces it and a failed one may. */
 const FAILED = 'x-blindspot-failed';
+/** A saved page's own <title>, URI-encoded (a header holds Latin-1 only). The /offline screen
+ *  (OfflineScreen.tsx) lists the page by it without reading the page, whose title can stream in
+ *  late: about 310 KB into a district brief. */
+const TITLE = 'x-blindspot-title';
+const TITLE_TAG = /<title[^>]*>([^<]{1,300})<\/title>/i;
 
 const API_ORIGINS = new Set(['https://blindspot-api-azure.vercel.app']);
 try {
@@ -231,8 +238,9 @@ function basemapAge(href) {
 /** A page load: network first (with the navigation preload, when the browser started one). */
 async function page(event) {
   const url = event.request.url;
-  const answer = saving(event, fromNetwork(event), (res) => isHtml(res) && isSaveablePage(url), (copy) => keepRendered(STORE.pages, url, copy, 'page'));
-  const saved = await savedPage(url);
+  const key = pageKey(url);
+  const answer = saving(event, fromNetwork(event), (res) => isHtml(res) && isSaveablePage(url), (copy) => keepRendered(STORE.pages, key, copy, 'page'));
+  const saved = await savedPage(key);
   if (!saved) {
     try {
       return await answer;
@@ -415,6 +423,8 @@ async function keepRendered(store, key, res, kind, text) {
   }
   const headers = new Headers(res.headers);
   if (failed) headers.set(FAILED, '1');
+  const title = kind === 'page' ? TITLE_TAG.exec(text) : null;
+  if (title) headers.set(TITLE, encodeURIComponent(title[1]));
   await put(store, key, new Response(text, { status: res.status, statusText: res.statusText, headers }));
 }
 
@@ -496,8 +506,10 @@ async function offlineScreen() {
   return new Response(FALLBACK_HTML, { status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } });
 }
 
-// The plain page shown only if /offline itself could not be saved (no network since install).
-const FALLBACK_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Offline · BlindSpot</title><style>:root{color-scheme:dark;--bg:#0c0a08;--ink:#fff;--muted:#b6b0a7}body{margin:0;padding:48px 16px;background:var(--bg);color:var(--ink);font:17px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}main{max-width:36rem;margin:0 auto}p{color:var(--muted)}a{color:var(--ink);display:inline-block;min-height:44px;line-height:44px}</style></head><body><main><h1>You are offline</h1><p>This browser has no saved copy of this page yet. It opens when the connection returns.</p><a href="">Try again</a></main></body></html>`;
+// The plain page shown only if /offline itself could not be saved (no network since install). It
+// takes the visitor's theme as the site's boot script does (src/lib/theme.ts: ?theme=, else the
+// saved 'bs-theme', else dark), saving nothing: this worker cannot read localStorage, the page can.
+const FALLBACK_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Offline · BlindSpot</title><script>try{var t=new URLSearchParams(location.search).get("theme");if(t==="light"||(t!=="dark"&&localStorage.getItem("bs-theme")==="light"))document.documentElement.setAttribute("data-theme","light")}catch(e){}</script><style>:root{color-scheme:dark;--bg:#0c0a08;--ink:#fff;--muted:#b6b0a7}:root[data-theme=light]{color-scheme:light;--bg:#efeeec;--ink:#1a1612;--muted:#5c554d}body{margin:0;padding:48px 16px;background:var(--bg);color:var(--ink);font:17px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}main{max-width:36rem;margin:0 auto}p{color:var(--muted)}a{color:var(--ink);display:inline-block;min-height:44px;line-height:44px}</style></head><body><main><h1>You are offline</h1><p>This browser has no saved copy of this page yet. It opens when the connection returns.</p><a href="">Try again</a></main></body></html>`;
 
 /** Save a page and every /_next/static file its HTML names (stylesheets, scripts, fonts, and the
  *  client chunks listed in its payload). */
@@ -506,10 +518,20 @@ async function saveDocument(href, pagesStore, filesStore) {
   const res = await fetch(href, { credentials: 'same-origin', headers: { Accept: 'text/html' } });
   if (!isHtml(res)) return false;
   const html = await res.text();
-  await keepRendered(pagesStore, new URL(href, self.location.origin).href, res, 'page', html);
+  await keepRendered(pagesStore, pageKey(href), res, 'page', html);
   // its files are saved either way: a later good copy of the page names the same ones
   await runLimited(staticRefs(html).map((u) => () => saveIfMissing(filesStore, u)), 6);
   return true;
+}
+
+/** The address a page is saved under: its own, without ?theme=. The HTML is the same for both themes
+ *  (the boot script reads the parameter in the browser), so a ?theme= link saved a second copy of
+ *  the page, which the /offline screen listed twice and whose link, followed later, switched the
+ *  visitor back to that theme over the one they had chosen since. */
+function pageKey(href) {
+  const url = new URL(href, self.location.origin);
+  if (url.searchParams.has('theme')) url.searchParams.delete('theme');
+  return url.href;
 }
 
 /** Same-origin, and not a ?sw=on / ?sw=off switch (the plain address is saved instead). */

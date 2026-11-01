@@ -4,7 +4,8 @@ import type { ReactNode } from 'react';
 import { Kpi } from '@/components/case/parts';
 import { dateTimeIST, metricText, MISSING, NBSP, number } from '@/lib/format';
 
-import { BarCell, BriefScope, CsvButtons, LongerWindows, NotesCard, RowLine, SourcesFoot } from './parts';
+import { CsvButtons } from './CsvDownload';
+import { BarCell, BriefScope, LongerWindows, NotesCard, RowLine, SourcesFoot } from './parts';
 import { PrintButton } from './PrintButton';
 import { auditSentence, count, csvHref, districtHref, ha, haText, indexHref, passDate, plural, rankingSentence, ROW_LIMIT, strengthLabel, windowWords } from './read';
 import type { BriefVillage, BriefWatchRow, DistrictBriefResponse } from './types';

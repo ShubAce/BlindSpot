@@ -2,7 +2,7 @@
 
 /**
  * Prints the brief (brief.css lays it out on A4 paper, light, without the site's bars and buttons).
- * The one client part of the brief: printing needs the browser.
+ * A client part of the brief, like the CSV links (CsvDownload.tsx): printing needs the browser.
  */
 export function PrintButton() {
   return (

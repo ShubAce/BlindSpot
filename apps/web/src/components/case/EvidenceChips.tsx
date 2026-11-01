@@ -145,7 +145,8 @@ export function EvidenceChips({
         <Chip src={post?.swir_url ?? null} alt={altFor(post, 'short-wave infrared', 'after')} label="Short-wave infrared" outline={outline} showOutline={showOutline} dots={dots} state={state} />
       </div>
       <div className="evidence__foot">
-        <label htmlFor={toggleId} className="switch">
+        {/* a control, so not on paper: the pictures print with the outline as it is set on screen */}
+        <label htmlFor={toggleId} className="switch" data-print="hide">
           <input id={toggleId} type="checkbox" checked={showOutline} onChange={(e) => setShowOutline(e.target.checked)} />
           <span>Outline the scar</span>
         </label>

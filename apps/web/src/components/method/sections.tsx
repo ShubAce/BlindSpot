@@ -538,7 +538,13 @@ export async function Limits() {
   const na = sm.ok ? sm.data.method?.match(/Correlation is not attribution.*$/)?.[0] : null;
   if (sm.ok && sm.data.headline) items.push({ title: 'The smoke check is thin.', body: `In Delhi, ${sm.data.headline}.${na ? ` ${na}` : ''}` });
   if (rk.ok && rk.data.method?.note) items.push({ title: 'Risk is a ranking.', body: prose(rk.data.method.note) });
-  if (!items.length) return <p className="m-failed">The limitations are stated by the API with each figure, and the API is not answering just now.</p>;
+  if (!items.length)
+    return (
+      // marked when a read failed, so this render never replaces a good offline copy of the page
+      <p className="m-failed" {...loadFailed(!h.ok || !s.ok || !sm.ok || !rk.ok || !geo.ok)}>
+        The limitations are stated by the API with each figure, and the API is not answering just now.
+      </p>
+    );
   return (
     <ul className="m-limits">
       {items.map((it) => (

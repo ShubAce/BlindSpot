@@ -43,7 +43,8 @@ export function Proof() {
 
 async function TippedIn() {
   const day = await gibsDay('modisFires');
-  if (!day) return <div className={`lp-box lp-box-wide ${s.tipIn}`} />;
+  // GIBS did not answer: the empty frame, marked so the offline worker keeps its good copy
+  if (!day) return <div className={`lp-box lp-box-wide ${s.tipIn}`} data-load-failed="" />;
   const pic = gibsPicture('modisFires', day, boxAround(AOI_CENTRE[0], AOI_CENTRE[1], 6, 16 / 9), 1280);
   return (
     <figure className={s.tipIn}>

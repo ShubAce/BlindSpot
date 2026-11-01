@@ -64,7 +64,7 @@ async function BulletinBody({ searchParams }: { searchParams: Promise<{ lang?: s
 
 export default function BulletinPage({ searchParams }: { searchParams: Promise<{ lang?: string | string[] }> }) {
   return (
-    <div data-surface="app" className="app-screen">
+    <div data-surface="app" className="app-screen bulletin-screen">
       <a className="skip-link" href="#main">
         Skip to the bulletin
       </a>

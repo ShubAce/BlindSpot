@@ -25,8 +25,10 @@
    paint and switched by src/lib/theme.ts. Light values live under :root[data-theme="light"], and the
    app surface's under :root[data-theme="light"] [data-surface="app"] (the app block re-declares
    --surface, --ink, --muted and --accent, so a :root-only value would not reach it). Every token
-   added for light takes its old value on dark, so dark renders exactly as before. The same checks for
-   the light values (scratch script with the dataviz validator, 2026-11-01):
+   added for light takes its old value on dark, so dark renders exactly as before. public/sw.js's
+   offline fallback page (FALLBACK_HTML) cannot load this file: it repeats each theme's --bg and --ink,
+   and a muted grey, as literals. The same checks for the light values (scratch script with the
+   dataviz validator, 2026-11-01):
    page  ink #1a1612 on bg 15.51:1, on surface 14.17:1 · muted #5c554d on bg 6.33:1, on surface 5.78:1
          accent #7a5c22 on bg 5.36:1, on surface 4.89:1 (text, links, focus, the 1px line). The brand
          gold #c9a45a fails as text on light (2.03:1 on bg), so it keeps two jobs only: --accent-fill

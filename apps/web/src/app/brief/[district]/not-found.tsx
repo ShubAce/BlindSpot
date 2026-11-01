@@ -4,6 +4,7 @@ import { Suspense } from 'react';
 import { Skeleton } from '@/components/ui/states';
 import { getBriefIndex } from '@/components/brief/data';
 import { DEFAULT_DAYS, districtHref, windowWords } from '@/components/brief/read';
+import { LoadFailed } from '@/components/pwa/LoadFailed';
 
 /**
  * A district the API does not know (its 404 names the districts with burn scars). Rendered inside the
@@ -15,7 +16,9 @@ const LIST_DAYS = 30;
 
 async function KnownDistricts() {
   const r = await getBriefIndex(LIST_DAYS);
-  if (!r.ok || !r.data.districts?.length) return null;
+  // no list without the read; the mark keeps this render from replacing a good offline copy
+  if (!r.ok) return <LoadFailed />;
+  if (!r.data.districts?.length) return null;
   const byState = new Map<string, string[]>();
   for (const d of r.data.districts) {
     const s = d.state ?? 'Other';

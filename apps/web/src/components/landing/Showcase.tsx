@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { Suspense, type CSSProperties } from 'react';
 
+import { LoadFailed, loadFailed } from '@/components/pwa/LoadFailed';
 import { Skeleton } from '@/components/ui/states';
 import { absoluteApiUrl } from '@/lib/api';
 import { dateIST, metricText, number } from '@/lib/format';
@@ -67,7 +68,8 @@ export function Showcase() {
 
 async function PlainsPicture() {
   const day = await gibsDay('viirsTrueColour');
-  if (!day) return <div className={s.showcasePic} />;
+  // GIBS did not answer: the empty frame, marked so the offline worker keeps its good copy
+  if (!day) return <div className={s.showcasePic} data-load-failed="" />;
   const pic = gibsPicture('viirsTrueColour', day, boxAround(AOI_CENTRE[0], AOI_CENTRE[1], 5.6, 1.6), 1920);
   return (
     <figure className={s.showcasePic}>
@@ -93,11 +95,12 @@ async function UnseenClaim() {
 }
 
 async function Slips() {
-  const { list, cases } = await getCases();
+  const { list, cases, failed } = await getCases();
   if (!list.ok) return <p className={`${s.slipsMissing} ${s.honestOnDark}`} data-load-failed="">{`The case files did not load. ${list.error.message}`}</p>;
   if (!cases.length) return <p className={`${s.slipsMissing} ${s.honestOnDark}`}>No candidate unseen burn has been confirmed against the fire alerts yet.</p>;
+  // a case file that failed leaves its slip without a picture: the list carries the mark
   return (
-    <ol className={s.slips} aria-label="Case files of candidate unseen burns">
+    <ol className={s.slips} aria-label="Case files of candidate unseen burns" {...loadFailed(failed)}>
       {cases.map((c, n) => (
         <li key={c.case.id} className={s.slipItem} data-r style={{ '--h': `${SLIP_SHAPE[n % SLIP_SHAPE.length].h}svh`, '--tilt': `${SLIP_SHAPE[n % SLIP_SHAPE.length].tilt}deg`, '--i': n } as CSSProperties}>
           <CaseSlip c={c} />
@@ -143,7 +146,8 @@ function CaseSlip({ c }: { c: ScarCase }) {
 
 async function AnswerSlip() {
   const r = await getExamples();
-  if (!r.ok) return null;
+  // no slip without the read, but the render is marked, so it never replaces a good offline copy
+  if (!r.ok) return <LoadFailed />;
   const all = (r.data.examples ?? []).filter((e) => e.ok !== false && e.answer && e.question && e.verification?.passed);
   // The answer about one of the case files below, if one is stored; else what the satellites missed;
   // else Delhi's air; else any.

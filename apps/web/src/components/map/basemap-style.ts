@@ -121,24 +121,22 @@ function withoutBadLabels(layer: LayerSpecification): LayerSpecification {
   return { ...layer, filter } as LayerSpecification;
 }
 
-/** Place labels in the page's greys: cities in the muted ink, smaller places a step darker. On light
- *  the dot positron sets beside a town or city goes as well: dark's style asks for a dot its sprite
- *  does not have, so the dark map shows none, and on light a near-black dot would read as one of our
- *  marks (a satellite, a fire). */
+/** Place labels in the page's greys: cities in the muted ink, smaller places a step darker. The dot
+ *  beside a town or city goes as well. On light, a near-black dot would read as one of our marks (a
+ *  satellite, a fire). Dark's style asks for "circle-11", which its sprite does not have (it has
+ *  "circle_11"), so the dark map never showed one; dropping the request there changes nothing on
+ *  screen and stops MapLibre's 'Image "circle-11" could not be loaded' warning on every load. */
 function placeLabelColours(layer: LayerSpecification, theme: Theme): LayerSpecification {
   if (layer.type !== 'symbol' || sourceLayer(layer) !== 'place') return layer;
   const minor = /village|other|suburb/.test(layer.id);
   const c = LABELS[theme];
-  const out = {
+  const layout: Record<string, unknown> = { ...(layer.layout ?? {}) };
+  delete layout['icon-image'];
+  return {
     ...layer,
+    layout,
     paint: { ...(layer.paint ?? {}), 'text-color': minor ? c.minor : c.city, 'text-halo-color': c.halo, 'text-halo-width': 1 },
   } as LayerSpecification;
-  if (theme === 'light' && out.layout && 'icon-image' in out.layout) {
-    const layout: Record<string, unknown> = { ...out.layout };
-    delete layout['icon-image'];
-    return { ...out, layout } as LayerSpecification;
-  }
-  return out;
 }
 
 /** Light only: positron writes rivers and lakes in blue, the one hue on it that is not ours; they

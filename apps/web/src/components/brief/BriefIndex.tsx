@@ -4,6 +4,7 @@ import { Kpi } from '@/components/case/parts';
 import { MISSING, NBSP } from '@/lib/format';
 import { LANGS } from '@/lib/langs';
 
+import { CsvRowLink } from './CsvDownload';
 import { BarCell, BriefScope, LongerWindows, NotesCard, RowLine, SourcesFoot } from './parts';
 import { auditSentence, count, csvFileName, csvHref, districtHref, ha, indexHref, passDate, plural, rankingSentence, windowWords } from './read';
 import type { BriefDistrictRow, BriefIndexResponse, CsvLang } from './types';
@@ -234,10 +235,10 @@ function DistrictRow({
         <span className="br-ph">{` ${plural(r.top_tenth_villages, 'village')}`}</span>
       </td>
       <td className="br-c-act" data-print="hide">
-        <a className="br-rowlink" href={csvHref(r.links?.csv, r.district, days, lang)} download={csvFileName(r.district, w, lang)} hrefLang={lang} type="text/csv">
+        <CsvRowLink href={csvHref(r.links?.csv, r.district, days, lang)} fileName={csvFileName(r.district, w, lang)} lang={lang} district={r.district}>
           CSV
           <span className="sr-only">{` for ${r.district}, in ${langName}`}</span>
-        </a>
+        </CsvRowLink>
       </td>
     </tr>
   );

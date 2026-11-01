@@ -9,7 +9,8 @@
  *
  * Put the attribute on the note itself: data-load-failed="" on a note that only a failure renders,
  * {...loadFailed(!r.ok)} on one that renders either way. <LoadFailed /> is for a failure that a client
- * component draws from its props: the payload carries a client component's props, not its markup.
+ * component draws from its props (the payload carries a client component's props, not its markup), or
+ * one that leaves nothing on the page to carry the attribute.
  */
 export function LoadFailed() {
   return <span hidden data-load-failed="" />;

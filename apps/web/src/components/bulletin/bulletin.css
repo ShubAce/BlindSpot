@@ -268,7 +268,13 @@
 
 /* ---- print: the bulletin on paper, black on white, its sources with their full addresses ---- */
 @media print {
-  @page {
+  /* A named page, asked for by the bulletin's screen only: a plain @page rule would hold for the
+     whole document, and this stylesheet stays loaded after the visitor moves on (a brief printed
+     after a visit to the bulletin took these margins). */
+  .bulletin-screen {
+    page: bulletin;
+  }
+  @page bulletin {
     margin: 16mm 14mm;
   }
   /* The paper's colours (the light theme's, from either theme), the white page and what never

@@ -111,6 +111,30 @@
   color: var(--muted);
   font-size: 13px;
 }
+/* A CSV that did not download (CsvDownload.tsx): a line of its own under the row of actions, or
+   under a row's link on the index. Only a failure renders it, so the brief's layout is otherwise
+   untouched. --warning as text: 4.8:1 on the light ground, 5.4:1 on the light card; more on dark. */
+.br-csvnote {
+  margin: 0;
+  color: var(--warning);
+  font-size: 13px;
+  line-height: 20px;
+}
+/* last in the row, so the buttons, Print and the links keep their places (a phone puts it straight
+   under the buttons, where the group already spans the width: see the 640px block) */
+.br-actions > .br-csvnote {
+  flex-basis: 100%;
+  order: 1;
+}
+.br-c-act .br-csvnote {
+  display: block;
+  font-size: 12px;
+  line-height: 16px;
+}
+[aria-busy="true"].br-button,
+[aria-busy="true"].br-rowlink {
+  cursor: progress;
+}
 .br-actions__links {
   display: flex;
   flex-wrap: wrap;
@@ -705,6 +729,10 @@
     flex: 1 1 0;
     padding: 0 8px;
   }
+  /* the CSV group spans the width here: its note follows it directly, above Print */
+  .br-actions > .br-csvnote {
+    order: 0;
+  }
   .br-button {
     min-height: 44px;
   }
@@ -915,7 +943,14 @@
    moves on, and a bare rule here would reshape a case file or bulletin printed later in the visit. */
 
 @media print {
-  @page {
+  /* A named page, which only the brief's own screen asks for. A plain @page rule would hold for the
+     whole document, and this stylesheet stays loaded after the visitor moves on: a case file printed
+     after a brief came out on these margins, and the bulletin's own rule, loaded later, overrode
+     them on a brief printed after a visit to the bulletin (one sheet more, one nearly empty). */
+  .br-screen {
+    page: brief;
+  }
+  @page brief {
     size: A4 portrait;
     margin: 12mm 11mm;
   }

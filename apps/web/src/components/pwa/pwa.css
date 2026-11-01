@@ -134,6 +134,11 @@
   body:has(.lv-listCard) .pwa-dock[data-surface] {
     bottom: calc(var(--sn-tabs-h, 0px) + 60px);
   }
+  /* ...and under it while it is open (the sheet is 25): over its rows the notice hid one and a half
+     of them; it shows again, in the same place, once the sheet closes */
+  body:has(.lv-listCard[data-open]) .pwa-dock[data-surface] {
+    z-index: 20;
+  }
   /* touch targets */
   .pwa-notice__hide,
   .pwa-pill {

@@ -83,8 +83,9 @@ export function csvHref(csvPath: string | null | undefined, district: string, da
   }
 }
 
-/** The name the file is saved under when the browser honours `download` (same origin only; a
- *  cross-origin download keeps the API's own name from Content-Disposition). */
+/** The name the file is saved under: CsvDownload.tsx saves it from a same-origin blob, which honours
+ *  `download` (the plain cross-origin link, before JavaScript, keeps the API's own name from
+ *  Content-Disposition). */
 export const csvFileName = (district: string, w: BriefWindow | null, lang: CsvLang) =>
   `blindspot-brief-${districtSlug(district)}${w ? `-${w.from}-to-${w.to}` : ''}-${lang}.csv`;
 

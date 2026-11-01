@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useSyncExternalStore } from 'react';
 
-import { CACHE_PREFIX, markScreen, SAVED_AT_HEADER, siteAnswers } from './connectivity';
+import { CACHE_PREFIX, markScreen, SAVED_AT_HEADER, siteAnswers, TITLE_HEADER } from './connectivity';
 import { savedAgo, savedStamp, useClock } from './time';
 
 /**
@@ -156,7 +156,7 @@ async function listSavedPages(): Promise<SavedPage[]> {
             if (!res) return null;
             const url = new URL(req.url);
             const href = `${url.pathname}${url.search}`;
-            return { href, savedAt: Number(res.headers.get(SAVED_AT_HEADER)) || null, title: (await titleOf(res)) ?? href };
+            return { href, savedAt: Number(res.headers.get(SAVED_AT_HEADER)) || null, title: titleOf(res.headers.get(TITLE_HEADER)) ?? href };
           }),
         );
       }),
@@ -173,34 +173,18 @@ async function listSavedPages(): Promise<SavedPage[]> {
 }
 
 const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'", '#x27': "'", nbsp: ' ' };
-const TITLE = /<title[^>]*>([^<]{1,300})<\/title>/i;
 
-/** The page's own <title>, without the site's suffix. Only the start of the page is read: the title
- *  sits in its first 2 KB, or about 48 KB in where the page streams it (a case file), while a whole
- *  page is 100 to 500 KB. */
-async function titleOf(res: Response): Promise<string | null> {
-  const reader = res.body?.getReader();
-  if (!reader) return null;
-  const decoder = new TextDecoder();
-  let html = '';
+/** The page's own <title>, without the site's suffix. The worker took it from the page as it saved
+ *  it (TITLE_HEADER), so no saved page is read here: a title can stream in 310 KB into a page. */
+function titleOf(saved: string | null): string | null {
+  if (!saved) return null;
   try {
-    while (html.length < 200_000) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      html += decoder.decode(value, { stream: true });
-      const m = TITLE.exec(html);
-      if (m) {
-        const t = m[1]
-          .replace(/&(amp|lt|gt|quot|#39|#x27|nbsp);/g, (all, e: string) => ENTITIES[e] ?? all)
-          .replace(/\s*·\s*BlindSpot\s*$/, '')
-          .trim();
-        return t || null;
-      }
-    }
-    return null;
+    const t = decodeURIComponent(saved)
+      .replace(/&(amp|lt|gt|quot|#39|#x27|nbsp);/g, (all, e: string) => ENTITIES[e] ?? all)
+      .replace(/\s*·\s*BlindSpot\s*$/, '')
+      .trim();
+    return t || null;
   } catch {
-    return null;
-  } finally {
-    void reader.cancel().catch(() => undefined);
+    return null; // not the worker's encoding: the address stands in
   }
 }

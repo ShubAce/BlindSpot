@@ -6,9 +6,8 @@ import { ProvItem } from '@/components/case/parts';
 import { Freshness } from '@/components/ui/states';
 import type { Envelope } from '@/lib/api';
 import { dateTimeIST, MISSING, NBSP, number } from '@/lib/format';
-import { LANGS } from '@/lib/langs';
 
-import { csvFileName, csvHref, DAY_CHOICES, windowRange } from './read';
+import { DAY_CHOICES, windowRange } from './read';
 import type { BriefRiskRun, BriefWindow } from './types';
 
 /**
@@ -115,34 +114,6 @@ export function RowLine({ parts }: { parts: (string | null | undefined)[] }) {
           ))}
       </span>
     </span>
-  );
-}
-
-/** One link per CSV language, straight to the API's attachment (it carries the audit in its header
- *  cells, so a forwarded file keeps its qualification). */
-export function CsvButtons({ csvPath, district, days, window: w }: { csvPath: string | null | undefined; district: string; days: number; window: BriefWindow | null }) {
-  return (
-    <div className="br-csv" role="group" aria-labelledby="br-csv-label">
-      <span className="br-csv__label" id="br-csv-label">
-        Villages as CSV
-      </span>
-      {LANGS.map((l) => (
-        <a
-          key={l.code}
-          className="br-button"
-          href={csvHref(csvPath, district, days, l.code)}
-          download={csvFileName(district, w, l.code)}
-          hrefLang={l.code}
-          type="text/csv"
-          title={`${district}: every village of the window, in ${l.english} (CSV for Excel)`}
-        >
-          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 14 14">
-            <path d="M7 1.75v7M4 6l3 3 3-3M2.25 11.75h9.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          <span lang={l.code}>{l.label}</span>
-        </a>
-      ))}
-    </div>
   );
 }
 

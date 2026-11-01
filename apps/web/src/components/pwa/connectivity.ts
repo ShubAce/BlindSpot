@@ -35,6 +35,8 @@ export type Connectivity = {
 
 /** The header the worker stamps on every saved copy (epoch ms). Keep equal to STAMP in public/sw.js. */
 export const SAVED_AT_HEADER = 'x-blindspot-saved';
+/** The header with a saved page's own <title>, URI-encoded. Keep equal to TITLE in public/sw.js. */
+export const TITLE_HEADER = 'x-blindspot-title';
 /** Every store the worker keeps starts with this. Keep equal to PREFIX in public/sw.js. */
 export const CACHE_PREFIX = 'blindspot-';
 
@@ -117,9 +119,14 @@ async function refreshWhenReachable() {
   const answers = await siteAnswers();
   probing = false;
   if (!answers || state.doc?.kind !== 'page') return;
+  // The guard comes before the notice goes: Wi-Fi that drops and returns twice within the minute
+  // would otherwise clear the notice with no refresh behind it, leaving the saved copy on screen as
+  // if it were live (and the 30 s probe, which only asks while a saved page shows, never asking
+  // again). Refused, the saved copy keeps its notice and the probe asks again after the minute.
+  // With storage blocked it refreshes anyway: the site answered just now, which is the main guard.
+  if (!onceIn(REFRESHED_KEY, 60_000, true)) return;
   set({ doc: null });
-  // with storage blocked it refreshes anyway: the site answered just now, which is the main guard
-  if (onceIn(REFRESHED_KEY, 60_000, true)) refreshPage?.();
+  refreshPage?.();
 }
 
 /** True at most once in `ms` for `key` in this tab (sessionStorage), so a step that refreshes or

@@ -26,6 +26,9 @@ export type Theme = 'dark' | 'light';
 /** Dispatched on window after every theme change; `detail` is the new Theme. */
 export const THEME_EVENT = 'bs-themechange';
 
+// public/sw.js repeats these three and cannot import this module, so keep them equal there: pageKey
+// drops PARAM from a saved page's address, and FALLBACK_HTML's script reads PARAM and STORAGE_KEY and
+// sets ATTRIBUTE.
 const STORAGE_KEY = 'bs-theme';
 const PARAM = 'theme';
 const ATTRIBUTE = 'data-theme';
