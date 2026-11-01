@@ -27,3 +27,11 @@ export const CADENCE = {
   /** Boundaries and cities do not change during a session. */
   static: 0,
 } as const;
+
+/**
+ * When data built by the daily Sentinel-2 run (scars, risk, case files) is late. The polling cadences
+ * above are how often the browser re-reads, not how often this data changes, so three of them would
+ * call a case built this morning stale. This is the API's own rule for that job: its schedule's longest
+ * gap plus an hour (docs/api-contract-notes.md, "Headline freshness").
+ */
+export const DAILY_RUN_STALE_MS = 26 * 60 * MIN;

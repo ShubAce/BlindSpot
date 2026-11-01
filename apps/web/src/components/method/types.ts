@@ -92,7 +92,7 @@ export type SmokeValidation = Envelope & {
 /** What the method page keeps of /api/smoke/validation (the series are dropped on the server). */
 export type SmokeCityRow = { city: string; model: number | null; modelLag: number | null; cams: number | null; ventilation: number | null; nEff: number | null; hours: number | null };
 
-export type AucPair = { t0: IsoTime; t1: IsoTime; auc: number | null; base_rate: number | null; burnt: number; unburnt: number };
+export type AucPair = { t0: IsoTime; t1: IsoTime; tile?: string; auc: number | null; base_rate: number | null; burnt: number; unburnt: number };
 export type RiskMethod = Envelope & {
   as_of: IsoTime;
   totals: { clusters: number; area_ha: number; scored?: number };
@@ -112,7 +112,7 @@ export type RiskMethod = Envelope & {
       baselines?: Record<string, { auc: number; precision?: number }>;
       why_this_pair?: string;
     } | null;
-    all_pairs: { pairs: number; auc_weighted_mean: number | null; auc_by_pair: AucPair[] } | null;
+    all_pairs: { pairs: number; auc_weighted_mean: number | null; auc_ci95?: [number, number] | null; auc_by_pair: AucPair[] } | null;
     timing_tested?: boolean;
   } | null;
   reason: string | null;

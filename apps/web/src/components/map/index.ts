@@ -31,6 +31,6 @@ export { describeRisk, riskLayers, type RiskFeature } from './layers/risk';
 export { describeSatellite, satelliteLayers } from './layers/satellites';
 export { lookOffsetText, nextLookParts, type NextLook } from './look';
 export { describeScar, scarState, scarsLayers, type ScarFeature, type ScarState } from './layers/scars';
-export { binScars, describeDistrictTile, describeScarTile, districtTiles, mercatorMetresPerPixel, scarTilesLayer, type DistrictSeasonRow, type DistrictShape, type ScarTile } from './layers/scar-tiles';
+export { binScars, describeDistrictTile, describeScarTile, districtNameAt, districtTiles, mercatorMetresPerPixel, scarTilesLayer, type DistrictSeasonRow, type DistrictShape, type ScarTile } from './layers/scar-tiles';
 export { smokeLayers, smokeTimeAt } from './layers/smoke';
 export { readWindField, sampleWind, windLayer, windStreamlines } from './layers/wind';

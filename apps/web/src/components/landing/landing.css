@@ -35,6 +35,14 @@
   --clock-look-later: color-mix(in srgb, var(--accent-mark) 50%, transparent);
   /* the stamp's margin: a lighter paper than the card's on dark, a darker one on light */
   --stamp: #ffffff;
+  /* drawn on the hero's photograph, so the same on both themes: the brand gold and white outlines,
+     each over a thin dark halo that keeps them apart from pale soil and bright villages */
+  --photo-mark-unseen: #c9a45a;
+  --photo-mark-seen: #ffffff;
+  --photo-mark-halo: rgb(12 10 8 / 0.75);
+  /* the warning tone of a city's air above the CPCB 'satisfactory' limit (the app's --warning:
+     8.75:1 on the dark ground, 4.9:1 on the light one) */
+  --air-warn: #e2a948;
   --grid: repeat(12, minmax(0, 1fr));
   --pad-section: clamp(96px, 11vw, 168px);
   --step-statement: clamp(1.5rem, 1rem + 1.2vw, 2rem);
@@ -55,20 +63,7 @@
   --clock-face: var(--paper);
   --clock-ring: #cdc8c2;
   --stamp: #efeeec;
-}
-
-.lp-skip {
-  position: absolute;
-  left: var(--margin);
-  top: -200px;
-  z-index: 100;
-  padding: 12px 16px;
-  background: var(--accent-fill);
-  color: var(--accent-ink);
-  font-weight: 600;
-}
-.lp-skip:focus {
-  top: 12px;
+  --air-warn: #8a6005;
 }
 
 .lp-cover {
@@ -137,36 +132,89 @@
 }
 
 /* ------------------------------------------------------------------------------------------------
-   title row, under the site bar (components/nav): the h1 and the one sentence */
+   title row, under the site bar (components/nav): the h1, the one sentence and the landing's one
+   action. The site bar is the same on every page and carries no action, so "Open mission control"
+   sits here. The h1 is the first screen's largest type, so it reads as the page's heading before the
+   clock's hub figure: desktop, two balanced lines over the picture's columns (7 of 12), the sentence
+   and the gold button stacked in the clock's columns and set on the h1's baseline; tablet, the h1
+   across the row (one or two lines) over the sentence with the button beside it; phone, two lines,
+   the sentence and then the button under it. The sentence stays at body size or larger everywhere. */
 
 .lp-rail {
   background: var(--bg);
 }
 .lp-rail-inner {
   display: grid;
-  grid-template-columns: var(--grid);
-  column-gap: var(--gutter);
-  align-items: center;
-  padding: 18px var(--margin) 6px;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  align-items: end;
+  gap: 16px var(--gutter);
+  padding: clamp(20px, 2.2vw, 32px) var(--margin) clamp(20px, 2vw, 28px);
 }
+/* 2.5rem on a narrow tablet up to 6.5rem on a wide screen (about 80px at 1440, 73px at 1280, 103px at
+   1920): always above the clock's hub figure, two lines at most on the picture's columns */
 .lp-rail-title {
-  grid-column: 1 / span 7;
+  min-width: 0;
   margin: 0;
   font-family: var(--face-display);
-  font-size: var(--step-rail);
+  font-size: clamp(2.5rem, 0.9rem + 4.6vw, 6.5rem);
   font-weight: 400;
-  line-height: 1;
-  letter-spacing: -0.01em;
+  line-height: 0.92;
+  letter-spacing: -0.005em;
   text-transform: uppercase;
-  white-space: nowrap;
+  text-wrap: balance;
+}
+.lp-rail-lead {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 16px;
+  min-width: 0;
 }
 .lp-rail-sentence {
-  grid-column: 8 / -1;
-  max-width: 46ch;
+  max-width: 34ch;
   margin: 0;
-  font-size: var(--step-body);
-  font-weight: 600;
+  font-size: var(--step-lead);
+  font-weight: 500;
   line-height: 1.3;
+}
+/* the gold as a fill under its black label (--accent-fill on both themes: 8.41:1) */
+.lp-rail-action {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 18px;
+  background: var(--accent-fill);
+  color: var(--accent-ink);
+  font-size: var(--step-small);
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  text-decoration: none;
+  transition:
+    background-color var(--t-hover) var(--ease-out),
+    transform var(--t-press) var(--ease-out);
+}
+/* hover: a step towards the page's ink, lighter gold on dark and deeper on light; the black label
+   keeps 6.5:1 or more on both */
+.lp-rail-action:hover {
+  background: color-mix(in srgb, var(--accent-fill) 86%, var(--ink));
+}
+.lp-rail-action:active {
+  transform: translateY(1px);
+}
+.lp-rail-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lp-rail-action {
+    transition: none;
+  }
+  .lp-rail-action:active {
+    transform: none;
+  }
 }
 
 /* ------------------------------------------------------------------------------------------------
@@ -223,6 +271,8 @@
   position: absolute;
   inset: 0;
 }
+/* Only the incoming pass fades in, on top of the outgoing one, which stays opaque under it (data-on
+   "under"); the rest drop out at once beneath both. The page never shows through a fade. */
 .lp-frame {
   position: absolute;
   inset: 0;
@@ -230,17 +280,24 @@
   height: 100%;
   object-fit: cover;
   opacity: 0;
-  transition: opacity var(--t-crossfade) var(--ease-in-out);
+}
+.lp-frame[data-on="under"] {
+  z-index: 1;
+  opacity: 1;
 }
 .lp-frame[data-on="yes"] {
+  z-index: 2;
   opacity: 1;
+  transition: opacity var(--t-crossfade) var(--ease-in-out);
 }
 .lp-marks {
   position: absolute;
   inset: 0;
+  z-index: 3;
   width: 100%;
   height: 100%;
   pointer-events: none;
+  filter: drop-shadow(0 0 1.5px var(--photo-mark-halo));
 }
 .lp-marks g {
   opacity: 0;
@@ -254,16 +311,16 @@
   vector-effect: non-scaling-stroke;
 }
 /* drawn on the photograph, so the brand gold on both themes (the light theme's text gold would sink
-   into the dark soil of a burnt field) */
+   into the dark soil of a burnt field): a 3px line over a light fill, legible at a glance */
 .lp-mark-unseen {
-  fill: rgb(201 164 90 / 0.28);
-  stroke: var(--accent-fill);
-  stroke-width: 1.6px;
+  fill: color-mix(in srgb, var(--photo-mark-unseen) 18%, transparent);
+  stroke: var(--photo-mark-unseen);
+  stroke-width: 3px;
 }
 .lp-mark-seen {
-  fill: rgb(255 255 255 / 0.3);
-  stroke: #ffffff;
-  stroke-width: 1.6px;
+  fill: color-mix(in srgb, var(--photo-mark-seen) 18%, transparent);
+  stroke: var(--photo-mark-seen);
+  stroke-width: 3px;
 }
 .lp-pic-missing {
   display: flex;
@@ -278,7 +335,10 @@
   max-width: 48ch;
   margin: 0;
 }
-
+.lp-pic-missing-short {
+  aspect-ratio: auto;
+  padding: 16px 20px;
+}
 .lp-frame-caption {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -500,7 +560,6 @@
   margin: 0;
   font-size: var(--step-statement);
   line-height: 1.25;
-  text-indent: 3em;
   font-variant-numeric: tabular-nums;
 }
 .lp-intro-body {
@@ -857,8 +916,13 @@
   padding: 0 0 22px;
   vertical-align: baseline;
 }
-.lp-table tr[data-group="yes"] td {
-  padding-top: 20px;
+/* the rank: the table is in the ranking's order, and says so with a number */
+.lp-td-rank {
+  width: 3.5ch;
+  padding-right: 12px !important;
+  color: var(--muted);
+  text-align: right !important;
+  font-variant-numeric: tabular-nums;
 }
 .lp-td-kind {
   width: 24%;
@@ -894,10 +958,11 @@
   padding: 20px 22px;
   background: var(--surface);
 }
+/* the method's caveat at reading size: a long technical note, not a pull-quote */
 .lp-quote blockquote p {
   margin: 0;
-  font-size: var(--step-lead);
-  line-height: 1.35;
+  font-size: var(--step-body);
+  line-height: 1.5;
 }
 .lp-list-backtest {
   margin: 16px 0 0;
@@ -1140,6 +1205,30 @@
   line-height: 1.4;
   font-variant-numeric: tabular-nums;
 }
+/* the trace under the reading, at body size: where the air has been, and what that does not say */
+.lp-reply-trace {
+  max-width: 52ch;
+  margin: 16px 0 0;
+  font-size: var(--step-body);
+  line-height: 1.5;
+}
+.lp-reply-trace a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.lp-reply-trace a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+/* the trace's verdict, a fact about where the air went: in the ink, and in the warning tone only when
+   the city's PM2.5 is also above the CPCB 'satisfactory' limit (DelhiAir.tsx) */
+.lp-air-verdict {
+  font-weight: 600;
+}
+.lp-air-verdict-warn {
+  color: var(--air-warn);
+}
 .lp-reply-card {
   grid-column: 6 / -1;
   display: flex;
@@ -1308,22 +1397,23 @@
 }
 
 /* ------------------------------------------------------------------------------------------------
-   tablet and phone: the title row stacks the h1 over its sentence */
+   tablet and phone: the title row stacks the h1 over its sentence and the action (beside the
+   sentence on a tablet, under it on a phone) */
 
 @media (max-width: 1099px) {
-  .lp-rail-title {
-    grid-column: 1 / -1;
-    white-space: normal;
-  }
   .lp-rail-inner {
-    padding-bottom: 20px;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .lp-rail-lead {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--gutter);
   }
   .lp-rail-sentence {
-    grid-column: 1 / -1;
-    grid-row: 2;
-    max-width: 60ch;
-    margin-top: 8px;
-    font-size: var(--step-small);
+    max-width: 52ch;
+    font-size: var(--step-body);
+    font-weight: 600;
   }
   .lp-hero {
     grid-template-columns: minmax(0, 1fr);
@@ -1418,9 +1508,19 @@
   .lp-page {
     --pad-section: 88px;
   }
+  /* two lines on a phone: about 40px at 390 wide, the largest words of the first screen but the key
+     figure's number */
   .lp-rail-title {
-    font-size: 1.75rem;
-    line-height: 1;
+    font-size: clamp(2.125rem, 10.4vw, 3rem);
+  }
+  .lp-rail-lead {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+  .lp-rail-action {
+    min-height: 48px;
+    padding: 0 20px;
   }
   .lp-clock {
     grid-template-columns: minmax(0, 1fr);
@@ -1446,7 +1546,6 @@
   }
   .lp-statement {
     font-size: 1.375rem;
-    text-indent: 0;
   }
   .lp-intro-photo {
     order: 2;
@@ -1517,29 +1616,29 @@
   }
   .lp-table tr {
     display: grid;
-    grid-template-columns: 1fr auto;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     padding-bottom: 20px;
   }
   .lp-table td {
     padding: 0;
   }
-  .lp-table tr[data-group="yes"] {
-    padding-top: 24px;
-  }
-  .lp-table tr[data-group="yes"] td {
-    padding-top: 0;
+  .lp-td-rank {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    width: auto;
+    min-width: 3ch;
   }
   .lp-td-kind {
-    grid-column: 1;
+    grid-column: 2;
     grid-row: 1;
     width: auto;
   }
   .lp-td-value {
-    grid-column: 2;
+    grid-column: 3;
     grid-row: 1;
   }
   .lp-td-place {
-    grid-column: 1 / -1;
+    grid-column: 2;
     grid-row: 2;
   }
   .lp-table thead {
@@ -1551,7 +1650,7 @@
     white-space: nowrap;
   }
   .lp-td-fields {
-    grid-column: 2;
+    grid-column: 3;
     grid-row: 2;
     width: auto;
   }
@@ -1655,7 +1754,7 @@
   .lp-showcase-pic img {
     animation: none;
   }
-  .lp-frame,
+  .lp-frame[data-on="yes"],
   .lp-marks g {
     transition: none;
   }

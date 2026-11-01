@@ -100,6 +100,10 @@
   gap: 12px 24px;
   margin: 0 0 24px;
 }
+/* the CSV of the villages, on their own card between its head and the list */
+.br-actions--csv {
+  margin-bottom: 16px;
+}
 .br-csv {
   display: flex;
   flex-wrap: wrap;
@@ -938,7 +942,7 @@
 
 /* ---- print: A4, light, the tables and their qualifications, no bars or buttons ------------- */
 /* On top of app-screen.css's print block, which already gives the paper its white page and light
-   colours and hides [data-print="hide"] and the skip link. The rules on the shared app-screen classes
+   colours and hides [data-print="hide"] (the site bar and its skip link). The rules on the shared app-screen classes
    (.title-row, .kpi, .card, .prov) stay inside .br-canvas: a stylesheet stays loaded after the visitor
    moves on, and a bare rule here would reshape a case file or bulletin printed later in the visit. */
 

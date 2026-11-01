@@ -58,6 +58,16 @@ function subscribe(cb: () => void) {
   return () => listeners.delete(cb);
 }
 
+/**
+ * No way to reach the network: the device has none, or the worker answered from saved copies because
+ * the network failed (venue Wi-Fi with no internet behind it, which navigator.onLine misses). A
+ * saved copy served only because the network was slow does not count.
+ */
+export const isOffline = (c: Connectivity): boolean => !c.online || c.doc?.reason === 'offline' || c.saved?.reason === 'offline';
+
+/** The state now, for code outside render (an event handler, a fetch that just failed). */
+export const connectivityNow = (): Connectivity => state;
+
 export function useConnectivity(): Connectivity {
   return useSyncExternalStore(
     subscribe,
@@ -129,18 +139,23 @@ async function refreshWhenReachable() {
   refreshPage?.();
 }
 
-/** True at most once in `ms` for `key` in this tab (sessionStorage), so a step that refreshes or
- *  reloads the page cannot loop; `ifBlocked` is the answer when storage is refused. */
-export function onceIn(key: string, ms: number, ifBlocked: boolean): boolean {
+/** True at most `n` times in `ms` for `key` in this tab (sessionStorage), across reloads, so a step
+ *  that refreshes or reloads the page cannot loop; `ifBlocked` is the answer when storage is refused. */
+export function atMost(key: string, n: number, ms: number, ifBlocked: boolean): boolean {
   try {
-    const last = Number(window.sessionStorage.getItem(key)) || 0;
-    if (Date.now() - last < ms) return false;
-    window.sessionStorage.setItem(key, String(Date.now()));
+    const t = Date.now();
+    const kept = JSON.parse(window.sessionStorage.getItem(key) || '[]') as unknown;
+    const recent = (Array.isArray(kept) ? kept : [kept]).filter((at): at is number => typeof at === 'number' && t - at < ms);
+    if (recent.length >= n) return false;
+    window.sessionStorage.setItem(key, JSON.stringify([...recent, t]));
     return true;
   } catch {
     return ifBlocked;
   }
 }
+
+/** True at most once in `ms` for `key` in this tab (atMost). */
+export const onceIn = (key: string, ms: number, ifBlocked: boolean): boolean => atMost(key, 1, ms, ifBlocked);
 
 /** Fresh answers again. A payload from the network means the page on screen is fresh too; an API
  *  answer only says the API answered. */

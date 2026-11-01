@@ -241,8 +241,15 @@ export function BaseMap({
     };
   }, []);
   const handleLoad = useCallback((e: { target: MapLibreMap }) => {
-    patchMapForDeck(e.target);
-    setMapObj(e.target);
+    const map = e.target;
+    patchMapForDeck(map);
+    // OpenFreeMap's dark style names a pattern its sprite lacks ("wood-pattern", woods up close):
+    // MapLibre drew nothing there and warned in the console each time; a clear pixel draws the same
+    // nothing, quietly
+    map.setMissingStyleImageResolver((id) => {
+      if (!map.hasImage(id)) map.addImage(id, { width: 1, height: 1, data: new Uint8Array(4) });
+    });
+    setMapObj(map);
     setLoaded(true);
     onLoad?.();
   }, [onLoad]);

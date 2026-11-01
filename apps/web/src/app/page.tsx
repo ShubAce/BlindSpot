@@ -37,9 +37,6 @@ export default function Home() {
   return (
     <ViewTransition default="none" exit={{ 'to-live': 'lp-leave', default: 'none' }}>
       <div className={s.page}>
-        <a href="#main" className={s.skip}>
-          Skip to the content
-        </a>
         <SiteNav current="home" />
         <main id="main">
           <Masthead />

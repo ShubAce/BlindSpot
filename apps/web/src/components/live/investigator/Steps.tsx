@@ -1,8 +1,9 @@
 'use client';
 
 import { number } from '@/lib/format';
+import { modelName } from '@/lib/models';
 
-import { callCode, describeCall, describeMap, modelName, thoughtBody, thoughtTitle, tidySummary } from './describe';
+import { callCode, describeCall, describeMap, thoughtBody, thoughtTitle, tidySummary } from './describe';
 import type { Investigation, Step } from './model';
 
 /**

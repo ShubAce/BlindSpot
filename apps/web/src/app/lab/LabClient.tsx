@@ -203,8 +203,8 @@ export function LabClient() {
   };
 
   return (
-    <main data-surface="app" className="grid min-h-svh grid-cols-[360px_minmax(0,1fr)] max-[900px]:grid-cols-1">
-      <aside className="flex h-svh flex-col gap-5 overflow-y-auto border-r border-border bg-surface p-6 max-[900px]:h-auto">
+    <main id="main" data-surface="app" className="grid min-h-[calc(100svh-var(--sn-top-h)-var(--sn-tabs-h))] grid-cols-[360px_minmax(0,1fr)] max-[900px]:grid-cols-1">
+      <aside className="flex h-[calc(100svh-var(--sn-top-h))] flex-col gap-5 overflow-y-auto border-r border-border bg-surface p-6 max-[900px]:h-auto">
         <header className="flex flex-col gap-1">
           <h1>Lab</h1>
           <p style={{ color: 'var(--muted)' }}>
@@ -326,7 +326,7 @@ export function LabClient() {
         </Section>
       </aside>
 
-      <div className="flex h-svh min-w-0 flex-col max-[900px]:h-auto">
+      <div className="flex h-[calc(100svh-var(--sn-top-h))] min-w-0 flex-col max-[900px]:h-auto">
         <div className="relative min-h-[420px] flex-1">
           <BaseMap layers={layers} basemap={basemap} theme={theme} label="Lab map: every BlindSpot layer over Punjab, Haryana and Delhi" />
         </div>

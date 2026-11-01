@@ -1,10 +1,12 @@
 'use client';
 
+import Link from 'next/link';
 import { useMemo, useState } from 'react';
 
 import { EmptyNote, ErrorNote, Freshness, Skeleton } from '@/components/ui/states';
 import { duration, number, percent, timeIST } from '@/lib/format';
 
+import { verdictText, verdictWarns } from './air-verdict';
 import { useAirLive, useLiveHeadline, useSmokeReceptors, useSourceCadence } from './data';
 import styles from './styles';
 import { useMapCommands } from './map-commands';
@@ -14,14 +16,15 @@ import type { AirReceptorLive, SmokeReceptorLive } from './types';
  * Air at the receptor cities: Delhi first, then the cities the smoke model follows. Measured PM2.5
  * is the median of CPCB stations (via OpenAQ, which republishes them 2-4 h late), so a "now" value is
  * often missing: the last value is shown with its age. The CAMS figure is model output and is set
- * apart as such. The smoke verdict and the fire-exposure index come from the back-trajectory run.
+ * apart as such. The trajectory badge and the fire-exposure index come from the back-trajectory run.
+ *
+ * The badge names what the run found, never where the city's smoke came from: back-trajectories from
+ * the city crossing Punjab and Haryana's burning area, which says nothing of how much of its PM2.5
+ * is smoke (the smoke model tracks measured PM2.5 less well than CAMS, /method#smoke). So the words
+ * are the trajectories' own ("Air crossed the burn belt"), in the neutral style, and the warning
+ * colour is kept for a crossing city whose PM2.5 is also above 60 µg/m³ (the CPCB 'satisfactory'
+ * limit). The landing's Delhi line uses the same words and the same rule (air-verdict.ts).
  */
-
-const VERDICT: Record<string, { text: string; tone: 'warning' | 'neutral' }> = {
-  stubble_likely: { text: 'Stubble smoke likely', tone: 'warning' },
-  mixed: { text: 'Mixed', tone: 'neutral' },
-  stubble_unlikely: { text: 'Stubble smoke unlikely', tone: 'neutral' },
-};
 
 const FIRST = 3;
 
@@ -31,12 +34,13 @@ const ageShort = (min: number) => (min < 60 ? `${Math.round(min)} min old` : `${
 /** FEI spans orders of magnitude between cities: two decimals when small, whole when large. */
 const fei = (v: number | null | undefined) => (v == null ? '—' : number(v, { decimals: Math.abs(v) < 10 ? 2 : 0 }));
 
-function Verdict({ hint, reason }: { hint: string | null | undefined; reason?: string | null }) {
-  if (!hint) return <span className="missing">No smoke run</span>;
-  const v = VERDICT[hint] ?? { text: hint.replace(/_/g, ' '), tone: 'neutral' as const };
+
+function Verdict({ hint, pm25 }: { hint: string | null | undefined; pm25: number | null }) {
+  if (!hint) return <span className="missing">No trajectory run</span>;
+  const tone = verdictWarns(hint, pm25) ? 'warning' : 'neutral';
   return (
-    <span className={styles.pill} data-tone={v.tone} title={reason ?? undefined}>
-      {v.text}
+    <span className={styles.pill} data-tone={tone}>
+      {verdictText(hint)}
     </span>
   );
 }
@@ -74,6 +78,11 @@ export function AirReceptors() {
   const others = rows.filter((r) => r !== delhi);
   const trace = head.data?.delhi?.smoke_trace ?? null;
   const dm = measured(delhi?.air ?? null);
+  const delhiSmoke = delhi?.smoke;
+  const reason = delhiSmoke?.verdict_reason ?? trace?.verdict_reason ?? null;
+  const belt24 = (trace?.share_over_burn_belt ?? delhiSmoke?.share_over_burn_belt)?.h24 ?? null;
+  const exposure = trace?.fire_exposure_index ?? delhiSmoke?.fire_exposure_index;
+  const range = trace?.fire_exposure_range ?? delhiSmoke?.fire_exposure_range ?? null;
   const loading = !air.data && !air.error;
 
   return (
@@ -98,7 +107,7 @@ export function AirReceptors() {
                   Delhi
                 </button>
               </h3>
-              {smoke.data || head.data ? <Verdict hint={delhi?.smoke?.verdict_hint ?? trace?.verdict_hint} reason={delhi?.smoke?.verdict_reason ?? trace?.verdict_reason} /> : <Skeleton width={120} height={20} />}
+              {smoke.data || head.data ? <Verdict hint={delhi?.smoke?.verdict_hint ?? trace?.verdict_hint} pm25={dm.value} /> : <Skeleton width={120} height={20} />}
             </div>
             <div className={styles.delhiFigures}>
               <div>
@@ -137,17 +146,17 @@ export function AirReceptors() {
               </div>
             </div>
             {trace || delhi?.smoke ? (
+              // the run's own reason, in view (a tooltip never shows on a touch screen), then its figures
               <p className={styles.delhiNote}>
-                Fire exposure <span className="nums">{fei(trace?.fire_exposure_index ?? delhi?.smoke?.fire_exposure_index)}</span>
-                {(trace?.fire_exposure_range ?? delhi?.smoke?.fire_exposure_range) ? (
+                {reason ? <>Back-trajectories from Delhi: {reason}. </> : null}
+                {belt24 != null ? <>The air spent <span className="nums">{percent(belt24)}</span> of its last 24 h over the belt; fire </> : 'Fire '}
+                exposure <span className="nums">{fei(exposure)}</span>
+                {range ? (
                   <span className={styles.faint}>
-                    {' '}(models {fei((trace?.fire_exposure_range ?? delhi?.smoke?.fire_exposure_range)?.[0])}–{fei((trace?.fire_exposure_range ?? delhi?.smoke?.fire_exposure_range)?.[1])})
+                    {' '}(models {fei(range[0])}–{fei(range[1])})
                   </span>
                 ) : null}
-                {(trace?.share_over_burn_belt ?? delhi?.smoke?.share_over_burn_belt)?.h24 != null
-                  ? `; ${percent((trace?.share_over_burn_belt ?? delhi?.smoke?.share_over_burn_belt)?.h24)} of its last 24 h over the burn belt`
-                  : ''}
-                .
+                . This does not measure how much of its PM2.5 is smoke.
               </p>
             ) : smoke.data && head.data ? (
               <EmptyNote>No back-trajectory run for Delhi yet.</EmptyNote>
@@ -161,7 +170,7 @@ export function AirReceptors() {
           ) : null}
 
           <table className={styles.airTable}>
-            <caption className="sr-only">Other receptor cities, most exposed to fire smoke first</caption>
+            <caption className="sr-only">Other receptor cities, highest fire exposure first</caption>
             <thead>
               <tr>
                 <th scope="col">City</th>
@@ -172,7 +181,7 @@ export function AirReceptors() {
                   <abbr title="Copernicus CAMS model PM2.5, not a measurement">Model</abbr>
                 </th>
                 <th scope="col" className="num">
-                  <abbr title="Fire-exposure index from the back-trajectory run">Exposure</abbr>
+                  <abbr title="Fire-exposure index from the back-trajectory run, defined under the table">Exposure</abbr>
                 </th>
               </tr>
             </thead>
@@ -192,7 +201,7 @@ export function AirReceptors() {
                         <th scope="row">
                           <span className={styles.cityName}>{r.city}</span>
                           <span className={styles.citySub}>
-                            {r.smoke?.verdict_hint ? (VERDICT[r.smoke.verdict_hint]?.text ?? r.smoke.verdict_hint) : 'no smoke run'}
+                            {r.smoke?.verdict_hint ? verdictText(r.smoke.verdict_hint) : 'no trajectory run'}
                           </span>
                         </th>
                         <td className="num">
@@ -221,6 +230,10 @@ export function AirReceptors() {
               </button>
             </div>
           ) : null}
+          <p className={`${styles.footNote} ${styles.airDefine}`}>
+            Fire exposure is a model index: the tonnes of crop residue burning near the paths the model traces back from each city, each weighted by the share of its air that
+            passed as it burned. It measures exposure, not the smoke in the city’s air. <Link href="/method#smoke">How the smoke model is checked</Link>
+          </p>
         </>
       )}
     </section>

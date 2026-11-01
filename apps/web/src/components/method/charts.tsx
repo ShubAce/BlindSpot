@@ -294,11 +294,28 @@ export function SmokeDots({ rows }: { rows: SmokeCityRow[] }) {
 // ---------------------------------------------------------------------------------------------
 // risk ranking AUC for every pass pair, by the date of the later pass
 
-export function AucStrip({ pairs, mean, lead }: { pairs: AucPair[]; mean: number | null; lead: { t0: string; t1: string } | null }) {
+/** The pair the method page states on its own (backtest.headline). */
+export type AucLead = { tile?: string; t0: string; t1: string; burnt?: number; unburnt?: number };
+
+/**
+ * The index of the one dot that is the headline pair, or -1. Pass dates alone are not enough: one
+ * Sentinel-2 pass covers many tiles, and a tile can list the same two passes twice, so the tile and
+ * then the headline's own field counts decide, and at most one dot is ever gold.
+ */
+function leadIndex(pts: (AucPair & { ms: number })[], lead: AucLead | null): number {
+  if (!lead) return -1;
+  const t0 = Date.parse(lead.t0);
+  const t1 = Date.parse(lead.t1);
+  const same = pts.flatMap((p, i) => (Date.parse(p.t0) === t0 && p.ms === t1 && (!lead.tile || !p.tile || p.tile === lead.tile) ? [i] : []));
+  return same.find((i) => pts[i].burnt === lead.burnt && pts[i].unburnt === lead.unburnt) ?? same[0] ?? -1;
+}
+
+export function AucStrip({ pairs, mean, lead }: { pairs: AucPair[]; mean: number | null; lead: AucLead | null }) {
   const [ref, width] = useWidth<HTMLDivElement>(720);
   const [hover, setHover] = useState<number | null>(null);
   const pts = pairs.filter((p) => p.auc != null).map((p) => ({ ...p, ms: Date.parse(p.t1) }));
   if (!pts.length) return null;
+  const li = leadIndex(pts, lead);
   const t0 = Math.min(...pts.map((p) => p.ms)) - 86_400_000;
   const t1 = Math.max(...pts.map((p) => p.ms)) + 86_400_000;
   const yt = [0, 0.25, 0.5, 0.75, 1];
@@ -309,7 +326,6 @@ export function AucStrip({ pairs, mean, lead }: { pairs: AucPair[]; mean: number
   const h = padT + plotH + 28;
   const x = (ms: number) => left + ((ms - t0) / (t1 - t0)) * (right - left);
   const y = (v: number) => padT + plotH * (1 - v);
-  const isLead = (p: AucPair) => !!lead && p.t0 === lead.t0 && p.t1 === lead.t1;
   const weeks: number[] = [];
   for (let d = new Date(t0); d.getTime() <= t1; d = new Date(d.getTime() + 86_400_000)) {
     const ist = new Date(d.getTime() + 5.5 * 3_600_000);
@@ -322,7 +338,7 @@ export function AucStrip({ pairs, mean, lead }: { pairs: AucPair[]; mean: number
         width={width}
         height={h}
         role="img"
-        aria-label={`Area under the curve of the burn-risk ranking for ${pts.length} pass pairs, ${dateIST(t0 + 86_400_000)} to ${dateIST(t1 - 86_400_000)}; weighted mean ${mean == null ? 'not stated' : number(mean, { decimals: 3 })}; 0.5 is a random ranking.`}
+        aria-label={`Area under the curve of the burn-risk ranking for ${pts.length} pass pairs, ${dateIST(t0 + 86_400_000)} to ${dateIST(t1 - 86_400_000)}; weighted mean ${mean == null ? 'not stated' : number(mean, { decimals: 3 })}; 0.5 is a random ranking.${li >= 0 ? ` The latest pair, ${pts[li].tile ? `${pts[li].tile}, ` : ''}${dateIST(pts[li].t0)} to ${dateIST(pts[li].t1)}: ${number(pts[li].auc, { decimals: 3 })}.` : ''}`}
         onPointerMove={(e) => {
           const r = e.currentTarget.getBoundingClientRect();
           const px = e.clientX - r.left;
@@ -340,21 +356,16 @@ export function AucStrip({ pairs, mean, lead }: { pairs: AucPair[]; mean: number
         }}
       >
         <YGrid values={yt} y={y} left={left} right={right} format={(v) => number(v, { decimals: 2 })} />
-        <line x1={left} x2={right} y1={y(0.5)} y2={y(0.5)} stroke="var(--axis-ink)" strokeWidth={1} />
-        <text x={left + 6} y={y(0.5) + 15} fontSize={11} fill="var(--axis-ink)">
-          0.5: a random ranking
-        </text>
-        {mean != null ? (
-          <>
-            <line x1={left} x2={right} y1={y(mean)} y2={y(mean)} stroke="var(--accent)" strokeWidth={1.5} />
-            <text x={left + 6} y={y(mean) - 6} fontSize={11} fill="var(--accent)">
-              {`weighted mean ${number(mean, { decimals: 3 })}`}
-            </text>
-          </>
-        ) : null}
-        {pts.map((p, i) => (
-          <circle key={i} cx={x(p.ms)} cy={y(p.auc as number)} r={isLead(p) ? 6 : 3.5} fill={isLead(p) ? 'var(--accent-mark)' : 'var(--chart-1)'} fillOpacity={isLead(p) ? 1 : 0.55} stroke={isLead(p) || hover === i ? 'var(--ink)' : 'var(--bg)'} strokeWidth={isLead(p) || hover === i ? 2 : 1} />
-        ))}
+        {/* the two reference lines are named in the legend above the chart, where no dot can cover their names */}
+        <line x1={left} x2={right} y1={y(0.5)} y2={y(0.5)} stroke="var(--axis-ink)" strokeWidth={1.5} />
+        {mean != null ? <line x1={left} x2={right} y1={y(mean)} y2={y(mean)} stroke="var(--accent)" strokeWidth={2} /> : null}
+        {pts.map((p, i) =>
+          i === li ? null : (
+            <circle key={i} cx={x(p.ms)} cy={y(p.auc as number)} r={3.5} fill="var(--chart-1)" fillOpacity={0.55} stroke={hover === i ? 'var(--ink)' : 'var(--bg)'} strokeWidth={hover === i ? 2 : 1} />
+          ),
+        )}
+        {/* the headline pair last, so no other dot covers it */}
+        {li >= 0 ? <circle cx={x(pts[li].ms)} cy={y(pts[li].auc as number)} r={6} fill="var(--accent-mark)" stroke="var(--ink)" strokeWidth={2} /> : null}
         {weeks.map((t) => (
           <text key={t} x={x(t)} y={h - 8} fontSize={11} textAnchor="middle" fill="var(--axis-ink)">
             {dateIST(t)}
@@ -364,7 +375,7 @@ export function AucStrip({ pairs, mean, lead }: { pairs: AucPair[]; mean: number
       <Readout x={hp ? x(hp.ms) : null} width={width}>
         {hp ? (
           <>
-            <div className="chart-readout__head">{`${dateIST(hp.t0)} to ${dateIST(hp.t1)}`}</div>
+            <div className="chart-readout__head">{`${hp.tile ? `${hp.tile}, ` : ''}${dateIST(hp.t0)} to ${dateIST(hp.t1)}${hover === li ? ', the latest pair' : ''}`}</div>
             <div>{`AUC ${number(hp.auc, { decimals: 3 })}`}</div>
             <div>{`${number(hp.burnt)} fields burnt, ${number(hp.unburnt)} not`}</div>
             <div>{`Base rate ${percent(hp.base_rate, 1)}`}</div>

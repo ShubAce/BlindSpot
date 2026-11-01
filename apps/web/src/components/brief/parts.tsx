@@ -2,8 +2,8 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { uniqueSources } from '@/components/case/audit';
+import { DailyFreshness } from '@/components/case/DailyFreshness';
 import { ProvItem } from '@/components/case/parts';
-import { Freshness } from '@/components/ui/states';
 import type { Envelope } from '@/lib/api';
 import { dateTimeIST, MISSING, NBSP, number } from '@/lib/format';
 
@@ -15,9 +15,6 @@ import type { BriefRiskRun, BriefWindow } from './types';
  * are plain links (?days=, ?lang=), so they work before any JavaScript and in a printed or forwarded
  * copy of the address.
  */
-
-/** The freshness cadence of a brief: a day, so it reads stale three days after it was built. */
-const DAY_MS = 86_400_000;
 
 /** 3, 7, 14 or 30 days of passes. The current window carries aria-current and the active fill. */
 function DaysSwitch({ days, hrefFor }: { days: number; hrefFor: (d: number) => string }) {
@@ -43,7 +40,8 @@ export function BriefScope({ data, days, hrefFor }: { data: Envelope & { window:
       <DaysSwitch days={days} hrefFor={hrefFor} />
       <span className="br-scope__fresh" data-print="hide">
         {/* only what the freshness reads: the whole answer would ship to the browser a second time */}
-        <Freshness resp={{ generated_at: data.generated_at, sources: data.sources }} cadenceMs={DAY_MS} />
+        {/* stale, in the warning colour, only once the daily Sentinel-2 run is late (26 h, the API's rule) */}
+        <DailyFreshness resp={{ generated_at: data.generated_at, sources: data.sources }} verb="updated" note="passes are processed daily" />
       </span>
     </div>
   );

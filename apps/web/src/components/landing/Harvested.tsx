@@ -12,11 +12,15 @@ import { firstPlace, order } from './words';
 
 /**
  * Section 3, list (direction: "Statement, table pushed right"). The live ranking of villages whose
- * fields are harvested but not yet burnt (GET /api/risk `ranking`), with the method's own caveat and
- * its backtest stated plainly beside it.
+ * fields are harvested but not yet burnt (GET /api/risk `ranking`), numbered in the ranking's order
+ * (a rank, never a probability), with the method's own caveat at reading size beside it and one line
+ * on how the ordering did on the burns that followed.
  */
 
 const ROWS = 12;
+
+// The rank column (landing.css, list); it belongs in styles.ts beside the others.
+const own = { rank: 'lp-td-rank' } as const;
 
 export function Harvested() {
   return (
@@ -69,6 +73,10 @@ async function RiskTable() {
       </caption>
       <thead>
         <tr>
+          <th scope="col" className={own.rank}>
+            <span aria-hidden="true">#</span>
+            <span className="sr-only">Rank</span>
+          </th>
           <th scope="col">District</th>
           <th scope="col">Village</th>
           <th scope="col" className={s.tdValue}>
@@ -81,7 +89,8 @@ async function RiskTable() {
       </thead>
       <tbody>
         {rows.map((row, i) => (
-          <tr key={`${row.district}|${row.village}`} data-group={i > 0 && i % 4 === 0 ? 'yes' : undefined}>
+          <tr key={`${row.district}|${row.village}`}>
+            <td className={own.rank}>{number(i + 1)}</td>
             <td className={s.tdKind}>{row.district}</td>
             <td className={s.tdPlace} title={row.village}>
               {`${row.village_inferred ? 'near ' : ''}${firstPlace(row.village) ?? row.village}`}
@@ -107,6 +116,8 @@ async function Caveat() {
     .trim();
   const bt = r.data.backtest;
   if (!note && bt?.headline?.auc == null && bt?.all_pairs?.auc_weighted_mean == null) return null;
+  // one AUC sentence: when the method's note already gives the backtest's AUC, it is not said twice
+  const noteHasAuc = /AUC/.test(note);
   // Lead with the season-wide figure, with its interval when the API has one (risk-v3 backtest): one
   // pass pair alone flatters the ranking.
   const all = bt?.all_pairs;
@@ -125,7 +136,7 @@ async function Caveat() {
           <figcaption className={s.caption}>From the ranking’s method, as the API states it.</figcaption>
         </figure>
       ) : null}
-      {seasonLine ? (
+      {noteHasAuc ? null : seasonLine ? (
         <p className={s.listBacktest}>{seasonLine}</p>
       ) : bt?.headline?.auc != null ? (
         <p className={s.listBacktest}>

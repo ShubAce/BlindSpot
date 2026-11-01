@@ -15,6 +15,13 @@ const HOUR = 3_600_000;
  *  missed, the night look, now, and the next look. */
 const BACK_H = 17;
 
+/** "Punjab (centroid)" -> "the centre of Punjab"; any other site by its own name. */
+const siteName = (name: string) => {
+  const m = /^(.*)\s*\(centroid\)$/.exec(name);
+  return m ? `the centre of ${m[1].trim()}` : name;
+};
+const coord = (v: number, pos: string, neg: string) => `${number(Math.abs(v), { decimals: 2 })}° ${v >= 0 ? pos : neg}`;
+
 /**
  * The signature element: a day of the fire satellites' looks at Punjab, lit where one is watching
  * and dark where none is, with the FIRMS detections of the last hours as ticks and the GK-2A
@@ -62,7 +69,7 @@ export function PassStripPanel() {
           </li>
           <li>
             <span className={styles.keyTick} aria-hidden="true" />
-            FIRMS detections, last 24 h
+            FIRMS detections
           </li>
           {geo ? (
             <li>
@@ -71,6 +78,15 @@ export function PassStripPanel() {
             </li>
           ) : null}
         </ul>
+        {/* the chart's "over the site" named, and what its detection count counts: the looks are
+            computed for one point, the ticks are every FIRMS detection on the map in these hours
+            (so fewer than the key's last 24 h, which starts earlier) */}
+        {site ? (
+          <p className={styles.stripSite}>
+            The site is {siteName(site.name)} (<span className="nums">{coord(site.lat, 'N', 'S')}</span>, <span className="nums">{coord(site.lon, 'E', 'W')}</span>). Ticks are every FIRMS
+            detection on the map in these hours, near the site or not.
+          </p>
+        ) : null}
       </header>
 
       <div className={styles.stripBody}>

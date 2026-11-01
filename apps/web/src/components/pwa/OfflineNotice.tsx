@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 
-import { useConnectivity, type Connectivity } from './connectivity';
+import { isOffline, useConnectivity, type Connectivity } from './connectivity';
 import { savedAgo, savedStamp, useClock } from './time';
 
 /**
@@ -31,7 +31,7 @@ function noticeOf(c: Connectivity): Notice | null {
       pill: 'Offline copies off',
     };
   }
-  const offline = !c.online || c.doc?.reason === 'offline' || c.saved?.reason === 'offline';
+  const offline = isOffline(c);
   const slow = !offline && (c.doc?.reason === 'slow' || c.saved?.reason === 'slow');
   if (!offline && !slow) return null;
   const known = [c.doc?.savedAt, c.saved?.oldest].filter((t): t is number => typeof t === 'number' && t > 0);

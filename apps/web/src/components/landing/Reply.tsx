@@ -22,7 +22,7 @@ export function Reply() {
         <h2 id="reply-h" className={s.replyTitle}>
           Ask why
         </h2>
-        <p className={s.replyLines}>Ask whether today’s smoke came from Punjab, and watch the investigator check the wind, the fires and the scars on the live map.</p>
+        <p className={s.replyLines}>Ask whether today’s smoke came from Punjab. The investigator checks the wind, the fires and the scars on the live map, and says what the data cannot settle.</p>
         <Link href="/live" className={s.replyBar} transitionTypes={['to-live']}>
           Open mission control
         </Link>

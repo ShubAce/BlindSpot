@@ -1,5 +1,25 @@
 @import "tailwindcss";
 
+/* What the display titles show until Anton arrives (display: swap). next/font's stand-in for Anton,
+   "Anton Fallback", is Arial scaled for Anton's lowercase: it set a title like "BlindSpot looks between
+   the passes" a third wider than Anton does and broke the /method title onto a third line, so the
+   page jumped when Anton landed (CLS 0.11 on the landing). This face, under the same name and
+   declared after next/font's (layout.tsx imports the font before this file), takes its place: Impact,
+   Anton's own model, a heavy condensed sans on Windows and macOS, scaled to 92.5% (the Anton/Impact
+   width ratio over the site's titles is 0.91-0.96) and given Anton's vertical metrics (ascent
+   1.176 em, descent 0.329 em, no line gap), lays the titles out on the same lines as Anton. Where
+   Impact is missing (phones) the browser goes on to next/font's Arial face, as before; and if next/font
+   ever renames its face, this one is simply unused. (next/font's adjustFontFallback: false, the plain
+   way to drop its face, is ignored by the Turbopack build.) */
+@font-face {
+  font-family: "Anton Fallback";
+  src: local("Impact");
+  size-adjust: 92.5%;
+  ascent-override: 127.17%;
+  descent-override: 35.58%;
+  line-gap-override: 0%;
+}
+
 /* ==============================================================================================
    BlindSpot tokens. One palette and one type system, two surfaces:
    - the page (landing, method, bulletin): direction "place carries it" (.taste-skill/direction.json),
@@ -16,7 +36,8 @@
          accent 7.82 / 8.41 / 7.51 / 6.88 · positive #5fb38d 7.28-6.40 · negative #ec6a7c 6.05-5.32
          warning #e2a948 8.75-7.69 · fire #ea5a2e as text 5.25 / 5.65 / 5.04 / 4.62
          pills (ink on tint): positive 7.89 · negative 6.69 · warning 8.32 · neutral 10.76
-         lines: border vs ground 1.23, vs surface 1.32 · rule vs surface 1.15 · control vs surface 2.05
+         lines: border vs ground 1.23, vs surface 1.32 · rule vs surface 1.15 · control #746c63 (the
+         edge of inputs and outline buttons, WCAG 1.4.11) 3.56 / 3.83 / 3.42 / 3.13
    Data marks (map, charts) are validated with the dataviz skill's validator; see
    src/components/map/palette.ts for the numbers. Keep the --mark-* values below equal to it, on
    both themes.
@@ -77,7 +98,8 @@
   /* MapLibre draws its control icons dark; on the dark control they are inverted */
   --map-icon-filter: invert(0.85);
 
-  /* type: next/font sets --font-anton and --font-work-sans on <html> */
+  /* type: next/font sets --font-anton and --font-work-sans on <html> (Anton's stand-in while it
+     loads: the @font-face at the top of this file) */
   --face-display: var(--font-anton), Impact, "Arial Narrow", sans-serif;
   --face-text: var(--font-work-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
   --step-small: clamp(0.8125rem, 0.79rem + 0.1vw, 0.875rem);
@@ -153,7 +175,7 @@
   --active: #25201a;
   --border: #2b2620;
   --rule: #1f1b16;
-  --control: #4a443c;
+  --control: #746c63; /* an input's or outline button's edge: 3:1 or more on every app surface */
   --text: #ffffff;
   --ink: var(--text);
   --muted: #b6b0a7;

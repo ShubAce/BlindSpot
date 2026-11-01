@@ -8,6 +8,9 @@ import { s } from './styles';
 import type { FrameScars, ScarPolygon } from './types';
 import { sentinelName } from './words';
 
+// The one-line form of the missing-picture note (landing.css); it belongs in styles.ts beside the others.
+const own = { short: 'lp-pic-missing-short' } as const;
+
 /**
  * The hero's picture: the same Punjab fields on four Sentinel-2 passes (GET /api/imagery/featured),
  * crossfading, uncropped, with every burn scar inside the frame's box outlined on it
@@ -17,9 +20,10 @@ import { sentinelName } from './words';
  */
 export async function HeroPictures() {
   const r = await getFeatured();
+  // a failed or empty read is one line, not an empty picture-sized box
   if (!r.ok) {
     return (
-      <div className={s.picMissing}>
+      <div className={`${s.picMissing} ${own.short}`}>
         <p data-load-failed="">{`The Sentinel-2 pictures of the featured fields did not load. ${r.error.message}`}</p>
       </div>
     );
@@ -40,7 +44,7 @@ export async function HeroPictures() {
 
   if (!frames.length) {
     return (
-      <div className={s.picMissing}>
+      <div className={`${s.picMissing} ${own.short}`}>
         <p>{reason ? `No clear Sentinel-2 passes of the featured fields yet: ${reason}` : 'No clear Sentinel-2 passes of the featured fields yet.'}</p>
       </div>
     );

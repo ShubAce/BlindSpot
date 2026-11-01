@@ -73,14 +73,24 @@ const box = (v: unknown): [number, number, number, number] | null => {
   return n.every((x): x is number => x != null) ? (n as [number, number, number, number]) : null;
 };
 
-/** On a phone the map sits above the lists and the investigator: when a tap there changes the map
- *  while it is scrolled out of sight, bring it into view (the change would otherwise go unseen). */
-function revealMap(): void {
-  if (typeof window === 'undefined' || !window.matchMedia('(max-width: 700px)').matches) return;
+/** Wherever the map sits above the lists (a phone, a tablet, a laptop, where the ranked list and the
+ *  air card follow under it): when a tap there changes the map while it is scrolled out of sight,
+ *  bring it into view (the change would otherwise go unseen).
+ *  On a phone, `top`: a case summary opens under the map there, so a map that starts low on the
+ *  screen comes up to its top, with the field on the map and the summary's head and pictures below
+ *  it in view together; one already at or past the top stays put (a tap on the map never makes the
+ *  page jump). Wider, the summary floats over the map: the map comes up once less than half of it
+ *  shows, so the field and its summary are in view together. */
+function revealMap(top = false): void {
+  if (typeof window === 'undefined') return;
   const el = document.getElementById('live-map');
   if (!el) return;
   const r = el.getBoundingClientRect();
-  if (r.bottom > 80 && r.top < window.innerHeight - 80) return; // enough of it is on screen
+  const phone = window.matchMedia('(max-width: 700px)').matches;
+  let inView: boolean;
+  if (phone) inView = top ? r.top <= 96 && r.bottom > 80 : r.bottom > 80 && r.top < window.innerHeight - 80;
+  else inView = Math.min(r.bottom, window.innerHeight) - Math.max(r.top, 0) >= Math.min(r.height, window.innerHeight) / 2;
+  if (inView) return;
   el.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
 }
 
@@ -108,7 +118,7 @@ export function useMapCommands(): MapCommands {
       if (id != null) {
         dispatch({ type: 'layers', on: ['scars'] });
         dispatch({ type: 'highlight', kind: 'scar', ids: [id], replace: true, focus: true });
-        if (opts.reveal ?? true) revealMap();
+        if (opts.reveal ?? true) revealMap(true);
       }
     };
     const goLive = () => dispatch({ type: 'replay', day: null });

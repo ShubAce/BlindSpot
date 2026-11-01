@@ -9,10 +9,7 @@ import '@/components/case/app-screen.css';
 export default function CaseLayout({ children }: { children: ReactNode }) {
   return (
     <div data-surface="app" className="app-screen">
-      <a className="skip-link" href="#main">
-        Skip to the case file
-      </a>
-      <SiteNav current="live" within />
+      <SiteNav current="live" within skipLabel="Skip to the case file" />
       <main id="main" className="app-canvas">
         {children}
       </main>

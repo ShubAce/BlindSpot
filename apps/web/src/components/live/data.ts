@@ -8,10 +8,11 @@
  */
 
 import { useMemo } from 'react';
+import { preload, useSWRConfig } from 'swr';
 
-import { PATHS, type AirLatestResponse, type FiresResponse, type GeostationaryDiurnalResponse, type SourcesResponse } from '@/lib/api';
+import { getJSON, PATHS, type AirLatestResponse, type FiresResponse, type GeostationaryDiurnalResponse, type Query, type SourcesResponse } from '@/lib/api';
 import { MINUS, number, percent } from '@/lib/format';
-import { CADENCE, useApi } from '@/lib/live';
+import { CADENCE, swrKey, useApi } from '@/lib/live';
 
 import type {
   AirLatestLive,
@@ -43,9 +44,15 @@ export const useLiveHeadline = (fallbackData?: LiveHeadline) =>
 
 export const useScarsSummaryLive = () => useApi<ScarsSummaryLive>(PATHS.scarsSummary, undefined, { refreshInterval: CADENCE.scars });
 
+/** The two reads the season replay moves, and their query for a day (null: live). */
+type ReplayRead = 'fires' | 'scars';
+const replayQuery = (read: ReplayRead, day: ReplayDay): Query =>
+  read === 'fires' ? (day ? { hours: 24, end: istDayEndUtc(day) } : { hours: 24 }) : { ...SCAR_QUERY, until: day ?? undefined };
+const replayKey = (read: ReplayRead, day: ReplayDay) => swrKey(read === 'fires' ? PATHS.fires : PATHS.scars, replayQuery(read, day));
+
 /** The scars the map draws and the list ranks; `until` an IST day while replaying. */
 export const useLiveScars = (day: ReplayDay) =>
-  useApi<LiveScarsResponse>(PATHS.scars, { ...SCAR_QUERY, until: day ?? undefined }, { refreshInterval: day ? 0 : CADENCE.scars, timeoutMs: SLOW });
+  useApi<LiveScarsResponse>(PATHS.scars, replayQuery('scars', day), { refreshInterval: day ? 0 : CADENCE.scars, timeoutMs: SLOW });
 
 /**
  * One district's newest scars, loaded when its tile on the map is clicked, so zooming into a
@@ -53,11 +60,58 @@ export const useLiveScars = (day: ReplayDay) =>
  * per district: the API stores the answer and the CDN caches it like the main list. Live only.
  */
 export const useDistrictScars = (district: string | null, day: ReplayDay) =>
-  useApi<LiveScarsResponse>(district && !day ? PATHS.scars : null, { ...SCAR_QUERY, district: district ?? undefined }, { refreshInterval: CADENCE.scars, timeoutMs: SLOW });
+  useApi<LiveScarsResponse>(district && !day ? PATHS.scars : null, districtQuery(district), { refreshInterval: CADENCE.scars, timeoutMs: SLOW });
+const districtQuery = (district: string | null): Query => ({ ...SCAR_QUERY, district: district ?? undefined });
 
 /** Fire detections: the last 24 h, or the IST day being replayed. */
 export const useLiveFires = (day: ReplayDay) =>
-  useApi<FiresResponse>(PATHS.fires, day ? { hours: 24, end: istDayEndUtc(day) } : { hours: 24 }, { refreshInterval: day ? 0 : CADENCE.fires, timeoutMs: SLOW });
+  useApi<FiresResponse>(PATHS.fires, replayQuery('fires', day), { refreshInterval: day ? 0 : CADENCE.fires, timeoutMs: SLOW });
+
+/**
+ * True while `data` is still the last replay day's answer. SWR keeps it on screen while the day
+ * asked for loads (keepPreviousData): the map may keep it, marked as such (its scars faded), so it
+ * never blinks empty between days, but a sentence that names the day must not print another day's
+ * figures under it, so it says the day is loading instead. `data` is what useLiveFires or
+ * useLiveScars returned for `day`.
+ */
+export function useHeldOver(read: ReplayRead, day: ReplayDay, data: unknown): boolean {
+  return useHeldOverKey(replayKey(read, day), data);
+}
+
+/** The same for any read: `key` is its SWR key (swrKey(path, query)), `data` what its hook returned. */
+export function useHeldOverKey(key: string | null, data: unknown): boolean {
+  const { cache } = useSWRConfig();
+  return key != null && data !== undefined && cache.get(key)?.data !== data;
+}
+
+/**
+ * What one replay read may say about `day`, the same for the map, the list and Play: `own` is its
+ * answer only when it is this day's (never the last day's held over), `failed` that the read failed
+ * with no answer of this day to show, and `ready` that the day is settled either way. `r` is what
+ * useLiveFires or useLiveScars returned for the same `day`.
+ */
+export function useDayRead<T>(read: ReplayRead, day: ReplayDay, r: { data?: T; error?: unknown }) {
+  const held = useHeldOver(read, day, r.data);
+  const own = held ? undefined : r.data;
+  return { held, own, failed: r.error !== undefined && own === undefined, ready: own !== undefined || r.error !== undefined };
+}
+
+/** The SWR key of one district's scars (useDistrictScars), for useHeldOverKey. */
+export const districtScarsKey = (district: string | null) => (district ? swrKey(PATHS.scars, districtQuery(district)) : null);
+
+/**
+ * Start a replay day's fires and scars before Play reaches it, so the step shows its own day at once:
+ * SWR hands the waiting request to the hooks when they ask for that day. Days already read are skipped.
+ */
+export function preloadReplayDay(day: string, cache: ReturnType<typeof useSWRConfig>['cache']): void {
+  for (const read of ['fires', 'scars'] as const) {
+    const key = replayKey(read, day);
+    if (cache.get(key)?.data !== undefined) continue;
+    const req: Promise<unknown> | undefined = preload(key, (url: string) => getJSON<unknown>(url, { timeoutMs: SLOW }));
+    // a failure is SWR's to report once a hook asks for this day; a day never reached stays quiet
+    req?.catch(() => undefined);
+  }
+}
 
 export const useFiresDailyLive = () => useApi<FiresDailyLive>(PATHS.firesDaily, undefined, { refreshInterval: CADENCE.fires });
 export const useDiurnalLive = () => useApi<DiurnalLive & GeostationaryDiurnalResponse>(PATHS.geostationaryDiurnal, undefined, { refreshInterval: CADENCE.geostationary });

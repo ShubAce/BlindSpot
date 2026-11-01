@@ -1,8 +1,10 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 
 import { precisionText, useLiveHeadline, useSourcesLive } from '@/components/live/data';
+import { Listen } from '@/components/voice/Listen';
+import { scriptLang, speakable } from '@/components/voice/voice';
 import { dateTimeIST, number } from '@/lib/format';
 
 import type { Cite, CiteSource, Investigation, NamedScar, Verification } from './model';
@@ -12,12 +14,52 @@ import { evidenceOf, mentionsUnseen } from './model';
  * The answer as the investigator wrote it (a verdict, its evidence as bullets, one caveat), with
  * each citation marker linked to its source below, then what the number check found, then the
  * fields it named and its sources. While it streams, the draft shows with its markers unlinked.
+ * A finished answer can be listened to (the device's voice for its language).
  */
 
 const MARKER = /\[(\d+(?:\s*,\s*\d+)*)\]/g;
 
-function Inline({ text: raw, cites, idp }: { text: string; cites: Map<string, Cite> | null; idp: string }) {
-  const text = raw.replace(/\*\*/g, '');
+type SourceNames = { name: (src: CiteSource) => string; docs: Map<string, string> };
+
+/** A label that is only a source key ("s2_cog", "stac_e84"), as some stored citations carry. */
+const keyLike = (label: string, key: string) => label === key || /^[a-z0-9]+(?:_[a-z0-9]+)+$/.test(label);
+
+function hostOf(url: string | null | undefined): string | null {
+  if (!url) return null;
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Each source by a name a reader knows: the citation's own label, unless it is just the source's
+ * key; then the name GET /api/sources gives that key (the request the sources panel already makes);
+ * then the address it was read from. Never the key itself.
+ */
+function useSourceNames(): SourceNames {
+  const live = useSourcesLive();
+  return useMemo(() => {
+    const labels = new Map<string, string>();
+    const docs = new Map<string, string>();
+    for (const s of live.data?.sources ?? []) {
+      const label = s.label?.trim();
+      if (label && !keyLike(label, s.key)) labels.set(s.key, label);
+      if (s.docs_url) docs.set(s.key, s.docs_url);
+    }
+    const name = (src: CiteSource): string => {
+      const own = src.label?.trim();
+      if (own && !keyLike(own, src.key)) return own;
+      return labels.get(src.key) ?? hostOf(src.url) ?? 'A source BlindSpot reads';
+    };
+    return { name, docs };
+  }, [live.data]);
+}
+
+function Inline({ text: raw, cites, idp, names }: { text: string; cites: Map<string, Cite> | null; idp: string; names: SourceNames }) {
+  // "detection [2]." reads as "detection²." : the marker sits against the word it cites, as in the bulletin
+  const text = raw.replace(/\*\*/g, '').replace(/\s+(\[\d+(?:\s*,\s*\d+)*\])/g, '$1');
   const out: ReactNode[] = [];
   let last = 0;
   for (const m of text.matchAll(MARKER)) {
@@ -28,8 +70,9 @@ function Inline({ text: raw, cites, idp }: { text: string; cites: Map<string, Ci
       <span key={at} className="iv-cites">
         {nums.map((num) => {
           const c = cites?.get(num);
+          const label = c ? names.name(c.source) : '';
           return c ? (
-            <a key={num} className="iv-cite" href={`#${idp}-src-${num}`} title={c.source.label} aria-label={`Source ${num}: ${c.source.label}`}>
+            <a key={num} className="iv-cite" href={`#${idp}-src-${num}`} title={label} aria-label={`Source ${num}: ${label}`}>
               {num}
             </a>
           ) : (
@@ -67,7 +110,7 @@ function blocks(text: string): Block[] {
   return out;
 }
 
-export function AnswerText({ text, citations, idp }: { text: string; citations: Cite[] | null; idp: string }) {
+export function AnswerText({ text, citations, idp, names }: { text: string; citations: Cite[] | null; idp: string; names: SourceNames }) {
   const cites = citations ? new Map(citations.map((c) => [String(c.marker), c])) : null;
   return (
     <>
@@ -76,13 +119,13 @@ export function AnswerText({ text, citations, idp }: { text: string; citations: 
           <ul key={i} className="iv-list">
             {b.items.map((item, j) => (
               <li key={j}>
-                <Inline text={item} cites={cites} idp={idp} />
+                <Inline text={item} cites={cites} idp={idp} names={names} />
               </li>
             ))}
           </ul>
         ) : (
           <p key={i} className={b.kind === 'lead' ? 'iv-lead' : b.kind === 'caveat' ? 'iv-caveat' : 'iv-para'}>
-            <Inline text={b.text} cites={cites} idp={idp} />
+            <Inline text={b.text} cites={cites} idp={idp} names={names} />
           </p>
         ),
       )}
@@ -153,27 +196,25 @@ function sourceHref(src: CiteSource, docs: Map<string, string>): string | null {
   return docs.get(src.key) ?? null;
 }
 
-function Sources({ citations, idp }: { citations: Cite[]; idp: string }) {
-  const live = useSourcesLive();
-  const docs = new Map<string, string>();
-  for (const s of (live.data?.sources ?? []) as unknown as { key: string; docs_url?: string | null }[]) if (s.docs_url) docs.set(s.key, s.docs_url);
+function Sources({ citations, idp, names }: { citations: Cite[]; idp: string; names: SourceNames }) {
   const sorted = [...citations].sort((a, b) => Number(a.marker) - Number(b.marker));
   return (
     <section className="iv-sources" aria-label="Sources of this answer">
       <h4 className="iv-subhead">Sources</h4>
       <ul>
         {sorted.map((c) => {
-          const href = sourceHref(c.source, docs);
+          const href = sourceHref(c.source, names.docs);
+          const label = names.name(c.source);
           return (
             <li key={String(c.marker)} id={`${idp}-src-${c.marker}`} tabIndex={-1}>
               <span className="iv-srcMarker">{c.marker}</span>
               <span className="iv-srcBody">
                 {href ? (
                   <a href={href} target="_blank" rel="noreferrer" className="iv-srcLink">
-                    {c.source.label}
+                    {label}
                   </a>
                 ) : (
-                  <span>{c.source.label}</span>
+                  <span>{label}</span>
                 )}
                 {c.source.fetched_at ? <span className="iv-srcTime"> fetched {dateTimeIST(c.source.fetched_at, { suffix: true })}</span> : null}
               </span>
@@ -225,25 +266,69 @@ export function Precision({ inline = false }: { inline?: boolean }) {
   return <p className="iv-note">Candidate unseen burns are Sentinel-2 burn scars with no fire alert: {text}.</p>;
 }
 
+/** The answer for the ear, in its own language; an English one ends with what the number check found. */
+function spoken(inv: Investigation): { text: string; lang: ReturnType<typeof scriptLang> } | null {
+  if (inv.status !== 'done' || !inv.answer?.text) return null;
+  const lang = scriptLang(inv.answer.text);
+  const check = lang === 'en' && inv.verification ? ` ${verificationWords(inv.verification).text}` : '';
+  return { text: `${speakable(inv.answer.text, lang)}${check}`, lang };
+}
+
+/**
+ * A draft the number check never saw: the run stopped, or the connection dropped before the checked
+ * answer arrived. It is kept (the reader saw it stream) but folded away and named for what it is,
+ * so it never stands in for an answer.
+ */
+function UncheckedDraft({ inv, idp, names }: { inv: Investigation; idp: string; names: SourceNames }) {
+  return (
+    <>
+      <p className="iv-note iv-draftNote">
+        {inv.recovering
+          ? 'The draft that streamed before the connection dropped has not been checked yet; the checked answer replaces it once it loads.'
+          : inv.status === 'stopped'
+            ? 'Stopped before the number check, so the draft below is not an answer: none of its figures was checked against the data.'
+            : 'The run ended before the number check reached this page, so the draft below is not an answer: none of its figures was checked against the data.'}
+      </p>
+      <details className="iv-draft">
+        <summary>Show the unchecked draft</summary>
+        <div className="iv-draftText">
+          <AnswerText text={inv.draft} citations={null} idp={`${idp}-draft`} names={names} />
+        </div>
+      </details>
+    </>
+  );
+}
+
 export function AnswerPanel({ inv, idp, onOpenCase }: { inv: Investigation; idp: string; onOpenCase: (id: number) => void }) {
-  const text = inv.answer?.text ?? inv.draft;
-  const streaming = inv.status === 'running' && !inv.answer;
-  const ev = evidenceOf(inv.tools);
-  const has = Boolean(text) || inv.verification || inv.answer;
+  const names = useSourceNames();
+  // a draft is shown as it streams; once the run has ended (or its stream broke) without the checked
+  // answer, it is only ever shown folded, as an unchecked draft
+  const unchecked = !inv.answer && Boolean(inv.draft) && (inv.status !== 'running' || inv.recovering);
+  const text = inv.answer?.text ?? (unchecked ? '' : inv.draft);
+  const streaming = inv.status === 'running' && !inv.answer && !inv.recovering;
+  const ev = useMemo(() => evidenceOf(inv.tools), [inv.tools]);
+  const has = Boolean(text) || unchecked || inv.verification || inv.answer;
+  // once per state of the run, not on every tick of the console's clock
+  const voice = useMemo(() => spoken(inv), [inv]);
   return (
     <section className="iv-answer" aria-labelledby={`${idp}-answer`} data-empty={has ? undefined : ''}>
-      <h4 className="iv-subhead" id={`${idp}-answer`}>
-        Answer
-        {streaming && text ? <span className="iv-headNote"> writing</span> : null}
-        {inv.answer && inv.verification == null && inv.status === 'running' ? <span className="iv-headNote"> checking the figures</span> : null}
-      </h4>
+      <div className="iv-answerHead">
+        <h4 className="iv-subhead" id={`${idp}-answer`}>
+          Answer
+          {streaming && text ? <span className="iv-headNote"> writing</span> : null}
+          {inv.answer && inv.verification == null && inv.status === 'running' ? <span className="iv-headNote"> checking the figures</span> : null}
+          {unchecked ? <span className="iv-headNote">{inv.recovering ? ' loading the checked answer' : ' none checked'}</span> : null}
+        </h4>
+        {voice ? <Listen id={`answer-${inv.key}`} text={voice.text} lang={voice.lang} what="this answer" className="iv-listen" /> : null}
+      </div>
       <div aria-live="polite" aria-busy={inv.status === 'running'} className="iv-answerText">
-        {text ? <AnswerText text={text} citations={inv.answer?.citations ?? null} idp={idp} /> : null}
+        {text ? <AnswerText text={text} citations={inv.answer?.citations ?? null} idp={idp} names={names} /> : null}
+        {unchecked ? <UncheckedDraft inv={inv} idp={idp} names={names} /> : null}
         {inv.verification ? <Verdict v={inv.verification} /> : null}
       </div>
       {inv.answer && mentionsUnseen(inv) ? <Precision /> : null}
       {inv.status !== 'running' ? <Fields scars={ev.scars} onOpen={onOpenCase} /> : null}
-      {inv.answer?.citations.length ? <Sources citations={inv.answer.citations} idp={idp} /> : null}
+      {inv.answer?.citations.length ? <Sources citations={inv.answer.citations} idp={idp} names={names} /> : null}
     </section>
   );
 }

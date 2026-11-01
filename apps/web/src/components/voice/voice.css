@@ -1,0 +1,93 @@
+/* Read-aloud ("Listen"), shared by the investigator's answers and the bulletin (every class
+   prefixed vo-). An outlined control like the screen's other secondary actions; the only colour is
+   the accent on the speaker while it reads, as the one selected state. Always inside the app
+   surface, so the app tokens apply in both themes. */
+
+.vo {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  min-width: 0;
+}
+.vo-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--control);
+  border-radius: var(--radius-control);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: border-color var(--t-hover) ease;
+}
+.vo-button:hover {
+  border-color: var(--muted);
+}
+.vo-button:active {
+  transform: translateY(1px);
+}
+.vo-button svg {
+  flex: none;
+  color: var(--muted);
+}
+/* reading: the speaker's button carries the one accent, as a selected control does */
+.vo[data-status="speaking"] .vo-button:first-child svg,
+.vo[data-status="paused"] .vo-button:first-child svg {
+  color: var(--accent);
+}
+.vo[data-size="regular"] .vo-button {
+  height: 36px;
+  padding: 0 14px;
+  font-size: 13px;
+}
+.vo-progress {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+.vo-none {
+  margin: 0;
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--muted);
+}
+
+/* phone: thumb-sized */
+@media (max-width: 700px) {
+  .vo-button,
+  .vo[data-size="regular"] .vo-button {
+    height: 44px;
+    padding: 0 14px;
+    font-size: 14px;
+  }
+  .vo-none {
+    font-size: 13px;
+    line-height: 19px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vo-button {
+    transition: none;
+  }
+  .vo-button:active {
+    transform: none;
+  }
+}
+
+/* nothing to press on paper */
+@media print {
+  .vo {
+    display: none !important;
+  }
+}

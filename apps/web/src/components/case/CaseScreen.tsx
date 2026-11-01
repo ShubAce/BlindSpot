@@ -2,13 +2,14 @@ import Link from 'next/link';
 import { Suspense, type ReactNode } from 'react';
 
 import { loadFailed } from '@/components/pwa/LoadFailed';
-import { Freshness, Skeleton } from '@/components/ui/states';
+import { Skeleton } from '@/components/ui/states';
 import { PATHS } from '@/lib/api';
 import { serverGet } from '@/lib/api-server';
-import { CADENCE } from '@/lib/cadence';
 import { dateIST, dateTimeIST, metric, metricText, MISSING, number, placeName, timeIST } from '@/lib/format';
+import { weatherModelName } from '@/lib/models';
 
 import { auditPhrase, caseState, platformName, shortUrl, uniqueSources, type CaseState } from './audit';
+import { DailyFreshness } from './DailyFreshness';
 import { EvidenceChips } from './EvidenceChips';
 import { Locator } from './Locator';
 import { Kpi, ProvItem } from './parts';
@@ -156,28 +157,25 @@ export function CaseScreen({ data }: { data: CaseFile }) {
           <Link className="button-primary" href={ask} prefetch={false}>
             Ask the investigator about this case
           </Link>
-          <Freshness resp={data} cadenceMs={CADENCE.scars} verb="case file built" />
+          {/* only what the label reads: the whole case file would ship to the browser a second time */}
+          <DailyFreshness resp={{ generated_at: data.generated_at, sources: data.sources }} verb="case file built" note="scars are re-checked daily" />
         </div>
       </div>
 
-      <div className="kpis" role="group" aria-label="Key figures">
-        <Kpi label="Area burnt" value={area.value} unit={area.unit} sub={c.res_m ? `mapped from ${c.res_m} m pixels` : undefined} />
-        <Kpi label="Between the two passes" value={c.gap_days == null ? MISSING : number(c.gap_days, { decimals: 1 })} unit="days" sub={`${dateIST(c.burn_after)} to ${dateIST(c.burn_before)}`} />
-        <Kpi label="Fire alerts that explain it" value={st === 'unchecked' ? 'Not yet' : c.fire_matches == null ? MISSING : number(c.fire_matches)} sub={st === 'unchecked' ? 'not matched yet' : radius != null ? `within ${kmPrecise(radius)} and the window` : 'by the matching rule'} />
-        {/* nearest_fire_m counts only alerts inside the burn window (the API's matching window); the
-            list below also shows alerts outside it, so the label names the window */}
-        <Kpi label="Nearest alert in the window" value={c.nearest_fire_m == null ? 'None' : dist(c.nearest_fire_m).value} unit={c.nearest_fire_m == null ? undefined : dist(c.nearest_fire_m).unit} sub={c.nearest_fire_m == null ? 'no alert between the two passes' : 'from the scar, between the two passes'} />
-        <Kpi label="Detection confidence" value={c.confidence == null ? MISSING : number(c.confidence, { decimals: 2 })} sub="score from 0 to 1" />
-      </div>
-
       <div className="case-grid">
+        <div className="kpis" role="group" aria-label="Key figures">
+          <Kpi label="Area burnt" value={area.value} unit={area.unit} sub={c.res_m ? `mapped from ${c.res_m} m pixels` : undefined} />
+          <Kpi label="Between the two passes" value={c.gap_days == null ? MISSING : number(c.gap_days, { decimals: 1 })} unit="days" sub={`${dateIST(c.burn_after)} to ${dateIST(c.burn_before)}`} />
+          <Kpi label="Fire alerts that explain it" value={st === 'unchecked' ? 'Not yet' : c.fire_matches == null ? MISSING : number(c.fire_matches)} sub={st === 'unchecked' ? 'not matched yet' : radius != null ? `within ${kmPrecise(radius)} and the window` : 'by the matching rule'} />
+          {/* nearest_fire_m counts only alerts inside the burn window (the API's matching window); the
+              list below also shows alerts outside it, so the label names the window */}
+          <Kpi label="Nearest alert in the window" value={c.nearest_fire_m == null ? 'None' : dist(c.nearest_fire_m).value} unit={c.nearest_fire_m == null ? undefined : dist(c.nearest_fire_m).unit} sub={c.nearest_fire_m == null ? 'no alert between the two passes' : 'from the scar, between the two passes'} />
+          <Kpi label="Detection confidence" value={c.confidence == null ? MISSING : number(c.confidence, { decimals: 2 })} sub="score from 0 to 1" />
+        </div>
         <div className="case-col case-col--main">
         <Card title="The pictures" id="pictures" className="o-1" aside={<span>Copernicus Sentinel-2, rendered by the API</span>}>
           <EvidenceChips bbox={data.imagery?.bbox ?? null} pre={pre} post={post} geometry={c.geometry ?? null} fires={fires} state={st} place={place ? place : 'in this case'} />
         </Card>
-
-
-
 
         <Card title="Why the rule calls it a burn" id="rule" className="o-5" aside={c.model_version ? <span>{`Rule ${c.model_version}`}</span> : undefined}>
           {ev ? (
@@ -259,7 +257,7 @@ export function CaseScreen({ data }: { data: CaseFile }) {
           title="Weather between the passes"
           id="weather"
           className="o-4"
-          aside={w?.available && w.model ? <span>{`Model ${w.model}${w.hours && w.covered_hours != null ? `, ${number(w.covered_hours)} of ${number(w.hours)} hours` : ''}`}</span> : undefined}
+          aside={w?.available && w.model ? <span>{`${weatherModelName(w.model)}${w.hours && w.covered_hours != null ? `, ${number(w.covered_hours)} of ${number(w.hours)} hours` : ''}`}</span> : undefined}
         >
           {w?.available && w.series?.length ? (
             <>

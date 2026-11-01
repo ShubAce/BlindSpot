@@ -2,6 +2,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { Kpi } from '@/components/case/parts';
+import { liveAtHref } from '@/components/live/location-link';
 import { dateTimeIST, metricText, MISSING, NBSP, number } from '@/lib/format';
 
 import { CsvButtons } from './CsvDownload';
@@ -77,20 +78,6 @@ export function DistrictBrief({ data, days, watchAll = false }: { data: District
         <BriefScope data={data} days={days} hrefFor={(d) => districtHref(district, d, watchAll)} />
       </div>
 
-      <div className="br-actions" data-print="hide">
-        {/* the CSV lists the villages with candidate unseen burns: with none, it would be a header only */}
-        {(data.villages_total ?? villages.length) > 0 ? <CsvButtons csvPath={data.links?.csv} district={district} days={days} window={w} /> : null}
-        <PrintButton />
-        <span className="br-actions__links">
-          <Link className="br-textlink" href="/live">
-            Open on the live map
-          </Link>
-          <Link className="br-textlink" href="/live">
-            Ask the investigator
-          </Link>
-        </span>
-      </div>
-
       <div className="kpis" role="group" aria-label={`Totals for ${district}`}>
         <Kpi label="Candidate unseen burns" value={count(t.unseen_clusters)} sub="upper bound" />
         {/* a real zero prints as "0", not "0.0" */}
@@ -100,10 +87,27 @@ export function DistrictBrief({ data, days, watchAll = false }: { data: District
         <Kpi label="In the top tenth" value={count(t.top_tenth_fields)} unit={plural(t.top_tenth_fields, 'field')} sub={`in ${count(t.top_tenth_villages)} ${plural(t.top_tenth_villages, 'village')}`} />
       </div>
 
-      <NotesCard notes={data.notes} />
-
       <VillagesCard data={data} villages={villages} days={days} />
       <WatchlistCard data={data} watch={watch} days={days} watchAll={watchAll} />
+      {/* the API's reading notes follow the lists: the finding above already carries the audit and
+          the ranking's backtest, so the villages need not wait a phone screen behind them */}
+      <NotesCard notes={data.notes} />
+
+      {/* after the lists and their notes: the page leads with the figures and the villages, the
+          part a field team reads on a phone (the CSV sits on the villages' own card) */}
+      <div className="br-actions br-actions--end" data-print="hide">
+        <PrintButton />
+        <span className="br-actions__links">
+          {/* the map opens on the district's villages and watched fields (plain /live when none has
+              coordinates); the investigator opens with a question about it typed in, never sent */}
+          <Link className="br-textlink" href={liveAtHref([...(data.villages ?? []), ...(data.watchlist ?? [])])}>
+            Open on the live map
+          </Link>
+          <Link className="br-textlink" href={`/live?draft=${encodeURIComponent(`What should field teams in ${district} check first this week?`)}`}>
+            Ask the investigator
+          </Link>
+        </span>
+      </div>
 
       <SourcesFoot data={data} window={w} risk={risk} />
       <p className="br-print-only br-printed">
@@ -171,6 +175,12 @@ function VillagesCard({ data, villages, days }: { data: DistrictBriefResponse; v
       sub="Largest candidate unseen area first. A village’s map link and case file open its largest burn."
       aside={total > villages.length ? `The ${count(villages.length)} largest of ${count(total)}; the CSV has all ${count(total)}` : `${count(total)} ${plural(total, 'village')}`}
     >
+      {/* the CSV lists the villages with candidate unseen burns: with none, it would be a header only */}
+      {total > 0 ? (
+        <div className="br-actions br-actions--csv" data-print="hide">
+          <CsvButtons csvPath={data.links?.csv} district={data.district} days={days} window={w} />
+        </div>
+      ) : null}
       {villages.length ? (
         <div className="br-tablebox">
           <table className="br-table br-table--villages">

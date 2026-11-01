@@ -205,8 +205,9 @@ export type Freshness = {
 };
 
 /** How old the data behind a response is: the newest upstream `fetched_at` among its sources,
- *  else its `generated_at`. */
-export function freshness(resp: Partial<Envelope> | null | undefined, now: Date | null, cadenceMs?: number, verb = 'updated'): Freshness | null {
+ *  else its `generated_at`. Stale after three cadences, or after `staleAfterMs` when a job has its
+ *  own rule (DAILY_RUN_STALE_MS). */
+export function freshness(resp: Partial<Envelope> | null | undefined, now: Date | null, cadenceMs?: number, verb = 'updated', staleAfterMs?: number): Freshness | null {
   const dt = dataTime(resp);
   const at = toDate(dt?.at);
   if (!dt || !at || !now) return null;
@@ -215,14 +216,14 @@ export function freshness(resp: Partial<Envelope> | null | undefined, now: Date 
     at,
     ageMs,
     label: `${verb} ${relative(at, now)}`,
-    stale: cadenceMs ? ageMs > 3 * cadenceMs : false,
+    stale: staleAfterMs ? ageMs > staleAfterMs : cadenceMs ? ageMs > 3 * cadenceMs : false,
     basis: dt.basis,
   };
 }
 
-export function useFreshness(resp: Partial<Envelope> | null | undefined, cadenceMs?: number, verb = 'updated'): Freshness | null {
+export function useFreshness(resp: Partial<Envelope> | null | undefined, cadenceMs?: number, verb = 'updated', staleAfterMs?: number): Freshness | null {
   const now = useNow(15_000);
-  return useMemo(() => freshness(resp, now, cadenceMs, verb), [resp, now, cadenceMs, verb]);
+  return useMemo(() => freshness(resp, now, cadenceMs, verb, staleAfterMs), [resp, now, cadenceMs, verb, staleAfterMs]);
 }
 
 // ---------------------------------------------------------------------------------------------

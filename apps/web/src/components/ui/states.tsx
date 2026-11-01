@@ -50,8 +50,21 @@ export function EmptyNote({ children, style }: { children: ReactNode; style?: CS
 }
 
 /** "updated 4 min ago", turning into "stale: updated 2 h ago" after three missed cadences. */
-export function Freshness({ resp, cadenceMs, verb = 'updated', style }: { resp: Partial<Envelope> | null | undefined; cadenceMs?: number; verb?: string; style?: CSSProperties }) {
-  const f = useFreshness(resp, cadenceMs, verb);
+export function Freshness({
+  resp,
+  cadenceMs,
+  staleAfterMs,
+  verb = 'updated',
+  style,
+}: {
+  resp: Partial<Envelope> | null | undefined;
+  cadenceMs?: number;
+  /** A job's own stale rule in place of three cadences (DAILY_RUN_STALE_MS). */
+  staleAfterMs?: number;
+  verb?: string;
+  style?: CSSProperties;
+}) {
+  const f = useFreshness(resp, cadenceMs, verb, staleAfterMs);
   if (!f) return <Skeleton width={96} height={12} />;
   return (
     <span className="nums" title={f.at.toISOString()} style={{ color: f.stale ? 'var(--warning, var(--muted))' : 'var(--faint, var(--muted))', fontSize: 12, ...style }}>

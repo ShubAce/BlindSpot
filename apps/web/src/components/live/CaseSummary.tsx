@@ -6,12 +6,13 @@ import { useEffect, useRef, useState } from 'react';
 import { scarState } from './scar-state';
 import { ErrorNote, Skeleton } from '@/components/ui/states';
 import { absoluteApiUrl } from '@/lib/api';
-import { dateIST, metricText, number, percent, placeName } from '@/lib/format';
+import { dateIST, dateRangeIST, metricText, number, percent, placeName } from '@/lib/format';
 
 import { precisionText, useLiveHeadline, useScarCaseLive } from './data';
 import { useLiveState } from './live-state';
 import styles from './styles';
 import { useMapCommands } from './map-commands';
+import { useScrollCue } from './scroll-cue';
 import type { ImagerySide } from './types';
 
 const CHIP = 132;
@@ -30,21 +31,30 @@ function Chip({ side, when }: { side: ImagerySide | null; when: string }) {
       ) : (
         <span className={styles.chipMissing}>{failed ? 'The picture did not load' : 'No clear picture'}</span>
       )}
+      {/* the date on one line and the cloud on the next, so the two captions line up */}
       <figcaption>
-        {when}, {side?.date ? dateIST(`${side.date}T12:00:00+05:30`) : '—'}
-        {side?.cloud_pct != null ? <span className={styles.faint}> · cloud {percent(side.cloud_pct / 100)}</span> : null}
+        <span>
+          {when}, {side?.date ? dateIST(`${side.date}T12:00:00+05:30`) : '—'}
+        </span>
+        <span className={styles.faint}>{side?.cloud_pct != null ? `cloud ${percent(side.cloud_pct / 100)}` : 'cloud not stated'}</span>
       </figcaption>
     </figure>
   );
 }
 
-/** The compact case summary: opens over the map's right edge when a scar is clicked or chosen. */
+/**
+ * The compact case summary, when a scar is clicked or chosen: over the map's right edge on a wide
+ * screen, under the map on a phone (there the map stays in view with the field on it). Its head and
+ * the link to the case file stay put; what lies between scrolls when the map is short, and fades at
+ * the edge that has more.
+ */
 export function CaseSummary() {
   const { selectedScar } = useLiveState();
   const commands = useMapCommands();
   const c = useScarCaseLive(selectedScar);
   const head = useLiveHeadline();
   const ref = useRef<HTMLElement>(null);
+  const cue = useScrollCue<HTMLDivElement>('y');
 
   useEffect(() => {
     if (selectedScar == null) return;
@@ -61,6 +71,8 @@ export function CaseSummary() {
   const title = p?.label ?? (state === 'unseen' ? 'Candidate unseen burn' : state === 'alerted' ? 'Candidate burn, FIRMS-confirmed' : 'Candidate burn');
   const precision = state === 'unseen' ? precisionText(head.data?.unseen_burns) : null;
   const explaining = (c.data?.fires_nearby ?? []).filter((f) => f.explains_scar).length;
+  const fireLine =
+    state === 'unchecked' ? 'fire alerts not checked yet' : explaining ? `${number(explaining)} fire alert${explaining === 1 ? '' : 's'} explain it` : 'no fire alert in reach';
 
   return (
     <aside ref={ref} className={styles.caseCard} aria-label="Case summary" aria-live="polite">
@@ -74,56 +86,74 @@ export function CaseSummary() {
       </header>
 
       {c.error && !c.data ? (
-        <ErrorNote what="this case" error={c.error} onRetry={() => void c.mutate()} />
+        <div className={styles.caseBody}>
+          <ErrorNote what="this case" error={c.error} onRetry={() => void c.mutate()} />
+        </div>
       ) : !p ? (
         <div className={styles.caseBody}>
           <Skeleton width="70%" height={14} />
           <div className={styles.chips}>
-            <Skeleton width={CHIP} height={CHIP + 20} />
-            <Skeleton width={CHIP} height={CHIP + 20} />
+            <Skeleton width={CHIP} height={CHIP + 34} />
+            <Skeleton width={CHIP} height={CHIP + 34} />
           </div>
           <Skeleton width="100%" height={84} />
         </div>
       ) : (
-        <div className={styles.caseBody}>
-          <p className={styles.casePlace}>{placeName(p.village ? `Near ${p.village}` : null, p.subdistrict, p.district, p.state ?? null) || 'Place not named'}</p>
-          <div className={styles.chips}>
-            <Chip side={c.data?.imagery?.pre ?? null} when="Before" />
-            <Chip side={c.data?.imagery?.post ?? null} when="After" />
+        <>
+          <div className={styles.caseBody} ref={cue}>
+            <p className={styles.casePlace}>{placeName(p.village ? `Near ${p.village}` : null, p.subdistrict, p.district, p.state ?? null) || 'Place not named'}</p>
+            {/* the evidence in one line, above the pictures, so a short map's card shows it unscrolled */}
+            <p className={`${styles.caseFacts} nums`}>
+              {[
+                metricText('area_ha', p.area_ha),
+                `burnt ${dateRangeIST(p.burn_after, p.burn_before)}`,
+                fireLine,
+                p.confidence != null ? `confidence ${number(Number(p.confidence), { decimals: 2 })}` : null,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            </p>
+            <div className={styles.chips}>
+              <Chip side={c.data?.imagery?.pre ?? null} when="Before" />
+              <Chip side={c.data?.imagery?.post ?? null} when="After" />
+            </div>
+            <dl className={styles.facts}>
+              <div>
+                <dt>Area</dt>
+                <dd className="nums">{metricText('area_ha', p.area_ha)}</dd>
+              </div>
+              <div>
+                <dt>Burnt between</dt>
+                <dd className="nums">
+                  {dateIST(p.burn_after)} and {dateIST(p.burn_before)}
+                </dd>
+              </div>
+              <div>
+                <dt>Confidence</dt>
+                <dd className="nums">{p.confidence != null ? number(Number(p.confidence), { decimals: 2 }) : <span className="missing">—</span>}</dd>
+              </div>
+              <div>
+                <dt>Fire alerts</dt>
+                <dd className="nums">
+                  {state === 'unchecked'
+                    ? 'Not checked yet'
+                    : explaining
+                      ? `${number(explaining)} explain it`
+                      : p.nearest_fire_m != null
+                        ? `None in reach; nearest ${metricText('km', p.nearest_fire_m / 1000)}`
+                        : 'None in reach'}
+                </dd>
+              </div>
+            </dl>
+            {precision ? <p className={styles.note}>Candidates like this one: {precision}.</p> : null}
           </div>
-          <dl className={styles.facts}>
-            <div>
-              <dt>Area</dt>
-              <dd className="nums">{metricText('area_ha', p.area_ha)}</dd>
-            </div>
-            <div>
-              <dt>Burnt between</dt>
-              <dd className="nums">
-                {dateIST(p.burn_after)} and {dateIST(p.burn_before)}
-              </dd>
-            </div>
-            <div>
-              <dt>Confidence</dt>
-              <dd className="nums">{p.confidence != null ? number(Number(p.confidence), { decimals: 2 }) : <span className="missing">—</span>}</dd>
-            </div>
-            <div>
-              <dt>Fire alerts</dt>
-              <dd className="nums">
-                {state === 'unchecked'
-                  ? 'Not checked yet'
-                  : explaining
-                    ? `${number(explaining)} explain it`
-                    : p.nearest_fire_m != null
-                      ? `None in reach; nearest ${metricText('km', p.nearest_fire_m / 1000)}`
-                      : 'None in reach'}
-              </dd>
-            </div>
-          </dl>
-          {precision ? <p className={styles.note}>Candidates like this one: {precision}.</p> : null}
-          <Link href={`/case/${p.id}`} className={styles.caseLink}>
-            Open the case file
-          </Link>
-        </div>
+          {/* the way on to the full file stays in view however far the summary above it scrolls */}
+          <div className={styles.caseFoot}>
+            <Link href={`/case/${p.id}`} className={styles.caseLink}>
+              Open the case file
+            </Link>
+          </div>
+        </>
       )}
     </aside>
   );

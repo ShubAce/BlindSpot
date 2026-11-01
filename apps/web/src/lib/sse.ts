@@ -13,15 +13,34 @@
  *   }
  *
  * Failures never throw out of the generator: they arrive as an `error` event (with `retryable`), and
- * the stream then ends, so a console renders them in place.
+ * the stream then ends, so a console renders them in place. An error the server answered before any
+ * run started (a 400, 422, 429 or 503) says so with `refused` and its `status`: the question was not
+ * asked, so a console can hand the words back to the reader.
  */
 
 import { API_BASE, PATHS, type Citation, type SourceRef } from './api';
+import type { LangCode } from './langs';
 
 export type AgentMapAction = 'fly_to' | 'show_layer' | 'highlight';
 
+/** One earlier question and answer a follow-up was given (answers without their citation markers),
+ *  as the API sends and stores it. The console reads it into its own camelCase shape (model.ts). */
+export type ThreadPairWire = { run_id: string; question: string; answer: string };
+
 export type AgentEvent =
-  | { type: 'run'; run_id: string; model: string }
+  | {
+      type: 'run';
+      run_id: string;
+      model: string;
+      lang?: string;
+      /** a replay of the same question asked in the last few minutes */
+      cached?: boolean;
+      /** a follow-up: the run it follows, and exactly the questions and answers the model was given */
+      follow_up_of?: string | null;
+      context?: ThreadPairWire[];
+      /** until when this run can itself be followed up (UTC); the stored run carries it if this does not */
+      follow_up_until?: string | null;
+    }
   | { type: 'thought'; text: string }
   | { type: 'tool_call'; id: string; name: string; args: Record<string, unknown> }
   | { type: 'tool_result'; id: string; name: string; ok: boolean; summary: string; sources: SourceRef[] }
@@ -29,14 +48,31 @@ export type AgentEvent =
   | { type: 'answer_delta'; text: string }
   | { type: 'answer'; text: string; citations: Citation[] }
   | { type: 'verification'; checked: number; verified: number; unverified: string[]; passed: boolean }
-  | { type: 'error'; message: string; retryable: boolean }
+  | {
+      type: 'error';
+      message: string;
+      retryable: boolean;
+      /** the server refused the question before any run started (its HTTP status is `status`) */
+      refused?: boolean;
+      status?: number;
+      /** seconds the server asked us to wait (Retry-After) */
+      retryAfterS?: number;
+      /** the connection failed, not the run: once a run has started it finishes on the server and is
+       *  stored (GET /api/agent/runs/{id}), so its answer can still be fetched */
+      transport?: boolean;
+    }
   | { type: 'done'; run_id: string; duration_ms: number }
   /** An event this client does not know yet: kept, not dropped, so a console can show it. */
   | { type: 'unknown'; event: string; data: unknown };
 
 export type AgentEventType = AgentEvent['type'];
 
-export type AskBody = { question: string; lang?: 'en' | 'hi' | 'pa' };
+export type AskBody = {
+  question: string;
+  lang?: LangCode;
+  /** Ask a follow-up of this earlier run (its `run_id`); the server gives the model that question and answer as context. */
+  follow_up_of?: string;
+};
 
 export type StreamOptions = {
   signal?: AbortSignal;
@@ -139,6 +175,54 @@ export function toAgentEvent(raw: RawSseEvent): AgentEvent {
   return { ...fields, type: name } as AgentEvent;
 }
 
+const sentence = (s: string) => (/[.!?]$/.test(s.trim()) ? s.trim() : `${s.trim()}.`);
+
+/** Where a 422's pydantic errors point: "question", "follow_up_of" or null. */
+function invalidField(detail: unknown): string | null {
+  if (!Array.isArray(detail)) return null;
+  for (const e of detail) {
+    const loc = (e as { loc?: unknown } | null)?.loc;
+    if (Array.isArray(loc) && loc.includes('follow_up_of')) return 'follow_up_of';
+    if (Array.isArray(loc) && loc.includes('question')) return 'question';
+  }
+  return null;
+}
+
+/** A follow-up whose earlier run's window has closed: the server's refusal, and the console's own
+ *  note when the window closes while a follow-up is being written. */
+export const FOLLOW_UP_TOO_OLD = 'This conversation is too old to continue: ask the full question.';
+
+/**
+ * One kind sentence for a question the server refused before starting a run. The API's own `detail`
+ * names a run id ("Cannot follow up 5cd6...: it is more than 24 h old ..."), so a follow-up refusal is
+ * said in the reader's words instead, by what it means; a 429's detail is already a plain sentence.
+ */
+export function refusalMessage(status: number, detail: unknown, followUp: boolean, retryAfterS?: number): string {
+  const text = typeof detail === 'string' ? detail : '';
+  if (status === 400 && followUp) {
+    if (/more than [\d.]+ h old/i.test(text)) return FOLLOW_UP_TOO_OLD;
+    if (/without an answer/i.test(text)) return 'The earlier investigation ended without an answer, so there is nothing to follow up: ask the full question.';
+    if (/no finished investigation/i.test(text)) return 'The earlier investigation could not be found, so this cannot be a follow-up: ask the full question.';
+    if (/not an investigation/i.test(text)) return 'Only an investigation can be followed up: ask the full question.';
+    return 'This conversation cannot be continued: ask the full question.';
+  }
+  if (status === 422) {
+    const field = invalidField(detail);
+    if (field === 'follow_up_of') return 'The earlier investigation was not recognised, so this cannot be a follow-up: ask the full question.';
+    if (field === 'question') return 'Write a question of 3 to 600 characters.';
+    return 'The investigator could not read this question.';
+  }
+  if (status === 429) {
+    if (text) return sentence(text);
+    return retryAfterS ? `Too many questions from this address; try again in ${Math.ceil(retryAfterS)} s.` : 'The investigator is answering other questions; try again in a minute.';
+  }
+  if (status === 503 && followUp) return 'The earlier answer could not be read just now. Try again in a moment, or ask the full question.';
+  if (status === 503) return text ? `The investigator is unavailable right now (${text.replace(/\.$/, '')}). Try again in a minute.` : 'The investigator is unavailable right now. Try again in a minute.';
+  if (status >= 500) return `The investigator could not start (${status}). Try again in a minute.`;
+  if (text) return `The investigator refused the question: ${sentence(text)}`;
+  return `The investigator could not start (${status}).`;
+}
+
 /** Stream the investigator's events for one question. */
 export async function* streamAgent(body: AskBody, opts: StreamOptions = {}): AsyncGenerator<AgentEvent, void, undefined> {
   const controller = new AbortController();
@@ -168,29 +252,35 @@ export async function* streamAgent(body: AskBody, opts: StreamOptions = {}): Asy
       });
     } catch {
       if (opts.signal?.aborted) return;
+      const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
       yield {
         type: 'error',
-        message: timedOut ? 'The investigator did not answer in time.' : 'The investigator is not reachable.',
+        message: timedOut ? 'The investigator did not answer in time.' : offline ? 'No connection: a new question needs one.' : 'The investigator is not reachable.',
         retryable: true,
+        transport: true,
       };
       return;
     }
 
     if (!res.ok || !res.body) {
-      let detail = '';
+      let detail: unknown = null;
       try {
-        const j = (await res.json()) as { detail?: unknown };
-        detail = typeof j.detail === 'string' ? j.detail : '';
+        detail = ((await res.json()) as { detail?: unknown }).detail ?? null;
       } catch {
-        detail = '';
+        detail = null; // not JSON (a proxy's page): the status says enough
       }
-      const retryable = res.status === 429 || res.status >= 500;
-      const message = res.status === 429
-        ? 'The investigator is answering other questions; try again in a minute.'
-        : detail
-          ? `The investigator refused the question: ${detail}.`
-          : `The investigator could not start (${res.status}).`;
-      yield { type: 'error', message, retryable };
+      const ra = Number(res.headers.get('Retry-After'));
+      const retryAfterS = Number.isFinite(ra) && ra > 0 ? ra : undefined;
+      // 200 with no body is not a refusal: the run may have started, so it is not handed back
+      const refused = !res.ok;
+      yield {
+        type: 'error',
+        message: refusalMessage(res.status, detail, Boolean(body.follow_up_of), retryAfterS),
+        retryable: res.status === 429 || res.status >= 500,
+        refused,
+        status: res.status,
+        retryAfterS,
+      };
       return;
     }
 
@@ -210,6 +300,7 @@ export async function* streamAgent(body: AskBody, opts: StreamOptions = {}): Asy
           type: 'error',
           message: timedOut ? 'The investigator went quiet for too long.' : 'The connection to the investigator dropped.',
           retryable: true,
+          transport: true,
         };
         return;
       }
@@ -223,7 +314,7 @@ export async function* streamAgent(body: AskBody, opts: StreamOptions = {}): Asy
       if (chunk.done) break;
     }
     if (!sawDone && !opts.signal?.aborted) {
-      yield { type: 'error', message: 'The investigator stopped before finishing.', retryable: true };
+      yield { type: 'error', message: 'The investigator stopped before finishing.', retryable: true, transport: true };
     }
   } finally {
     clearTimeout(timer);

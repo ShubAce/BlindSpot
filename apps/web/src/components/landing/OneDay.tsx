@@ -3,7 +3,8 @@ import { Suspense, type CSSProperties, type ReactNode } from 'react';
 
 import { LoadFailed } from '@/components/pwa/LoadFailed';
 import { Skeleton } from '@/components/ui/states';
-import { absoluteApiUrl } from '@/lib/api';
+import { absoluteApiUrl, PATHS } from '@/lib/api';
+import { serverGet } from '@/lib/api-server';
 import { dateIST, metricText, number, percent, timeIST } from '@/lib/format';
 import { PHOTOS } from '@/lib/photo-credits';
 
@@ -13,15 +14,15 @@ import { AOI_CENTRE, boxAround, gibsDay, gibsPicture } from './gibs';
 import { s } from './styles';
 import { Pic } from './Pic';
 import { Reveal } from './Reveal';
-import type { FireWindow } from './types';
+import type { FireWindow, MetNow } from './types';
 import { span } from './words';
 
 /**
  * Section 4, how it works (direction: "Drag row of moments"): one day over Punjab in eight moments,
  * each with a real picture. The times, counts and heights in the captions are live (fire windows from
  * GET /api/fires/hours, the evening peak from the headline's GK-2A block, Delhi's mixing layer from
- * GET /api/met/now); the satellite pictures are NASA GIBS on their latest day and the API's own
- * Sentinel-2 crops of a real case.
+ * GET /api/met/now, now and, by day, the forecast for the night); the satellite pictures are NASA
+ * GIBS on their latest day and the API's own Sentinel-2 crops of a real case.
  */
 
 type Picture = { src: string; width: number; height: number; alt: string; caption: string; local?: boolean; fail: string };
@@ -40,16 +41,69 @@ export function OneDay() {
   );
 }
 
+// ---------------------------------------------------------------------------------------------
+// "Delhi under a lid": the sentence follows the figure
+
+/** GET /api/met/now as this card reads it: the mixing height and the inversion test beside it. */
+type DelhiMet = MetNow & { inversion?: { present?: boolean | null } | null };
+
+// Below this the mixing layer is a lid. The API's Delhi forecasts put the night layer at a few tens
+// of metres to about two hundred, and the afternoon one over a kilometre; 500 m sits between the two,
+// so the morning rise and the evening fall cross it, never a night or an afternoon.
+const LID_M = 500;
+
+/** A lid: a shallow layer, or a measured inversion (warmer air above than at the ground). */
+const isLid = (m: DelhiMet) => (m.blh_m != null && m.blh_m < LID_M) || m.inversion?.present === true;
+
+// 23:30 IST (18:00 UTC): the middle of the night, when the evening's smoke has arrived; the API's
+// forecasts hold the night's low layer from soon after sunset until the morning.
+const NIGHT_UTC_HOUR = 18;
+
+/** The first 23:30 IST after the reading's own time (no clock read here: the time is the API's). */
+function nightAfter(t: string): string | null {
+  const at = new Date(t);
+  if (Number.isNaN(at.getTime())) return null;
+  const night = new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate(), NIGHT_UTC_HOUR));
+  if (night.getTime() <= at.getTime()) night.setUTCDate(night.getUTCDate() + 1);
+  return night.toISOString().replace('.000Z', 'Z');
+}
+
+/**
+ * The card's sentence. A shallow layer (or an inversion) says it traps smoke near the ground, with
+ * the API's figure and time. A deep one says so plainly, then gives the API's forecast for the night
+ * ahead: the lid forming, with its depth and time, or the layer staying deep if that is what the
+ * forecast says. Without a figure, the general fact and no number.
+ */
+async function lidText(now: DelhiMet | null): Promise<string> {
+  if (now?.blh_m == null || !now.t) return 'At night the mixing layer over Delhi sinks, and what arrives stays near the ground.';
+  const at = timeIST(now.t);
+  const depth = metricText('blh_m', now.blh_m);
+  if (isLid(now)) {
+    // an inversion over a deep model layer: the inversion is the lid, so the depth is left out
+    if (now.blh_m >= LID_M) return `At ${at} IST a temperature inversion sat over Delhi: a lid that keeps what arrives near the ground.`;
+    return `At ${at} IST the mixing layer over Delhi was ${depth} deep${now.inversion?.present ? ', under a temperature inversion' : ''}: a lid that keeps what arrives near the ground.`;
+  }
+  const head = `At ${at} IST the mixing layer over Delhi was ${depth} deep, room for smoke to rise and thin out.`;
+  const t = nightAfter(now.t);
+  const r = t ? await serverGet<DelhiMet>(PATHS.metNow, { city: 'Delhi', t }) : null;
+  const night = r?.ok ? r.data : null;
+  if (night?.blh_m == null || !night.t) return `${head} At night it sinks into a lid, and what arrives then stays near the ground.`;
+  return isLid(night)
+    ? `${head} The lid forms at night: the forecast for ${timeIST(night.t)} IST puts the layer at ${metricText('blh_m', night.blh_m)}, and what arrives then stays near the ground.`
+    : `${head} The forecast for ${timeIST(night.t)} IST keeps it ${metricText('blh_m', night.blh_m)} deep.`;
+}
+
 /** The main daytime and night observation windows from the week's detections. */
 function mainWindow(ws: FireWindow[] | undefined, dn: 'D' | 'N'): FireWindow | null {
   return (ws ?? []).filter((w) => w.daynight === dn && !w.minor).sort((a, b) => (b.share ?? 0) - (a.share ?? 0))[0] ?? null;
 }
 
 async function Moments() {
-  const [hours, head, met, cases, dayFires, dayDrift, dayNight] = await Promise.all([
+  // the night forecast lidText may ask for starts as soon as the met reading lands, beside the other reads
+  const [hours, head, lid, cases, dayFires, dayDrift, dayNight] = await Promise.all([
     getFireHours(),
     getHeadline(),
-    getDelhiMet(),
+    getDelhiMet().then((met) => lidText(met.ok ? (met.data as DelhiMet) : null)),
     getCases(),
     gibsDay('viirsFires'),
     gibsDay('viirsTrueColour'),
@@ -60,7 +114,6 @@ async function Moments() {
   const night = mainWindow(ws, 'N');
   const geo = head.ok && head.data.gk2a_evening?.available ? head.data.gk2a_evening : null;
   const blind = geo?.unobserved_span_ist ?? null;
-  const blh = met.ok ? met.data.blh_m : null;
   const c0 = cases.cases[0];
   const c1 = cases.cases[1] ?? cases.cases[0];
   const portrait = (lonW: number) => boxAround(AOI_CENTRE[0], AOI_CENTRE[1], lonW, 4 / 5);
@@ -102,10 +155,7 @@ async function Moments() {
     {
       key: 'lid',
       title: 'Delhi under a lid',
-      text:
-        blh != null && met.ok && met.data.t
-          ? `At ${timeIST(met.data.t)} IST the mixing layer over Delhi was ${metricText('blh_m', blh)} deep. What arrives stays near the ground.`
-          : 'At night the mixing layer over Delhi sinks, and what arrives stays near the ground.',
+      text: lid,
       pic: photo('delhiSmog', 'A platform at New Delhi railway station fading into smog on a winter morning.', 'Smog at New Delhi railway station, a winter morning. Photograph: Sumita Roy Dutta.'),
     },
     {

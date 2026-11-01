@@ -14,17 +14,17 @@ export function CaseSkeleton() {
           <Skeleton width="min(720px, 95%)" height={20} style={{ marginTop: 12 }} />
         </div>
       </div>
-      <div className="kpis">
-        {[0, 1, 2, 3, 4].map((i) => (
-          <div key={i} className="kpi">
-            <Skeleton width={110} height={14} />
-            <Skeleton width={72} height={26} style={{ marginTop: 6 }} />
-            <Skeleton width={120} height={12} style={{ marginTop: 6 }} />
-          </div>
-        ))}
-      </div>
       <div className="case-grid">
-        <section className="card span-8">
+        <div className="kpis">
+          {[0, 1, 2, 3, 4].map((i) => (
+            <div key={i} className="kpi">
+              <Skeleton width={110} height={14} />
+              <Skeleton width={72} height={26} style={{ marginTop: 6 }} />
+              <Skeleton width={120} height={12} style={{ marginTop: 6 }} />
+            </div>
+          ))}
+        </div>
+        <section className="card span-8 o-1">
           <Skeleton width={120} height={20} />
           <div className="evidence__grid" style={{ marginTop: 16 }}>
             {[0, 1, 2, 3].map((i) => (
@@ -34,7 +34,7 @@ export function CaseSkeleton() {
             ))}
           </div>
         </section>
-        <section className="card span-4">
+        <section className="card span-4 o-2">
           <Skeleton width={140} height={20} />
           {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => (
             <Skeleton key={i} height={16} style={{ marginTop: 14 }} />

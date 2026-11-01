@@ -1,7 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 
 import { LegendSwatch } from '@/components/map/Legend';
 import { lookOffsetText, nextLookParts } from '@/components/map/look';
@@ -9,16 +9,34 @@ import type { LegendItem, Mark } from '@/components/map/marks';
 import { paletteFor, type MapPalette } from '@/components/map/palette';
 import { EmptyNote, ErrorNote, Freshness, Skeleton } from '@/components/ui/states';
 import { PATHS, type ApiError, type Envelope, type RiskResponse, type SmokeForwardResponse, type WindFieldResponse } from '@/lib/api';
+import { DAILY_RUN_STALE_MS } from '@/lib/cadence';
 import { dateIST, metricText, number, timeIST } from '@/lib/format';
 import { CADENCE, useApi } from '@/lib/live';
 
 import { CaseSummary } from './CaseSummary';
-import { SCAR_QUERY, SMOKE_FORWARD_QUERY, useAirLive, useDistrictScars, useLiveFires, useLiveScars, useScarCaseLive, useScarsSummaryLive, useSmokeBackLive, useSourceCadence } from './data';
+import {
+  districtScarsKey,
+  SCAR_QUERY,
+  SMOKE_FORWARD_QUERY,
+  useAirLive,
+  useDayRead,
+  useDistrictScars,
+  useHeldOverKey,
+  useLiveFires,
+  useLiveHeadline,
+  useLiveScars,
+  useScarCaseLive,
+  useScarsSummaryLive,
+  useSmokeBackLive,
+  useSourceCadence,
+} from './data';
 import { layerKey, levelText, scarTileKey, toggleSwatch, type LayerKeyMeta } from './legend';
 import { LIVE_LAYERS, useLiveActions, useLiveState, type LiveLayer } from './live-state';
 import type { MapData } from './LiveMapCanvas';
+import { parseAt } from './location-link';
 import styles from './styles';
 import { MotionToggle } from './MotionToggle';
+import { useScrollCue } from './scroll-cue';
 import { SeasonReplay } from './SeasonReplay';
 import { usePassWindows, useWatch } from './watch';
 
@@ -68,19 +86,42 @@ const isWide = () => window.matchMedia(WIDE).matches;
 /** Air stations older than this are not drawn as now (components/map/layers/air.ts). */
 const AIR_MAX_AGE_MIN = 360;
 
-type Status = { live: { data?: Partial<Envelope>; error?: ApiError; mutate: () => unknown }; what: string; line: ReactNode | null; empty: string | null; cadenceMs: number | undefined };
+
+/** How many of a scars read the map draws: "all 1,286" when every one fits, not "newest 1,286 of
+ *  1,286"; else "newest 600 of 1,286". */
+const shownOf = (r: { features: { features: unknown[] }; totals: { clusters: number } }) =>
+  r.features.features.length >= r.totals.clusters ? `all ${number(r.totals.clusters)}` : `newest ${number(r.features.features.length)} of ${number(r.totals.clusters)}`;
+const capitalise = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
+
+type Status = {
+  live: { data?: Partial<Envelope>; error?: ApiError; mutate: () => unknown };
+  what: string;
+  line: ReactNode | null;
+  empty: string | null;
+  cadenceMs: number | undefined;
+  /** A job's own stale rule in place of three cadences: scars and risk change once a day, with the
+   *  daily Sentinel-2 run, not with the STAC source's polling. */
+  staleAfterMs?: number;
+  /** The replay's reads: `live.data` is still the last day's while this day loads (data.ts useHeldOver). */
+  held?: boolean;
+  /** What the line says while a replay day loads. */
+  loading?: string;
+};
 
 function LayerStatus({ st }: { st: Status }) {
-  const { data, error, mutate } = st.live;
+  const { error, mutate } = st.live;
+  // a replay day's figures are its own or none: never the last day's under this day's name
+  const data = st.held ? undefined : st.live.data;
   if (error && !data) return <ErrorNote what={st.what} error={error} onRetry={() => void mutate()} />;
-  if (!data) return <Skeleton width={150} height={12} />;
+  if (!data) return st.held ? <p className={`${styles.keyStatus} ${styles.keyLoading}`}>{st.loading}</p> : <Skeleton width={150} height={12} />;
+  // a div, not a p: the empty and error notes are paragraphs of their own
   return (
-    <p className={styles.keyStatus}>
+    <div className={styles.keyStatus}>
       {st.empty ? <EmptyNote style={{ display: 'inline' }}>{st.empty}</EmptyNote> : st.line}
       {' '}
-      <Freshness resp={data} cadenceMs={st.cadenceMs} />
+      <Freshness resp={data} cadenceMs={st.cadenceMs} staleAfterMs={st.staleAfterMs} />
       {error ? <ErrorNote what="the latest refresh" error={error} lastGood={data} onRetry={() => void mutate()} /> : null}
-    </p>
+    </div>
   );
 }
 
@@ -136,8 +177,45 @@ function TileRamp({ view }: { view: 'districts' | 'tiles' }) {
 
 export function MapPanel() {
   const s = useLiveState();
-  const { dispatch } = useLiveActions();
+  const { dispatch, camera } = useLiveActions();
   const on = s.layers;
+
+  // A location link (/live?at=lat,lon[,zoom], location-link.ts): the map opens centred there (the
+  // camera waits for the map), once; then the link leaves the address, so a reload or a shared copy
+  // of this page opens the usual view and nothing re-centres the map later.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has('at')) return;
+    const at = parseAt(url.searchParams.get('at'));
+    url.searchParams.delete('at');
+    window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+    if (at) camera({ lon: at.lon, lat: at.lat, zoom: at.zoom, instant: true });
+  }, [camera]);
+  const togglesCue = useScrollCue<HTMLDivElement>('x');
+  // Where the toggles sit on one row that scrolls sideways (phones, laptops), a mouse wheel over them
+  // moves the row, until its end, where the wheel scrolls the page again: a mouse has no other way
+  // to reach the last of them.
+  const toggles = useCallback(
+    (el: HTMLDivElement | null) => {
+      const undo = togglesCue(el);
+      if (!el) return undo;
+      const onWheel = (e: WheelEvent) => {
+        if (e.ctrlKey || Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+        const max = el.scrollWidth - el.clientWidth;
+        const next = Math.max(0, Math.min(max, el.scrollLeft + e.deltaY));
+        if (max <= 1 || Math.abs(next - el.scrollLeft) < 1) return;
+        e.preventDefault();
+        el.scrollLeft = next;
+      };
+      el.addEventListener('wheel', onWheel, { passive: false });
+      return () => {
+        undo?.();
+        el.removeEventListener('wheel', onWheel);
+      };
+    },
+    [togglesCue],
+  );
+  const keyCue = useScrollCue<HTMLDivElement>('y');
   // the key starts open where there is room for it (wide and tall screens) and folded elsewhere, so it
   // never covers half of a short map; its button stays in the map's corner
   const [keyChoice, setKeyChoice] = useState<boolean | null>(null);
@@ -150,8 +228,14 @@ export function MapPanel() {
   // data: the heavy layers load only while switched on
   const fires = useLiveFires(s.replayDay);
   const scars = useLiveScars(s.replayDay);
+  // while a replay day loads, SWR still hands over the last day's answers: the map keeps that day's
+  // scars, faded (LiveMapCanvas), and no sentence names this day over them
+  const { held: firesHeld, failed: firesFailed, own: firesOwn } = useDayRead('fires', s.replayDay, fires);
+  const { held: scarsHeld, failed: scarsFailed, own: scarsOwn } = useDayRead('scars', s.replayDay, scars);
   const districtScars = useDistrictScars(s.scarDistrict, s.replayDay);
+  const districtHeld = useHeldOverKey(districtScarsKey(s.replayDay ? null : s.scarDistrict), districtScars.data);
   const summary = useScarsSummaryLive();
+  const head = useLiveHeadline();
   const risk = useApi<RiskResponse>(on.risk ? PATHS.risk : null, { limit: 1000 }, { refreshInterval: CADENCE.risk, timeoutMs: SLOW });
   const smoke = useApi<SmokeForwardResponse>(on.smoke ? PATHS.smokeForward : null, SMOKE_FORWARD_QUERY, { refreshInterval: CADENCE.smoke, timeoutMs: 60_000 });
   const back = useSmokeBackLive(on.smokeBack ? s.smokeBackCity : null);
@@ -186,9 +270,12 @@ export function MapPanel() {
     return extra.length ? { ...a, features: { ...a.features, features: [...a.features.features, ...extra] } } : a;
   }, [scars.data, districtScars.data, replaying]);
 
+  // A replay day's read that failed leaves the last day's marks off the map (the chip and the key say
+  // what failed); one still loading leaves its scars on, faded, until this day's own land.
   const data: MapData = {
-    fires: fires.data,
-    scars: drawnScars,
+    fires: firesFailed ? undefined : fires.data,
+    scars: scarsFailed ? undefined : drawnScars,
+    held: { fires: firesHeld && !firesFailed, scars: scarsHeld && !scarsFailed },
     risk: risk.data,
     smoke: smoke.data,
     smokeBack: back.data,
@@ -213,35 +300,52 @@ export function MapPanel() {
   const statuses: Record<LiveLayer, Status> = {
     fires: {
       live: fires,
-      what: 'fire alerts',
+      what: dayLabel ? `the fire alerts of ${dayLabel}` : 'fire alerts',
       line: fires.data ? `${number(fires.data.count)} detections ${dayLabel ? `on ${dayLabel}` : 'in the last 24 h'}` : null,
       empty: fires.data && fires.data.count === 0 ? (dayLabel ? `No fire alerts on ${dayLabel}.` : 'No fire alerts in the last 24 hours.') : null,
       cadenceMs: cadence('firms'),
+      held: firesHeld,
+      loading: `Loading the fire alerts of ${dayLabel ?? 'the last 24 h'}…`,
     },
     scars: {
       live: scars,
-      what: 'burn scars',
+      what: dayLabel ? `the burn scars up to ${dayLabel}` : 'burn scars',
+      held: scarsHeld,
+      loading: dayLabel ? `Loading the scars mapped up to ${dayLabel}…` : 'Loading the newest scars…',
       line: scars.data
         ? [
             s.scarsView === 'districts' && summary.data?.season
-              ? `This season by district: ${metricText('area_ha', summary.data.season.area_ha)} in ${number(summary.data.by_district?.length ?? 0)} districts, since ${dateIST(`${summary.data.season.since}T12:00:00+05:30`)}.`
+              ? // every mapped scar, not the candidates alone (the headline's figure): named as such, from
+                // the season's first Sentinel-2 pass the headline reports where it has one
+                `All mapped burn scars this season, with or without a fire alert: ${metricText('area_ha', summary.data.season.area_ha)} in ${number(summary.data.by_district?.length ?? 0)} districts, ${
+                  head.data?.unseen_burns?.first_pass ? `from the pass of ${dateIST(head.data.unseen_burns.first_pass)}` : `since ${dateIST(`${summary.data.season.since}T12:00:00+05:30`)}`
+                }.`
               : null,
-            `${s.scarsView === 'districts' ? 'Zoomed in, the fields: newest' : 'Newest'} ${number(scars.data.features.features.length)} of ${number(scars.data.totals.clusters)} scars with confidence ${number(SCAR_QUERY.min_confidence, { decimals: 1 })} or more${dayLabel ? `, up to ${dayLabel}` : ''}${
-              districtScars.data && s.scarDistrict && !dayLabel ? `, and newest ${number(districtScars.data.features.features.length)} of ${number(districtScars.data.totals.clusters)} in ${s.scarDistrict}` : ''
+            `${s.scarsView === 'districts' ? `Zoomed in, the fields: ${shownOf(scars.data)}` : capitalise(shownOf(scars.data))} scars with confidence ${number(SCAR_QUERY.min_confidence, { decimals: 1 })} or more${dayLabel ? `, up to ${dayLabel}` : ''}${
+              !s.scarDistrict || dayLabel
+                ? ''
+                : districtScars.data && !districtHeld
+                  ? `, and ${shownOf(districtScars.data)} in ${s.scarDistrict}`
+                  : // the district's own read is on its way (a click on its tile, or the map zoomed in on it)
+                    !districtScars.error
+                    ? `; loading ${s.scarDistrict}’s own…`
+                    : ''
             }`,
           ]
             .filter(Boolean)
             .join(' ')
         : null,
       empty: scars.data && scars.data.totals.clusters === 0 ? (dayLabel ? `No Sentinel-2 burn scars mapped up to ${dayLabel}.` : 'No burn scars mapped yet.') : null,
-      cadenceMs: cadence('stac_e84'),
+      cadenceMs: undefined,
+      staleAfterMs: DAILY_RUN_STALE_MS,
     },
     risk: {
       live: risk,
       what: 'harvested fields',
       line: risk.data ? `Top ${number(risk.data.features.features.length)} of ${number(risk.data.totals.clusters)} harvested, unburnt fields by risk` : null,
       empty: risk.data && risk.data.features.features.length === 0 ? 'No harvested, unburnt fields ranked yet.' : null,
-      cadenceMs: cadence('stac_e84'),
+      cadenceMs: undefined,
+      staleAfterMs: DAILY_RUN_STALE_MS,
     },
     smoke: {
       live: smoke,
@@ -325,17 +429,27 @@ export function MapPanel() {
   const keyMeta: LayerKeyMeta = { windLevel: wind.data?.level, backHours: back.data?.hours };
   const mapLabel = `Map of Punjab, Haryana and Delhi showing ${active.map((l) => layerKey(l, s.smokeBackCity, keyMeta).label.toLowerCase()).join(', ') || 'no layers'}${dayLabel ? `, replaying ${dayLabel}` : ''}`;
 
+  // the replay chip says what the map holds: the day's own fires and scars, the day still loading
+  // (the last day's scars stay, faded, until it lands), or which of the day's reads failed
+  const dayLoading = !firesFailed && !scarsFailed && (firesOwn === undefined || scarsOwn === undefined);
+  const failedWhat = firesFailed && scarsFailed ? 'fire alerts and scars' : firesFailed ? 'fire alerts' : 'scars';
+  const retryDay = () => {
+    if (firesFailed) void fires.mutate();
+    if (scarsFailed) void scars.mutate();
+  };
+
   return (
     <section className={`${styles.card} ${styles.mapCard}`} aria-labelledby="map-title">
       <header className={styles.mapHead}>
         <h2 id="map-title" className="sr-only">
           Map
         </h2>
-        <div role="toolbar" aria-label="Map layers" className={styles.toggles}>
+        {/* on a phone the toggles scroll sideways: the edge with more of them fades (scroll-cue.ts) */}
+        <div role="toolbar" aria-label="Map layers" className={styles.toggles} ref={toggles}>
           {LIVE_LAYERS.map((l) => {
             const k = layerKey(l, s.smokeBackCity, keyMeta);
             const st = statuses[l];
-            const busy = on[l] && !st.live.data && !st.live.error;
+            const busy = on[l] && (!st.live.data || !!st.held) && !st.live.error;
             return (
               <button
                 key={l}
@@ -358,37 +472,55 @@ export function MapPanel() {
       <div className={styles.mapBody} ref={bodyRef}>
         {mapReady ? <LiveMapCanvas data={data} label={mapLabel} /> : <MapWaiting />}
 
-        {s.replayDay ? (
-          <p className={styles.replayChip} role="status">
-            Replaying {dayLabel}: fire alerts and scars of that day; other layers show now.{' '}
-            <button type="button" className="text-button" onClick={() => dispatch({ type: 'replay', day: null })}>
-              Back to live
-            </button>
-          </p>
-        ) : null}
+        {/* the map's left edge, top to bottom: the replay chip, then the key growing up from the
+            lower corner into whatever height the chip leaves, so the two never overlap */}
+        <div className={styles.mapLeft}>
+          {s.replayDay ? (
+            <p className={styles.replayChip} role="status" data-state={dayLoading ? 'loading' : undefined}>
+              {/* short: the key says what each layer holds (that day's fires and scars, the rest now) */}
+              {dayLoading ? (
+                <>Replaying {dayLabel}, loading…</>
+              ) : firesFailed || scarsFailed ? (
+                <>
+                  Replaying {dayLabel}: its {failedWhat} did not load.{' '}
+                  <button type="button" className="text-button" onClick={retryDay}>
+                    Try again
+                  </button>
+                </>
+              ) : (
+                <>Replaying {dayLabel}</>
+              )}
+              <span aria-hidden="true"> · </span>
+              <button type="button" className="text-button" onClick={() => dispatch({ type: 'replay', day: null })}>
+                Back to live
+              </button>
+            </p>
+          ) : null}
 
-        <div className={styles.key} data-state={keyOpen ? 'open' : 'closed'}>
-          <button type="button" className={styles.keyButton} aria-expanded={keyOpen} aria-controls="map-key" onClick={toggleKey}>
-            Key
-          </button>
-          <div id="map-key" className={styles.keyBody}>
-            {active.length ? (
-              active.map((l) => {
-                const k = layerKey(l, s.smokeBackCity, keyMeta);
-                return (
-                  <section key={l} className={styles.keyGroup} aria-label={k.label}>
-                    <h3 className={styles.keyTitle}>{k.label}</h3>
-                    <LayerStatus st={statuses[l]} />
-                    {l === 'scars' && s.scarsView !== 'fields' ? <TileRamp view={s.scarsView} /> : null}
-                    <ul className={styles.keyList}>
-                      <KeyRows items={(p) => (l === 'scars' && s.scarsView !== 'fields' ? scarTileKey(s.scarsView, p).legend : layerKey(l, s.smokeBackCity, keyMeta, p).legend)} />
-                    </ul>
-                  </section>
-                );
-              })
-            ) : (
-              <EmptyNote>Every layer is off. Switch one on above the map.</EmptyNote>
-            )}
+          <div className={styles.key} data-state={keyOpen ? 'open' : 'closed'}>
+            <button type="button" className={styles.keyButton} aria-expanded={keyOpen} aria-controls="map-key" onClick={toggleKey}>
+              Key
+            </button>
+            <div id="map-key" className={styles.keyBody} ref={keyCue}>
+              {dayLabel ? <p className={styles.keyStatus}>Replaying {dayLabel}: fire alerts and scars of that day; the other layers show now.</p> : null}
+              {active.length ? (
+                active.map((l) => {
+                  const k = layerKey(l, s.smokeBackCity, keyMeta);
+                  return (
+                    <section key={l} className={styles.keyGroup} aria-label={k.label}>
+                      <h3 className={styles.keyTitle}>{k.label}</h3>
+                      <LayerStatus st={statuses[l]} />
+                      {l === 'scars' && s.scarsView !== 'fields' ? <TileRamp view={s.scarsView} /> : null}
+                      <ul className={styles.keyList}>
+                        <KeyRows items={(p) => (l === 'scars' && s.scarsView !== 'fields' ? scarTileKey(s.scarsView, p).legend : layerKey(l, s.smokeBackCity, keyMeta, p).legend)} />
+                      </ul>
+                    </section>
+                  );
+                })
+              ) : (
+                <EmptyNote>Every layer is off. Switch one on above the map.</EmptyNote>
+              )}
+            </div>
           </div>
         </div>
 

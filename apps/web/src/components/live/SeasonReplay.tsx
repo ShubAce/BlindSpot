@@ -1,12 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useSWRConfig } from 'swr';
 
 import { ErrorNote, Skeleton } from '@/components/ui/states';
 import { ticks } from '@/lib/charts';
 import { dateIST, number } from '@/lib/format';
 
-import { useFiresDailyLive } from './data';
+import { preloadReplayDay, useDayRead, useFiresDailyLive, useLiveFires, useLiveScars } from './data';
 import { useLiveActions, useLiveState } from './live-state';
 import styles from './styles';
 
@@ -14,7 +15,9 @@ import styles from './styles';
  * The season replay: a slider from the season's first day to today that scrubs the map. Its track
  * is the chart of FIRMS fire detections per IST day (/api/fires/daily), partial days drawn as
  * outlines; the day chosen is marked by the one gold line. The last position is live. It is a
- * native range input, so arrows, Page Up/Down, Home and End all work; Play steps a day at a time.
+ * native range input, so arrows, Page Up/Down, Home and End all work. Play steps a day at a time,
+ * each day held for STEP_MS once its own fires and scars are on the map (a slow read slows the
+ * replay down instead of skipping days), and the next day is read while this one shows.
  */
 
 const BARS_H = 34;
@@ -64,17 +67,33 @@ export function SeasonReplay() {
     if (timer.current) clearTimeout(timer.current);
   }, []);
 
+  // the day on the map is ready once its own fires and scars are in (or their reads failed, which
+  // the key reports): only then does Play's clock for the next step start
+  const firesDay = useDayRead('fires', s.replayDay, useLiveFires(s.replayDay));
+  const scarsDay = useDayRead('scars', s.replayDay, useLiveScars(s.replayDay));
+  const ready = firesDay.ready && scarsDay.ready;
+  const { cache } = useSWRConfig();
+
   const [playing, setPlaying] = useState(false);
   useEffect(() => {
-    if (!playing) return;
-    const t = setInterval(() => {
-      const cur = s.replayDay ? series.findIndex((d) => d.date === s.replayDay) : liveIndex;
-      const next = cur >= liveIndex ? 0 : cur + 1;
+    if (!playing || !ready || !n) return;
+    const next = committed >= liveIndex || committed < 0 ? 0 : committed + 1;
+    if (next < liveIndex) preloadReplayDay(series[next].date, cache);
+    const t = setTimeout(() => {
       if (next >= liveIndex) setPlaying(false);
       commit(next, 0);
     }, STEP_MS);
-    return () => clearInterval(t);
-  }, [playing, s.replayDay, series, liveIndex, commit]);
+    return () => clearTimeout(t);
+  }, [playing, ready, n, committed, liveIndex, series, commit, cache]);
+  const play = () => {
+    if (playing) return setPlaying(false);
+    // from live, Play starts on the season's first day at once rather than after a step of nothing
+    if (committed >= liveIndex || committed < 0) {
+      preloadReplayDay(series[0].date, cache);
+      commit(0, 0);
+    }
+    setPlaying(true);
+  };
 
   const [hover, setHover] = useState<number | null>(null);
   const id = useId();
@@ -98,9 +117,27 @@ export function SeasonReplay() {
   const focus = hover ?? shown;
   const fd = focus >= 0 && focus < n ? series[focus] : null;
   const live = shown >= liveIndex;
-  const monthTicks = series
-    .map((d, i) => ({ d, i }))
-    .filter(({ d }) => d.date.endsWith('-01') || d.date.endsWith('-15'));
+  // the 1st and 15th of each month, as many as fit without touching (a narrow chart, under ~320px,
+  // names only its first and last); each label is clamped inside the chart's right edge
+  const monthTicks = (() => {
+    const all = series
+      .map((d, i) => ({ d, i }))
+      .filter(({ d }) => d.date.endsWith('-01') || d.date.endsWith('-15'))
+      .map(({ d, i }) => {
+        const lab = dateIST(`${d.date}T12:00:00+05:30`);
+        const w = lab.length * 6.2;
+        return { key: d.date, lab, tx: Math.min(W - w, Math.max(0, x(i))), w };
+      });
+    const pick = W < 320 && all.length > 2 ? [all[0], all[all.length - 1]] : all;
+    const out: typeof all = [];
+    for (const t of pick) {
+      const prev = out[out.length - 1];
+      if (!prev || t.tx >= prev.tx + prev.w + 10) out.push(t);
+      // the last date wins over the one before it when the two would touch: the chart's end is today
+      else if (t === pick[pick.length - 1] && out.length > 1) out[out.length - 1] = t;
+    }
+    return out;
+  })();
 
   const readout = !fd
     ? null
@@ -133,9 +170,9 @@ export function SeasonReplay() {
           <button
             type="button"
             className={styles.ctrl}
-            onClick={() => setPlaying((p) => !p)}
+            onClick={play}
             disabled={!n}
-            aria-label={playing ? 'Pause the replay' : 'Play the season from the first day'}
+            aria-label={playing ? 'Pause the replay' : live ? 'Play the season from its first day' : 'Play on from this day'}
           >
             {playing ? (
               <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
@@ -181,15 +218,11 @@ export function SeasonReplay() {
               );
             })}
             <line x1={0} x2={W} y1={4 + BARS_H + 0.5} y2={4 + BARS_H + 0.5} strokeWidth={1} style={{ stroke: 'var(--chart-track)' }} />
-            {monthTicks.map(({ d, i }) => {
-              const lab = dateIST(`${d.date}T12:00:00+05:30`);
-              const tx = Math.min(W - lab.length * 6.2, Math.max(0, x(i)));
-              return (
-                <text key={d.date} x={tx} y={4 + BARS_H + 14} fontSize={11} style={fill('--axis-ink')}>
-                  {lab}
-                </text>
-              );
-            })}
+            {monthTicks.map((t) => (
+              <text key={t.key} x={t.tx} y={4 + BARS_H + 14} fontSize={11} style={fill('--axis-ink')}>
+                {t.lab}
+              </text>
+            ))}
             {/* the chosen day: the one gold line */}
             {shown >= 0 ? <line x1={x(shown) + bw / 2} x2={x(shown) + bw / 2} y1={0} y2={4 + BARS_H} strokeWidth={1} style={{ stroke: 'var(--accent)' }} /> : null}
             {hover != null && hover !== shown ? <line x1={x(hover) + bw / 2} x2={x(hover) + bw / 2} y1={0} y2={4 + BARS_H} strokeWidth={1} style={{ stroke: 'var(--muted)' }} /> : null}

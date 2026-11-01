@@ -12,28 +12,8 @@
    ============================================================================================== */
 
 .app-screen {
-  /* the site bar (components/nav) lines up with the canvas */
-  --sn-max: 1440px;
-  --sn-pad: 32px;
-  --sn-pad-phone: 32px;
   min-height: 100svh;
   background: var(--ground);
-}
-
-.skip-link {
-  position: absolute;
-  left: 8px;
-  top: -48px;
-  z-index: 70; /* above the site bar (.sn-top, 60): under it, the focused link would never show */
-  padding: 8px 12px;
-  /* the method page uses this link outside the app surface, where the primary tokens do not exist */
-  background: var(--primary, var(--ink));
-  color: var(--primary-ink, var(--bg));
-  font-weight: 600;
-  border-radius: var(--radius-control);
-}
-.skip-link:focus-visible {
-  top: 8px;
 }
 
 /* ---- canvas and the title row ------------------------------------------------------------ */
@@ -84,6 +64,15 @@
   align-items: flex-end;
   gap: 10px;
   flex-shrink: 0;
+}
+/* how fresh a daily-built answer is: faint while the daily run is on time, warning once it is late */
+.daily-fresh {
+  color: var(--faint);
+  font-size: 12px;
+  line-height: 16px;
+}
+.daily-fresh.is-stale {
+  color: var(--warning);
 }
 
 .button-primary {
@@ -221,6 +210,11 @@
 }
 .span-12 {
   grid-column: 1 / -1;
+}
+/* the key figures sit in the grid's first row, full width, so a phone can move the pictures above them */
+.case-grid > .kpis {
+  grid-column: 1 / -1;
+  margin-bottom: 0;
 }
 /* two stacked columns on desktop; below 1100px the cards interleave in reading order */
 .case-col {
@@ -612,12 +606,10 @@
   .o-4 { order: 4; }
   .o-5 { order: 5; }
   .o-6 { order: 6; }
+  .case-grid > .kpis { order: 1; }
 }
 
 @media (max-width: 640px) {
-  .app-screen {
-    --sn-pad-phone: 16px;
-  }
   .app-canvas {
     padding: 20px 16px 56px;
   }
@@ -677,6 +669,10 @@
   }
   .case-grid {
     gap: 16px;
+  }
+  /* on a phone the evidence leads: the pictures right under the finding, then the key figures */
+  .case-grid > .kpis {
+    order: 2;
   }
   .evidence__grid {
     gap: 10px;
@@ -747,8 +743,7 @@
     --chart-window: rgb(26 22 18 / 0.18);
     --grid: #e3ded8;
   }
-  [data-print="hide"],
-  .skip-link {
+  [data-print="hide"] {
     display: none !important;
   }
   .app-screen,

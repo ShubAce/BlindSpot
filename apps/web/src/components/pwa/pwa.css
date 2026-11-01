@@ -5,7 +5,7 @@
    Colours are the app tokens only. The notice carries data-surface="app" so it reads them on every
    page, the landing included, and the light theme recolours it with everything else. On the dark
    tokens: text #fff on --raised #1c1814 17.65:1, --muted #b6b0a7 on --raised 8.20:1; the 1px
-   --control border (#4a443c) separates it from both grounds. */
+   --control border (#746c63, 3.42:1 on --raised) separates it from both grounds. */
 
 /* The dock holds the live region, so it is always in the page, empty and zero-sized when there is
    nothing to say; it never takes a click outside its notice. */

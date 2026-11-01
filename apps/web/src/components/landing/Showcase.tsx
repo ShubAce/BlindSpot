@@ -5,6 +5,7 @@ import { LoadFailed, loadFailed } from '@/components/pwa/LoadFailed';
 import { Skeleton } from '@/components/ui/states';
 import { absoluteApiUrl } from '@/lib/api';
 import { dateIST, metricText, number } from '@/lib/format';
+import { modelName } from '@/lib/models';
 
 import { getCases, getExamples, getHeadline } from './data';
 import { AOI_CENTRE, boxAround, gibsDay, gibsPicture } from './gibs';
@@ -181,7 +182,7 @@ async function AnswerSlip() {
       </blockquote>
       <figcaption className={s.answerMeta}>
         {v?.checked != null && v.verified != null ? `${number(v.verified)} of ${number(v.checked)} figures checked against the data. ` : ''}
-        BlindSpot’s investigator{pick.model ? `, ${pick.model}` : ''}, <AnswerAge at={pick.finished_at ?? pick.started_at ?? null} />.
+        BlindSpot’s investigator{pick.model ? `, ${modelName(pick.model)}` : ''}, <AnswerAge at={pick.finished_at ?? pick.started_at ?? null} />.
       </figcaption>
     </figure>
   );

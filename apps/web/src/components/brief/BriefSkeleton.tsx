@@ -69,8 +69,8 @@ export function IndexSkeleton() {
         <Bar width="min(760px, 85%)" height={18} style={{ marginTop: 8 }} />
       </div>
       <section className="card br-card">
-        <Bar width={340} height={20} />
-        <Bar width={420} height={16} style={{ marginTop: 6 }} />
+        <Bar width="min(340px, 80%)" height={20} />
+        <Bar width="min(420px, 95%)" height={16} style={{ marginTop: 6 }} />
         <RowBars rows={12} />
       </section>
     </div>
@@ -90,19 +90,14 @@ export function DistrictSkeleton() {
         </div>
         <Scope />
       </div>
-      <div className="br-actions">
-        <Bar width="min(400px, 100%)" height={40} />
-        <Bar width={90} height={40} />
-      </div>
       <KpiBars n={5} />
-      <section className="card br-notes">
-        <Bar width={180} height={20} />
-        {[0, 1, 2, 3].map((i) => (
-          <Bar key={i} width="95%" height={14} style={{ marginTop: 12 }} />
-        ))}
-      </section>
       <section className="card br-card">
-        <Bar width={300} height={20} />
+        <Bar width="min(300px, 80%)" height={20} />
+        <Bar width="min(400px, 95%)" height={16} style={{ marginTop: 6 }} />
+        {/* the CSV row on the villages' card */}
+        <div className="br-actions br-actions--csv">
+          <Bar width="min(400px, 100%)" height={40} />
+        </div>
         <RowBars rows={10} />
       </section>
     </div>

@@ -1,17 +1,30 @@
-/* The site navigation (SiteNav.tsx), the same on every page. A global stylesheet, classes prefixed
-   sn- (the app's Turbopack CSS rule compiles .module.css files as plain global CSS).
+/* The site navigation (SiteNav.tsx): one bar, identical on every page. A global stylesheet, classes
+   prefixed sn- (the app's Turbopack CSS rule compiles .module.css files as plain global CSS).
 
-   Its colours are its own, not read from the page or app surface tokens, so the bar is identical on
-   both surfaces. Dark: warm black #0c0a08, the line #2b2620, links #b6b0a7 (9.18:1 on the bar), the
-   current place and hover in white. Light: the page's bone #efeeec (so the bar and the phone's
-   toolbar colour, lib/theme.ts, follow the first field), the line #dedad4, links #4f4943 (7.65:1),
-   tab labels #5c574f (6.18:1), the current place and hover in ink #1a1612 (15.51:1). On both, the gold
-   is only the 1px selection line (--accent: 5.36:1 on the light bar) and the action (the fill gold
-   under its black label, 8.41:1).
+   Identical means the bar reads nothing from the page it sits in. The pages wrap it in different
+   surfaces (the landing's page, the app surface of mission control, case files and briefs), and those
+   set their own type, line height, focus ring and, once, their own --accent. So every value the bar
+   draws with is its own: the colours below, its type (set on both bars, not inherited), its inset and
+   its focus ring. The tokens it borrows from the theme (--sn-mark, --sn-gold, --sn-face, --sn-edge)
+   are taken at :root, where a custom property's var() resolves once and is inherited as a value, so a
+   wrapper that redefines --accent or --margin cannot reach the bar. (They still follow the theme:
+   [data-theme="light"] changes --accent on :root itself.)
+
+   Colours, one set per theme. Dark: warm black #0c0a08, the line #2b2620, links #b6b0a7 (9.18:1 on
+   the bar), tab labels #958f87 (6.17:1), the current place and hover in white. Light: the page's bone
+   #efeeec (so the bar and the phone's toolbar colour, lib/theme.ts, follow the first field), the line
+   #dedad4, links #4f4943 (7.65:1), tab labels #5c574f (6.18:1), the current place and hover in ink
+   #1a1612 (15.51:1). On both the gold is only the 1px current-place line (--accent: 8.41:1 on dark,
+   5.36:1 on light) and the mark. The bar carries no action: a page's call to action stays on the page.
 
    Heights are custom properties so pages can make room: --sn-top-h is the top bar, --sn-tabs-h the
-   phone's bottom bar (0 where there is none). A page aligns the bar with its own content with
-   --sn-max (the content's max width) and --sn-pad (its side padding). */
+   phone's bottom bar (0 where there is none).
+
+   The focus ring is drawn inside each item (outline-offset -2px), never outside: the links and the
+   tabs fill their bar from edge to edge, and the bars sit on the screen's edges, so a ring outside
+   lost a side (or two) to the edge of the screen. Inside, it is the same closed square on every item.
+   The brand and the links carry --sn-hit of padding each side for it, taken back by a negative
+   margin, so the ring clears the mark and the label and nothing in the bar moves. */
 
 :root {
   --sn-top-h: 56px;
@@ -21,6 +34,16 @@
   --sn-link: #b6b0a7;
   --sn-tab: #958f87;
   --sn-ink: #ffffff;
+  /* resolved here, at :root, and inherited as values (see the note at the top) */
+  --sn-mark: var(--accent); /* the current-place line and the focus ring */
+  --sn-gold: var(--accent-mark); /* the brand mark's ring and dot */
+  --sn-face: var(--face-text);
+  --sn-edge: var(--margin); /* the bar's side inset: the landing's margin, 16px on a phone, 32px from 1455px */
+  /* the hover fade: the app surface sets its own --t-hover on its wrapper, which a var() resolved
+     here cannot see, so the bar fades at one speed on every page */
+  --sn-t-hover: var(--t-hover);
+  --sn-ease: var(--ease-out);
+  --sn-hit: 8px; /* the room around the brand's and each link's label for the inside focus ring */
 }
 :root[data-theme="light"] {
   --sn-ground: #efeeec;
@@ -30,34 +53,57 @@
   --sn-ink: #1a1612;
 }
 
+/* both bars: their own type, colour and stacking, whatever surface they sit on */
+.sn-top,
+.sn-tabs {
+  z-index: 60;
+  background: var(--sn-ground);
+  color: var(--sn-link);
+  font-family: var(--sn-face);
+  font-size: 14px;
+  font-weight: 500;
+  font-style: normal;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  text-align: left;
+}
+
 /* the top bar: pinned on desktop and tablet, so every page keeps its way out */
 .sn-top {
   position: sticky;
   top: 0;
-  z-index: 60;
-  background: var(--sn-ground);
   border-bottom: 1px solid var(--sn-line);
-  font-family: var(--face-text);
 }
 .sn-top__inner {
   display: flex;
   align-items: center;
   gap: 32px;
-  height: var(--sn-top-h);
-  max-width: var(--sn-max, none);
-  margin: 0 auto;
-  padding: 0 var(--sn-pad, var(--margin));
+  /* the rule under it counts in --sn-top-h, so a page that fills the screen below the bar
+     (100svh - --sn-top-h) fits exactly instead of scrolling by a pixel */
+  height: calc(var(--sn-top-h) - 1px);
+  margin: 0;
+  padding: 0 var(--sn-edge);
+  /* The right-hand items keep their distance from the screen's edge whether or not a scrollbar takes
+     space (Windows): 100vw counts the scrollbar and 100% (the bar's width) does not, so the inset
+     gives up exactly the scrollbar's width. Everywhere scrollbars overlay, the two are equal. */
+  padding-right: max(0px, calc(var(--sn-edge) - (100vw - 100%)));
 }
 .sn-brand {
   display: inline-flex;
   align-items: center;
   gap: 10px;
   min-height: 44px;
+  padding: 0 var(--sn-hit);
+  margin: 0 calc(-1 * var(--sn-hit));
   color: var(--sn-ink);
   font-size: 16px;
   font-weight: 600;
   line-height: 1;
   text-decoration: none;
+}
+.sn-brand svg {
+  flex: none;
 }
 .sn-links {
   display: flex;
@@ -70,12 +116,15 @@
   position: relative;
   display: inline-flex;
   align-items: center;
+  padding: 0 var(--sn-hit);
+  margin: 0 calc(-1 * var(--sn-hit));
   color: var(--sn-link);
   font-size: 14px;
   font-weight: 500;
   line-height: 1;
+  white-space: nowrap;
   text-decoration: none;
-  transition: color var(--t-hover) var(--ease-out);
+  transition: color var(--sn-t-hover) var(--sn-ease);
 }
 .sn-link:hover,
 .sn-link[aria-current] {
@@ -85,14 +134,15 @@
 .sn-link[aria-current]::after {
   content: "";
   position: absolute;
-  left: 0;
-  right: 0;
+  left: var(--sn-hit);
+  right: var(--sn-hit);
   bottom: -1px;
   height: 1px;
-  background: var(--accent);
+  background: var(--sn-mark);
 }
 /* the theme switch: a 20px icon in a 40px target, 32px from its neighbours like the bar's other
-   items (the negative margin takes the target's padding back); the icon is the theme it switches to */
+   items (the negative margin takes the target's padding back, so the icon sits on the inset); the
+   icon is the theme it switches to */
 .sn-theme {
   display: inline-grid;
   place-items: center;
@@ -102,10 +152,11 @@
   margin: 0 -10px;
   padding: 0;
   border: 0;
+  border-radius: 0;
   background: none;
   color: var(--sn-link);
   cursor: pointer;
-  transition: color var(--t-hover) var(--ease-out);
+  transition: color var(--sn-t-hover) var(--sn-ease);
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
 }
@@ -121,42 +172,57 @@
   display: none;
 }
 
-/* the action: the gold as a fill (--accent-fill, the brand gold on both themes) under its black label */
-.sn-action {
-  display: inline-flex;
-  align-items: center;
-  min-height: 40px;
-  padding: 0 16px;
-  background: var(--accent-fill);
-  color: var(--accent-ink);
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 1;
-  white-space: nowrap;
-  text-decoration: none;
-  transition:
-    background-color var(--t-hover) var(--ease-out),
-    transform var(--t-press) var(--ease-out);
-}
-.sn-action:hover {
-  background: #d8b46c;
-}
-.sn-action:active {
-  transform: translateY(1px);
-}
+/* the focus ring: the same square gold ring on every page (the app surface rounds its own rings; the
+   bar keeps its square one), inside each item (see the note at the top) */
 .sn-brand:focus-visible,
 .sn-link:focus-visible,
 .sn-theme:focus-visible,
-.sn-action:focus-visible,
 .sn-tab:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--sn-mark);
+  outline-offset: -2px;
+  border-radius: 0;
+}
+
+/* "Skip to …": the first Tab stop of every page, one look everywhere. Drawn over the brand when it
+   has focus, in the bar's own colours (ink on the bar's ground turned round), the bar's square ring
+   outside it; out of sight above the screen otherwise. Fixed, so it shows wherever the page is
+   scrolled. */
+.sn-skip {
+  position: fixed;
+  top: 6px;
+  left: var(--sn-edge);
+  z-index: 70; /* above both bars (60) */
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 16px;
+  background: var(--sn-ink);
+  color: var(--sn-ground);
+  font-family: var(--sn-face);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: normal;
+  text-decoration: none;
+  white-space: nowrap;
+  transform: translateY(calc(-100% - 12px));
+}
+.sn-skip:focus {
+  transform: none;
+  outline: 2px solid var(--sn-mark);
   outline-offset: 2px;
 }
 
-/* anchors and scrollIntoView land below the pinned bar */
 @media (min-width: 701px) {
+  /* anchors and scrollIntoView land below the pinned bar */
   html {
     scroll-padding-top: var(--sn-top-h);
+  }
+  /* The pinned bar is captured on its own in a view transition (the landing's step back into
+     mission control, the theme cross-fade), so it holds still while the page under it changes; the
+     same bar is on both sides. Not on a phone, where the top bar scrolls away with the page. */
+  .sn-top {
+    view-transition-name: sn-top;
   }
 }
 
@@ -170,14 +236,15 @@
     --sn-top-h: 48px;
     --sn-tabs-h: calc(56px + env(safe-area-inset-bottom));
   }
+  /* what Tab (or scrollIntoView) brings into view from below stops above the fixed bottom bar, not
+     under it (WCAG 2.4.11): the phone's twin of the desktop's scroll-padding-top */
+  html {
+    scroll-padding-bottom: var(--sn-tabs-h);
+  }
   .sn-top {
     position: relative;
   }
-  .sn-top__inner {
-    padding: 0 var(--sn-pad-phone, 16px);
-  }
-  .sn-links,
-  .sn-action {
+  .sn-links {
     display: none;
   }
   /* alone at the right end of the phone bar: a 44px target, the icon on the bar's padding edge */
@@ -190,17 +257,18 @@
     display: block;
     position: fixed;
     inset: auto 0 0 0;
-    z-index: 60;
     height: var(--sn-tabs-h);
     padding-bottom: env(safe-area-inset-bottom);
-    background: var(--sn-ground);
     border-top: 1px solid var(--sn-line);
-    font-family: var(--face-text);
+    /* fixed in place on every page, so a view transition keeps it still too */
+    view-transition-name: sn-tabs;
   }
+  /* 55px: the bar's 56px less its 1px rule (border-box), so the tabs end on the screen's edge
+     instead of a pixel under it */
   .sn-tabs ul {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    height: 56px;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    height: 55px;
     margin: 0;
     padding: 0;
     list-style: none;
@@ -212,14 +280,18 @@
     align-items: center;
     justify-content: center;
     gap: 4px;
-    height: 56px;
+    height: 55px;
     color: var(--sn-tab);
     font-size: 12px;
     font-weight: 500;
     line-height: 14px;
+    white-space: nowrap;
     text-decoration: none;
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
+  }
+  .sn-tab svg {
+    flex: none;
   }
   .sn-tab[aria-current] {
     color: var(--sn-ink);
@@ -231,7 +303,7 @@
     left: 28%;
     right: 28%;
     height: 1px;
-    background: var(--accent);
+    background: var(--sn-mark);
   }
   /* the end of every page stays above the bar */
   body:has(.sn-tabs) {
@@ -239,7 +311,18 @@
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .sn-link,
+  .sn-theme {
+    transition: none;
+  }
+  .sn-theme:active svg {
+    transform: none;
+  }
+}
+
 @media print {
+  .sn-skip,
   .sn-top,
   .sn-tabs {
     display: none;

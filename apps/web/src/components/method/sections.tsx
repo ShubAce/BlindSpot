@@ -5,12 +5,13 @@ import type { StateBoundaries } from '@/components/case/types';
 import { loadFailed } from '@/components/pwa/LoadFailed';
 import { PATHS } from '@/lib/api';
 import { serverGet, type ApiResult } from '@/lib/api-server';
-import { dateIST, dateTimeIST, metric, number, percent } from '@/lib/format';
+import { dateIST, dateTimeIST, metric, MISSING, number, percent } from '@/lib/format';
 
 import { Architecture } from './Architecture';
 import { AucStrip, AuditForest, DiurnalChart, PassErrorChart, SmokeDots, type ForestRow } from './charts';
+import { FrameImage } from './FrameImage';
 import { Relative } from './Relative';
-import type { Featured, GeoDiurnal, GeoGroup, Headline, OrbitValidation, RiskMethod, ScarsSummary, SmokeCityRow, SmokeValidation, SourcesList } from './types';
+import type { Featured, GeoDiurnal, GeoGroup, Headline, OrbitValidation, RiskMethod, ScarsSummary, SmokeCityRow, SmokeValidation, SourceRow, SourcesList } from './types';
 
 /**
  * The method page's sections. Each is an async Server Component that reads its own endpoints (cached
@@ -35,7 +36,7 @@ const headline = () => serverGet<Headline>(PATHS.headline);
 const scarsSummary = () => serverGet<ScarsSummary>(PATHS.scarsSummary);
 
 // data-load-failed: the offline worker never lets a page with this note replace a good copy it saved
-function Failed({ what, r }: { what: string; r: ApiResult<unknown> }) {
+export function Failed({ what, r }: { what: string; r: ApiResult<unknown> }) {
   if (r.ok) return null;
   return (
     <p className="m-failed" role="status" data-load-failed="">
@@ -48,7 +49,7 @@ function Failed({ what, r }: { what: string; r: ApiResult<unknown> }) {
 }
 
 /** A large figure with its unit and one line saying what it is. */
-function Figure({ value, unit, children }: { value: string; unit?: string; children: ReactNode }) {
+export function Figure({ value, unit, children }: { value: string; unit?: string; children: ReactNode }) {
   return (
     <div className="m-figure">
       <p className="m-figure__value nums">
@@ -66,7 +67,7 @@ const sentence = (t: string) => {
   return s.charAt(0).toUpperCase() + s.slice(1);
 };
 
-function Quote({ label, children }: { label: string; children: ReactNode }) {
+export function Quote({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="m-quote">
       <p className="m-quote__label">{label}</p>
@@ -77,6 +78,39 @@ function Quote({ label, children }: { label: string; children: ReactNode }) {
 
 // ---------------------------------------------------------------------------------------------
 // hero picture: the same fields on four passes
+
+/**
+ * The API stores each featured frame at 1600 x 1000, the size of the landing's full-width hero; here
+ * the frames sit in quarter- and half-width cells, so the browser is offered 400 and 800 px renders
+ * of the same frame too (the same URL with a smaller w and h) and picks by `sizes`. 800 px across the
+ * 6.4 km window is already finer than Sentinel-2's 10 m pixels, so a 2x screen stays sharp. The
+ * stored frame stays in the set as its largest member and as `src`, the fallback FrameImage turns
+ * to if a smaller render fails. The API draws a smaller frame on a grid-snapped box (it moves an edge
+ * by at most 1/64 of the side), the same box for both colours of a pass, so the crossfade stays put.
+ */
+const FRAME_WIDTHS = [400, 800];
+
+function frameSrcSet(url: string, w: number, h: number): string | undefined {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return undefined;
+  }
+  if (!u.pathname.endsWith('/api/imagery/render') || !u.searchParams.has('w') || !u.searchParams.has('h') || !(w > 0 && h > 0)) return undefined;
+  const sized = FRAME_WIDTHS.filter((x) => x < w).map((x) => {
+    const v = new URL(u);
+    v.searchParams.set('w', String(x));
+    v.searchParams.set('h', String(Math.round((x * h) / w)));
+    // URLSearchParams writes the bbox's commas as %2C: a bare comma would split a srcset entry
+    return `${v.toString()} ${x}w`;
+  });
+  return sized.length ? [...sized, `${url.replace(/,/g, '%2C')} ${w}w`].join(', ') : undefined;
+}
+
+// the cells' widths: four across (two on a phone) in the hero, two across (one on a phone) below
+const HERO_SIZES = '(max-width: 720px) calc(50vw - 19px), calc(25vw - 20px)';
+const PAIR_SIZES = '(max-width: 640px) calc(100vw - 32px), calc(50vw - 35px)';
 
 export async function HeroFrames() {
   const r = await serverGet<Featured>(PATHS.imageryFeatured);
@@ -90,17 +124,35 @@ export async function HeroFrames() {
       <div className="m-frames__row">
         {f.map((fr, i) => (
           <div key={fr.item_id} className="m-frames__cell">
-            {/* eslint-disable-next-line @next/next/no-img-element -- rendered by the BlindSpot API (absolute URL, immutable); width and height are the API's own */}
-            <img src={fr.truecolor_url} alt={`Sentinel-2 picture of the fields ${place}, ${dateIST(fr.datetime, { year: true })}, in true colour.`} width={fr.width} height={fr.height} loading="eager" fetchPriority={i < 2 ? 'high' : 'auto'} decoding="async" />
+            <FrameImage
+              src={fr.truecolor_url}
+              srcSet={frameSrcSet(fr.truecolor_url, fr.width, fr.height)}
+              sizes={HERO_SIZES}
+              alt={`Sentinel-2 picture of the fields ${place}, ${dateIST(fr.datetime, { year: true })}, in true colour.`}
+              width={fr.width}
+              height={fr.height}
+              loading="eager"
+              fetchPriority={i < 2 ? 'high' : 'auto'}
+            />
             {/* the signature move: the same pass fades slowly into short-wave infrared and back */}
-            {/* eslint-disable-next-line @next/next/no-img-element -- as above */}
-            <img className="m-frames__swir" src={fr.swir_url} alt="" aria-hidden="true" width={fr.width} height={fr.height} loading="lazy" decoding="async" style={{ animationDelay: `${i * 1.6}s` }} />
+            <FrameImage
+              className="m-frames__swir"
+              src={fr.swir_url}
+              srcSet={frameSrcSet(fr.swir_url, fr.width, fr.height)}
+              sizes={HERO_SIZES}
+              alt=""
+              width={fr.width}
+              height={fr.height}
+              loading="lazy"
+              style={{ animationDelay: `${i * 1.6}s` }}
+            />
             <span className="m-frames__date nums">{`${dateIST(fr.datetime, { weekday: true })}${fr.platform ? `, ${fr.platform.replace(/^S2/, 'Sentinel-2')}` : ''}`}</span>
           </div>
         ))}
       </div>
       <figcaption className="m-caption">
-        {`The same ${a?.size_km ? `${number(a.size_km[0], { decimals: 1 })} by ${number(a.size_km[1], { decimals: 1 })} km of fields` : 'fields'} ${place}, on ${f.length} clear Sentinel-2 passes from ${dateIST(f[0].datetime)} to ${dateIST(f[f.length - 1].datetime, { year: true })}, in true colour fading into short-wave infrared, where burnt ground shows dark.`}
+        {/* "about": a frame smaller than the stored one is drawn on a grid-snapped box (see FRAME_WIDTHS) */}
+        {`The same ${a?.size_km ? `patch of fields, about ${number(a.size_km[0], { decimals: 1 })} by ${number(a.size_km[1], { decimals: 1 })} km,` : 'fields'} ${place}, on ${f.length} clear Sentinel-2 passes from ${dateIST(f[0].datetime)} to ${dateIST(f[f.length - 1].datetime, { year: true })}, in true colour fading into short-wave infrared, where burnt ground shows dark.`}
         {a?.chosen_value != null && a.chosen_unit ? ` The API chose this square for its ${number(a.chosen_value)} ${a.chosen_unit} of burn scars since ${dateIST(a.chosen_since)}.` : ''}
       </figcaption>
     </figure>
@@ -242,8 +294,15 @@ export async function ScarRule() {
         <figure className="m-pair">
           {pair.map((fr) => (
             <div key={fr.item_id} className="m-pair__cell">
-              {/* eslint-disable-next-line @next/next/no-img-element -- rendered by the BlindSpot API; fixed size */}
-              <img src={fr.swir_url} alt={`Sentinel-2 short-wave infrared picture of the same fields, ${dateIST(fr.datetime, { year: true })}.`} width={fr.width} height={fr.height} loading="lazy" decoding="async" />
+              <FrameImage
+                src={fr.swir_url}
+                srcSet={frameSrcSet(fr.swir_url, fr.width, fr.height)}
+                sizes={PAIR_SIZES}
+                alt={`Sentinel-2 short-wave infrared picture of the same fields, ${dateIST(fr.datetime, { year: true })}.`}
+                width={fr.width}
+                height={fr.height}
+                loading="lazy"
+              />
               <span className="m-frames__date nums">{`Short-wave infrared, ${dateIST(fr.datetime, { weekday: true })}`}</span>
             </div>
           ))}
@@ -413,6 +472,15 @@ const BASELINE_WORDS: Record<string, string> = {
   history_only: "Last season's fires nearby, alone",
 };
 
+/** The same rankings inside a sentence: "ranking by burning nearby alone scored …". */
+const BASELINE_IN_A_SENTENCE: Record<string, string> = {
+  random: 'a random order',
+  fires_7d_only: 'ranking by fire alerts nearby in the last 7 days alone',
+  neighbourhood_only: 'ranking by burning nearby alone',
+  burned_ha_7d_only: 'ranking by scar hectares nearby in the last 7 days alone',
+  history_only: "ranking by last season's fires nearby alone",
+};
+
 export async function Risk() {
   const r = await serverGet<RiskMethod>(PATHS.risk, { limit: 1 }, 15_000);
   if (!r.ok) return <Failed what="the risk method" r={r} />;
@@ -426,7 +494,7 @@ export async function Risk() {
         <div className="m-figures">
           {all?.auc_weighted_mean != null ? (
             <Figure value={number(all.auc_weighted_mean, { decimals: 3 })}>
-              area under the curve over all {number(all.pairs)} pass pairs, weighted by size. 0.5 is a random order; 1 would rank every burnt field first.
+              area under the curve over all {number(all.pairs)} pass pairs, weighted by size{all.auc_ci95?.length === 2 ? ` (95% CI ${number(all.auc_ci95[0], { decimals: 3 })}–${number(all.auc_ci95[1], { decimals: 3 })})` : ''}. 0.5 is a random order; 1 would rank every burnt field first.
             </Figure>
           ) : null}
           {hb ? (
@@ -459,8 +527,33 @@ export async function Risk() {
       {all?.auc_by_pair?.length ? (
         <div className="m-chart">
           <p className="m-chart__title">How well the ranking ordered the next pass, for every pass pair</p>
-          <AucStrip pairs={all.auc_by_pair} mean={all.auc_weighted_mean} lead={hb ? { t0: hb.t0, t1: hb.t1 } : null} />
-          <p className="m-caption">Each dot is one pair of Sentinel-2 passes over one tile, placed at the later pass. Gold: the latest pair, shown above.</p>
+          {/* a legend, not labels in the plot: on a phone the dots of a month crowd any label set among them */}
+          <ul className="m-legend" aria-label="Legend">
+            {all.auc_weighted_mean != null ? (
+              <li>
+                <svg width="22" height="14" aria-hidden="true">
+                  <line x1="1" x2="21" y1="7" y2="7" stroke="var(--accent)" strokeWidth="2" />
+                </svg>
+                {`Weighted mean of all pairs, ${number(all.auc_weighted_mean, { decimals: 3 })}`}
+              </li>
+            ) : null}
+            <li>
+              <svg width="22" height="14" aria-hidden="true">
+                <line x1="1" x2="21" y1="7" y2="7" stroke="var(--axis-ink)" strokeWidth="1.5" />
+              </svg>
+              0.5, a random ranking
+            </li>
+            {hb ? (
+              <li>
+                <svg width="14" height="14" aria-hidden="true">
+                  <circle cx="7" cy="7" r="5.5" fill="var(--accent-mark)" stroke="var(--ink)" strokeWidth="1.5" />
+                </svg>
+                {`The latest pair: ${hb.tile}, ${dateIST(hb.t0)} to ${dateIST(hb.t1)}`}
+              </li>
+            ) : null}
+          </ul>
+          <AucStrip pairs={all.auc_by_pair} mean={all.auc_weighted_mean} lead={hb ? { tile: hb.tile, t0: hb.t0, t1: hb.t1, burnt: hb.burnt, unburnt: hb.unburnt } : null} />
+          <p className="m-caption">Each dot is one pair of Sentinel-2 passes over one tile, placed at the later pass. One pass covers many tiles, so a date can hold many dots.</p>
         </div>
       ) : null}
       <div className="m-cols m-cols--table">
@@ -492,14 +585,17 @@ export async function Risk() {
         </div>
       ) : null}
       <div>
-        <p className="m-statement">Both scores come from this season&apos;s own Sentinel-2 passes.</p>
+        <p className="m-statement">
+          Both scores come from this season&apos;s own <span className="m-nobreak">Sentinel-2</span> passes.
+        </p>
         <p className="m-body">
-          {hb?.why_this_pair ? `The pair shown first is ${hb.why_this_pair}.` : ''}
+          {/* the pair the second figure, the gold dot and the table all describe; never "the pair shown first", which is the all-pairs mean */}
+          {hb ? `The table's pair, tile ${hb.tile} from ${dateIST(hb.t0)} to ${dateIST(hb.t1)}, is ${hb.why_this_pair ?? 'the latest pass pair'}.` : ''}
           {(() => {
             // Said plainly when a simpler ranking beat the full score on this pair.
             const best = hb?.baselines ? Object.entries(hb.baselines).sort((a, b) => b[1].auc - a[1].auc)[0] : undefined;
             return hb && best && best[1].auc > hb.auc
-              ? ` On it, ${(BASELINE_WORDS[best[0]] ?? best[0].replace(/_/g, ' ')).toLowerCase()} scored ${number(best[1].auc, { decimals: 3 })}, above the full score's ${number(hb.auc, { decimals: 3 })}.`
+              ? ` On it, ${BASELINE_IN_A_SENTENCE[best[0]] ?? `ranking by ${best[0].replace(/_only$/, '').replace(/_/g, ' ')} alone`} scored ${number(best[1].auc, { decimals: 3 })}, above the full score's ${number(hb.auc, { decimals: 3 })}.`
               : '';
           })()}
         </p>
@@ -599,11 +695,29 @@ function cadence(min: number | null): string {
   return min % 60 === 0 ? `Every ${min / 60} h` : `Every ${min} min`;
 }
 
+/** One row per upstream: the API registers some upstreams under two keys (the Sentinel-2 COGs on
+ *  AWS, as `s2_cog` and `s2_cog_e84`, share one address), which read as a duplicate. Rows with the
+ *  same docs address merge into the one with the newest good data, which keeps its own status, label
+ *  and last good time; a cadence missing there comes from its twin. */
+function onePerUpstream(rows: SourceRow[]): SourceRow[] {
+  const groups = new Map<string, SourceRow[]>();
+  for (const r of rows) {
+    const k = r.docs_url ?? `key:${r.key}`;
+    groups.set(k, [...(groups.get(k) ?? []), r]);
+  }
+  return [...groups.values()].map((g) => {
+    if (g.length === 1) return g[0];
+    const t = (r: SourceRow) => (r.last_success_at ? Date.parse(r.last_success_at) : -Infinity);
+    const best = g.reduce((a, b) => (t(b) > t(a) ? b : a));
+    return { ...best, cadence_minutes: best.cadence_minutes ?? g.find((r) => r.cadence_minutes != null)?.cadence_minutes ?? null };
+  });
+}
+
 export async function Sources() {
   const [r, b] = await Promise.all([serverGet<SourcesList>(PATHS.sources), serverGet<StateBoundaries>(PATHS.geoBoundaries, { level: 'state', simplify: 0.02 }, 12_000)]);
   if (!r.ok) return <Failed what="the source list" r={r} />;
   const attribution = b.ok ? (b.data.attribution ?? null) : null;
-  const rows = r.data.sources.filter((s) => s.kind !== 'unregistered');
+  const rows = onePerUpstream(r.data.sources.filter((s) => s.kind !== 'unregistered'));
   const ok = rows.filter((s) => s.status === 'ok').length;
   return (
     <>
@@ -638,7 +752,17 @@ export async function Sources() {
                   </th>
                   <td>{KIND_WORDS[s.kind] ?? s.kind.replace(/_/g, ' ')}</td>
                   <td className="nowrap">{cadence(s.cadence_minutes)}</td>
-                  <td>{lic ?? <span className="missing">Not stated by the API; see the source&apos;s terms</span>}</td>
+                  {/* a licence the API does not state is not guessed: the cell links to the source instead */}
+                  <td>
+                    {lic ??
+                      (s.docs_url ? (
+                        <a className="m-link" href={s.docs_url} target="_blank" rel="noreferrer noopener" aria-label={`${s.label}: its terms, on the source's site (opens a new tab)`}>
+                          Source&apos;s terms
+                        </a>
+                      ) : (
+                        <span className="missing">{MISSING}</span>
+                      ))}
+                  </td>
                   <td className="nowrap">
                     <span className={`m-status m-status--${s.status}`} aria-hidden="true" />
                     {s.status === 'ok' ? '' : `${s.status}, `}

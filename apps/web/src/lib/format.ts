@@ -73,6 +73,15 @@ export function dateIST(v: DateInput, opts: { weekday?: boolean; year?: boolean 
   return opts.weekday ? `${WEEKDAYS[p.weekday]} ${core}` : core;
 }
 
+/** "28–30 Oct" within one month, else "30 Sep – 2 Oct": the IST days from `a` to `b` (a scar's burn
+ *  window, between the clear pass before and the one after). */
+export function dateRangeIST(a: DateInput, b: DateInput): string {
+  const p = istParts(a);
+  const q = istParts(b);
+  if (p && q && p.year === q.year && p.month === q.month) return `${p.day}–${q.day}${NBSP}${MONTHS[q.month - 1]}`;
+  return `${dateIST(a)} – ${dateIST(b)}`;
+}
+
 /** "30 Oct, 13:12". */
 export function dateTimeIST(v: DateInput, opts: { hour12?: boolean; year?: boolean; suffix?: boolean } = {}): string {
   const d = toDate(v);
@@ -156,6 +165,12 @@ export function number(v: number | null | undefined, opts: { decimals?: number; 
   const zero = Number(Math.abs(v).toFixed(decimals)) === 0;
   const sign = zero ? '' : v < 0 ? MINUS : opts.signed ? '+' : '';
   return sign + body;
+}
+
+/** "1 answer", "21 answers": a count and its noun. A median of an even number of runs keeps one
+ *  decimal ("2.5 tool calls"). */
+export function plural(v: number, one: string, many: string): string {
+  return `${number(v, { decimals: Number.isInteger(v) ? 0 : 1 })} ${v === 1 ? one : many}`;
 }
 
 /** A 0-1 share as a percentage: 0.962 -> "96%" (or "96.2%" with decimals 1). */

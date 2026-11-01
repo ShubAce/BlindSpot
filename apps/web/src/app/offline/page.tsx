@@ -19,10 +19,7 @@ export const metadata: Metadata = {
 export default function OfflinePage() {
   return (
     <div data-surface="app" className="app-screen">
-      <a className="skip-link" href="#main">
-        Skip to the saved pages
-      </a>
-      <SiteNav />
+      <SiteNav skipLabel="Skip to the saved pages" />
       <main id="main" className="app-canvas pwa-canvas">
         <OfflineScreen />
       </main>

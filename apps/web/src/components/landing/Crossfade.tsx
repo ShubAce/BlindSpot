@@ -17,7 +17,10 @@ export type FrameMarks = {
 
 export type Frame = { src: string; width: number; height: number; date: string; dateLabel: string; satellite: string | null; alt: string };
 
-const HOLD_MS = 5_500;
+/** An earlier pass is held this long once faded in; the newest (where every outline is) four times as
+ *  long, so most glances land on the evidence. */
+const HOLD_MS = 3_800;
+const NEWEST_HOLD_MS = 15_000;
 
 const REDUCE = '(prefers-reduced-motion: reduce)';
 const subscribeReduce = (cb: () => void) => {
@@ -30,11 +33,13 @@ const FADE_MS = 1_600;
 
 /**
  * The signature move (direction sheet, "Slow crossfade"): the same fields on four Sentinel-2 passes,
- * each held about five and a half seconds and crossfaded over 1.6 s. It opens on the newest pass, where
- * every outline is (the evidence first, for a juror who glances), then runs from the oldest pass up,
- * so the black scars and their outlines appear one pass at a time. Paused while the tab is hidden.
- * Under reduced motion it holds the newest pass. The dates below are buttons: choosing one stops the
- * cycle there.
+ * crossfaded over 1.6 s. It opens on the newest pass, where every outline is (the evidence first, for a
+ * juror who glances), and holds it 15 s; then it runs from the oldest pass up, about 4 s each, so the
+ * black scars and their outlines appear one pass at a time, and comes back to the newest. Only the
+ * incoming pass fades: the outgoing one stays fully opaque under it until the next change, so the page
+ * never shows through mid-fade (on the light theme it would wash the picture out). Paused while the tab
+ * is hidden. Under reduced motion it holds the newest pass. The dates below are buttons: choosing one
+ * stops the cycle there.
  *
  * Every frame is in the server HTML, so without script the newest pass shows and the dates still read.
  * Only the pass on screen downloads at first; the others start once it has arrived, so on a slow
@@ -43,6 +48,8 @@ const FADE_MS = 1_600;
 export function Crossfade({ frames, place, marks, marksNote }: { frames: Frame[]; place: string; marks: FrameMarks | null; marksNote: string | null }) {
   const last = frames.length - 1;
   const [i, setI] = useState(last);
+  // the pass faded out of: kept opaque under the incoming one (see the comment above)
+  const [prev, setPrev] = useState<number | null>(null);
   const [held, setHeld] = useState(false);
   const reduce = useSyncExternalStore(subscribeReduce, getReduce, () => false);
   // Under reduced motion, until a date is chosen, hold the newest pass.
@@ -76,22 +83,27 @@ export function Crossfade({ frames, place, marks, marksNote }: { frames: Frame[]
 
   useEffect(() => {
     if (held || reduce || !warm || frames.length < 2) return;
-    let timer: ReturnType<typeof setInterval> | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const wait = FADE_MS + (i === last ? NEWEST_HOLD_MS : HOLD_MS);
     const start = () => {
-      if (!timer) timer = setInterval(() => setI((n) => (n + 1) % frames.length), HOLD_MS + FADE_MS);
+      if (timer) return;
+      timer = setTimeout(() => {
+        setPrev(i);
+        setI((i + 1) % frames.length);
+      }, wait);
     };
     const stop = () => {
-      if (timer) clearInterval(timer);
+      if (timer) clearTimeout(timer);
       timer = null;
     };
     const onVis = () => (document.visibilityState === 'hidden' ? stop() : start());
-    start();
+    if (document.visibilityState !== 'hidden') start();
     document.addEventListener('visibilitychange', onVis);
     return () => {
       stop();
       document.removeEventListener('visibilitychange', onVis);
     };
-  }, [held, reduce, warm, frames.length]);
+  }, [held, reduce, warm, frames.length, i, last]);
 
   const t = marks?.tally[shown];
   const w = frames[0].width;
@@ -113,7 +125,7 @@ export function Crossfade({ frames, place, marks, marksNote }: { frames: Frame[]
               alt={n === shown ? f.alt : ''}
               aria-hidden={n === shown ? undefined : true}
               className={s.frame}
-              data-on={n === shown ? 'yes' : 'no'}
+              data-on={n === shown ? 'yes' : n === prev ? 'under' : 'no'}
               hidden={failed.has(n)}
               onError={() => fail(n)}
               fetchPriority={n === last ? 'high' : 'auto'}
@@ -131,7 +143,7 @@ export function Crossfade({ frames, place, marks, marksNote }: { frames: Frame[]
             </svg>
           ) : null}
           {failed.has(shown) ? (
-            <div className={s.picMissing} style={{ position: 'absolute', inset: 0, height: 'auto' }}>
+            <div className={s.picMissing} style={{ position: 'absolute', inset: 0, zIndex: 4, height: 'auto' }}>
               <p>This Sentinel-2 picture did not load from the API.</p>
             </div>
           ) : null}
@@ -146,6 +158,7 @@ export function Crossfade({ frames, place, marks, marksNote }: { frames: Frame[]
                 className={s.frameDate}
                 aria-pressed={n === shown}
                 onClick={() => {
+                  if (n !== shown) setPrev(shown);
                   setHeld(true);
                   setI(n);
                 }}

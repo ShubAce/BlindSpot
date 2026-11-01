@@ -155,7 +155,7 @@ export function PassStrip({ windows, detections = [], geostationary = null, geoL
     if (!model) return 'Satellite pass strip';
     const looks = model.clusters.map((c) => `${[...c.instruments].join(' and ') || 'satellite'} ${timeIST(c.start)} to ${timeIST(c.end)}`).join('; ');
     const longest = model.gaps.reduce<{ start: number; end: number } | null>((a, g) => (!a || g.end - g.start > a.end - a.start ? g : a), null);
-    return `Fire satellites looked at the site ${looks || 'never'} this day. ${number(model.total)} detections. ${longest ? `Longest blind span ${timeIST(longest.start)} to ${timeIST(longest.end)}, ${duration(longest.end - longest.start)}.` : ''}`;
+    return `Fire satellites looked at the site ${looks || 'never'} this day. ${number(model.total)} FIRMS detections on the map in these hours. ${longest ? `Longest blind span ${timeIST(longest.start)} to ${timeIST(longest.end)}, ${duration(longest.end - longest.start)}.` : ''}`;
   }, [model]);
 
   const W = width;
@@ -174,7 +174,7 @@ export function PassStrip({ windows, detections = [], geostationary = null, geoL
         <svg width={W} height={height} viewBox={`0 0 ${W} ${height}`} role="img" aria-label={label} style={{ display: 'block', overflow: 'visible', fontVariantNumeric: 'tabular-nums' }}>
           {/* row captions */}
           <text x={0} y={12} fontSize={12} style={fillOf('--axis-ink')}>
-            Fire satellites over the site{model.total ? `, with ${number(model.total)} detections` : ''}
+            Fire satellites over the site{model.total ? ` · ${number(model.total)} FIRMS detections` : ''}
           </text>
           {hasGeo ? (
             <text x={0} y={rowTop + STRIP_H + 6 + 12} fontSize={12} style={fillOf('--axis-ink')}>

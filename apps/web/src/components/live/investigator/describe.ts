@@ -95,9 +95,17 @@ export function describeCall(name: string, args: Args): string {
       const district = str(a.district);
       return `Ranked harvested, unburnt fields by burn risk${district ? ` in ${title(district)}` : ''}`;
     }
+    case 'get_field_brief': {
+      // the brief PPCB and HSPCB teams get at /brief/<district>: where to look first, and why
+      const district = str(a.district);
+      const days = num(a.days);
+      const span = days != null ? `, ${days === 1 ? 'the newest day' : `the newest ${days} days`} of Sentinel-2 passes` : '';
+      return `Field brief: villages for field teams in ${district ? title(district) : 'a district'}${span}`;
+    }
     case 'show_on_map':
       return describeMap(str(a.action) ?? '', a);
     default:
+      // a tool added to the API after this screen: its own name, never a guess at what it did
       return `Called ${name.replace(/_/g, ' ')}`;
   }
 }
@@ -146,15 +154,6 @@ export function thoughtBody(text: string): string {
   return text.replace(/\*\*(.+?)\*\*/, '').replace(/\*\*/g, '').trim();
 }
 
-/** Model ids as people say them: "gemini-3.5-flash-lite" -> "Gemini 3.5 Flash-Lite". */
-export function modelName(id: string | null | undefined): string {
-  if (!id) return 'Gemini';
-  const m = /^gemini-([\d.]+)-(.+)$/i.exec(id);
-  if (!m) return id;
-  const rest = m[2].split('-').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join('-');
-  return `Gemini ${m[1]} ${rest}`;
-}
-
 /** Normalised question for matching a typed question to a verified example. */
 export const normaliseQuestion = (q: string) => q.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 
@@ -168,8 +167,8 @@ const group = (n: string) => {
 /**
  * A tool's one-line result (written by the API for logs) in the screen's words. Only the notation
  * changes, never a value: a Python dict of hour windows `{'h24': 43.5, 'h48': 22.0}` becomes
- * "24 h 43.5, 48 h 22.0", ISO dates read "31 Oct", and long bare figures get digit grouping
- * (ids after "Case", "scar" or "#" are left alone).
+ * "24 h 43.5, 48 h 22.0", ISO dates read "31 Oct", long bare figures get digit grouping (ids
+ * after "Case", "scar" or "#" are left alone), and a range of percentages takes an en dash.
  */
 export function tidySummary(text: string): string {
   return text
@@ -188,5 +187,7 @@ export function tidySummary(text: string): string {
     })
     .replace(/(^|[^\w#.,])(\d{5,}(?:\.\d+)?)(?![\d,])/g, (all, pre: string, n: string, offset: number, whole: string) =>
       /(case|scar|id)\s*$/i.test(whole.slice(Math.max(0, offset - 6), offset + pre.length)) ? all : `${pre}${group(n)}`,
-    );
+    )
+    // a range of percentages takes an en dash: "95% CI 67.9–95.5%"
+    .replace(/(\d+(?:\.\d+)?)-(\d+(?:\.\d+)?)%/g, '$1–$2%');
 }

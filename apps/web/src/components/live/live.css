@@ -9,27 +9,8 @@
    shell */
 
 .lv-shell {
-  /* the site bar (components/nav) lines up with the screen's padding */
-  --sn-pad: 16px;
-  --sn-pad-phone: 12px;
   min-height: 100svh;
   background: var(--ground);
-}
-
-.lv-skip {
-  position: absolute;
-  left: 8px;
-  top: 8px;
-  z-index: 70; /* above the site bar (.sn-top, 60): under it, the focused link would never show */
-  padding: 8px 12px;
-  background: var(--surface);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-control);
-  transform: translateY(-200%);
-}
-.lv-skip:focus-visible {
-  transform: none;
 }
 
 /* ---------------------------------------------------------------------------------------------
@@ -67,6 +48,10 @@
 }
 .lv-console:empty {
   display: none;
+}
+/* the title and the map's wrapper: no box of its own except on a laptop (the end of this sheet) */
+.lv-first {
+  display: contents;
 }
 
 .lv-titleRow {
@@ -339,6 +324,42 @@
 .lv-toggleLabel {
   position: relative;
 }
+
+/* Scroll cues (scroll-cue.ts): a scroller with more of itself out of view fades on that side. Only
+   the mask's alpha counts, so one opaque token serves both themes. The toggles scroll sideways on a
+   phone; the key and the case summary's body scroll down when the map is short. */
+.lv-toggles[data-more-end] {
+  --lv-fade-end: 48px;
+}
+.lv-caseBody[data-more-end],
+.lv-keyBody[data-more-end],
+.lv-rows[data-more-end] {
+  --lv-fade-end: 36px;
+}
+.lv-toggles[data-more-start],
+.lv-caseBody[data-more-start],
+.lv-keyBody[data-more-start],
+.lv-rows[data-more-start] {
+  --lv-fade-start: 28px;
+}
+.lv-toggles:is([data-more-start], [data-more-end]) {
+  -webkit-mask-image: linear-gradient(to right, transparent, var(--text) var(--lv-fade-start, 0px), var(--text) calc(100% - var(--lv-fade-end, 0px)), transparent);
+  mask-image: linear-gradient(to right, transparent, var(--text) var(--lv-fade-start, 0px), var(--text) calc(100% - var(--lv-fade-end, 0px)), transparent);
+}
+.lv-caseBody:is([data-more-start], [data-more-end]),
+.lv-keyBody:is([data-more-start], [data-more-end]),
+.lv-rows:is([data-more-start], [data-more-end]) {
+  -webkit-mask-image: linear-gradient(to bottom, transparent, var(--text) var(--lv-fade-start, 0px), var(--text) calc(100% - var(--lv-fade-end, 0px)), transparent);
+  mask-image: linear-gradient(to bottom, transparent, var(--text) var(--lv-fade-start, 0px), var(--text) calc(100% - var(--lv-fade-end, 0px)), transparent);
+}
+/* a control the keyboard reaches scrolls clear of the faded edge, so its focus ring shows whole */
+.lv-toggles {
+  scroll-padding-inline: 48px;
+}
+.lv-rows,
+.lv-keyBody {
+  scroll-padding-block: 36px;
+}
 .lv-mapBody {
   position: relative;
   flex: 1;
@@ -354,11 +375,33 @@
   background: var(--bg);
 }
 
-.lv-replayChip {
+/* The map's left edge is one column: the replay chip at the top, the key at the bottom growing up
+   into whatever height the chip leaves, so the two never overlap however short the map. The column
+   stops short of the zoom buttons, and of a case summary when one is open. It lets the pointer
+   through, so the map between the two still drags. */
+.lv-mapLeft {
   position: absolute;
+  z-index: 2;
   top: 10px;
+  bottom: 10px;
   left: 10px;
-  max-width: min(560px, calc(100% - 70px));
+  right: 60px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  pointer-events: none;
+}
+.lv-mapLeft > * {
+  pointer-events: auto;
+}
+.lv-mapBody:has(> .lv-caseCard) .lv-mapLeft {
+  right: calc(50px + 312px + 12px);
+}
+
+.lv-replayChip {
+  flex: none;
+  max-width: min(560px, 100%);
   margin: 0;
   padding: 6px 10px;
   font-size: 13px;
@@ -367,18 +410,21 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-control);
 }
+/* a replay day on its way: the chip says so in the quieter ink until the day's own marks are on */
+.lv-replayChip[data-state="loading"] {
+  color: var(--muted);
+}
 
 /* the key, in the map's lower left corner: a small button when closed, a panel growing up from it
    when open (the credits sit in the lower right, so the two never share a corner) */
 .lv-key {
-  position: absolute;
-  left: 10px;
-  bottom: 10px;
-  z-index: 2;
   display: flex;
+  flex: 0 1 auto;
   flex-direction: column-reverse;
+  min-height: 0;
+  margin-top: auto;
   width: auto;
-  max-height: min(calc(100% - 20px), 440px);
+  max-height: 440px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-control);
@@ -442,6 +488,10 @@
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
+/* a replay day's figures on their way (never the last day's under this day's name) */
+.lv-keyStatus.lv-keyLoading {
+  color: var(--faint);
+}
 .lv-keyList {
   display: flex;
   flex-direction: column;
@@ -468,22 +518,31 @@
   line-height: 16px;
   color: var(--muted);
 }
-/* the case summary floats over the map's right edge, left of the zoom buttons */
+/* The case summary floats over the map's right edge, left of the zoom buttons, and stops above the
+   credits, and above pause motion when it shows (MapPanel measures the credits' corner into
+   --lv-credits-h; pause motion sits 4px over it and is 28px tall), so it never covers either. Its
+   head and its link stay put; the body between them scrolls when the map is short. */
 .lv-caseCard {
   position: absolute;
   top: 10px;
   right: 50px;
   z-index: 5;
+  display: flex;
+  flex-direction: column;
   width: 312px;
-  max-height: calc(100% - 20px);
-  overflow: auto;
+  max-height: calc(100% - 10px - var(--lv-credits-h, 32px) - 8px);
+  overflow: hidden;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
   box-shadow: 0 12px 28px var(--shadow-ink); /* taste-skill-ignore: floats over the map or the page */
 }
+.lv-mapBody:has(> .lv-mapHeadEnd) > .lv-caseCard {
+  max-height: calc(100% - 10px - var(--lv-credits-h, 32px) - 40px);
+}
 .lv-caseHead {
   display: flex;
+  flex: none;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
@@ -497,15 +556,30 @@
 }
 .lv-caseBody {
   display: flex;
+  flex: 0 1 auto;
   flex-direction: column;
   gap: 10px;
-  padding: 0 14px 14px;
+  min-height: 0;
+  padding: 0 14px 12px;
+  overflow: auto;
+}
+.lv-caseFoot {
+  flex: none;
+  padding: 10px 14px 12px;
+  border-top: 1px solid var(--rule);
 }
 .lv-casePlace {
   margin: 0;
   font-size: 13px;
   line-height: 18px;
   color: var(--muted);
+}
+/* the case in one line: area, burn window, fire alerts, confidence */
+.lv-caseFacts {
+  margin: -4px 0 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--text);
 }
 .lv-chips {
   display: flex;
@@ -530,6 +604,8 @@
   color: var(--faint);
 }
 .lv-chip figcaption {
+  display: flex;
+  flex-direction: column;
   margin-top: 4px;
   font-size: 12px;
   line-height: 16px;
@@ -537,6 +613,31 @@
 }
 .lv-facts {
   margin: 0;
+}
+/* a short map (a laptop's): smaller pictures, so they and their dates fit above the card's fold */
+@media (min-width: 701px) {
+  .lv-mapBody {
+    container: lv-map / size;
+  }
+}
+@container lv-map (max-height: 480px) {
+  .lv-chip,
+  .lv-chip img,
+  .lv-chipMissing {
+    width: 104px;
+    height: 104px;
+  }
+}
+@container lv-map (max-height: 420px) {
+  .lv-caseBody {
+    gap: 8px;
+  }
+  .lv-chip,
+  .lv-chip img,
+  .lv-chipMissing {
+    width: 92px;
+    height: 92px;
+  }
 }
 .lv-facts div {
   display: flex;
@@ -555,7 +656,7 @@
   text-align: right;
 }
 .lv-caseLink {
-  align-self: flex-start;
+  display: inline-block;
   font-size: 13px;
   font-weight: 600;
   color: var(--text);
@@ -609,6 +710,8 @@
 .lv-replayTrack {
   grid-area: track;
   position: relative;
+  /* the chart's scale line is drawn just above its box: room for it under the card's rule */
+  margin-top: 10px;
   border-radius: 2px;
 }
 .lv-replayTrack:has(.lv-replayRange:focus-visible) {
@@ -746,6 +849,12 @@
   padding: 0 8px 4px;
   overflow: auto;
   list-style: none;
+  transition: opacity var(--t-ui) var(--ease-out);
+}
+/* the last replay day's rows while the next day's load: in place (no blink at each step of Play),
+   dimmed and out of reach (inert), under the line that names the day loading */
+.lv-rows[data-held] {
+  opacity: 0.4;
 }
 .lv-row {
   display: grid;
@@ -808,6 +917,25 @@
   flex-direction: column;
   gap: 6px;
   padding: 8px 8px 8px 40px;
+}
+
+/* a replay day with no candidate yet: that day's own counts */
+.lv-dayCounts {
+  margin: 4px 0 0;
+}
+.lv-dayCounts div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 0;
+  border-top: 1px solid var(--rule);
+}
+.lv-dayCounts dt {
+  color: var(--muted);
+}
+.lv-dayCounts dd {
+  margin: 0;
+  font-weight: 500;
 }
 
 /* air */
@@ -884,6 +1012,19 @@
   line-height: 15px;
   color: var(--faint);
 }
+/* the exposure index, defined where its figures are */
+.lv-airDefine a {
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.lv-airDefine a:hover {
+  color: var(--text);
+}
+/* a reading's age stays on one line ("2 h old"); the city's trajectory line wraps instead */
+.lv-airTable td .lv-citySub {
+  white-space: nowrap;
+}
 .lv-footNote {
   margin: 0;
   padding: 8px 16px 12px;
@@ -940,6 +1081,15 @@
 }
 .lv-stripLead {
   min-width: 0;
+}
+/* where the looks are computed for, and what the ticks count */
+.lv-stripSite {
+  /* its own line under the title and the key */
+  width: 100%;
+  margin: -4px 0 0;
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--muted);
 }
 .lv-stripSentence {
   margin: 4px 0 0;
@@ -1061,11 +1211,15 @@
    phone: the site's bottom bar navigates, the ranked list is a sheet above it, the map first */
 
 @media (max-width: 700px) {
+  /* the list sheet's handle: on :root, since <html>'s scroll padding reads it too */
+  :root {
+    --lv-sheet-h: 52px;
+  }
   .lv-screen,
   .lv-screen:has(> .lv-console > *) {
     gap: 12px;
-    /* the sheet's 52px handle (the site's bottom bar is covered by the body's padding) */
-    padding: 12px 12px calc(52px + 16px);
+    /* the sheet's handle (the site's bottom bar is covered by the body's padding) */
+    padding: 12px 12px calc(var(--lv-sheet-h) + 16px);
   }
   .lv-titleRow {
     flex-direction: column;
@@ -1090,14 +1244,54 @@
   .lv-titleSide {
     align-items: flex-start;
   }
-  .lv-sourcesPanel {
-    left: 0;
-    right: auto;
-    width: min(360px, calc(100vw - 24px));
+  /* the sources open in place, under their button, pushing the map down: as a popover their foot
+     ran under the list's sheet and the site's tab bar */
+  .lv-sourcesBox {
+    align-self: stretch;
   }
+  .lv-sourcesPanel {
+    position: static;
+    width: auto;
+    max-height: none;
+    margin-top: 8px;
+    box-shadow: none; /* taste-skill-ignore: in the page's flow here, not floating */
+  }
+  /* The map card grows with what it holds: the map at a fixed height, then a case summary under
+     it when one is open (a card over a phone's short map hid the very field it was about), then
+     the replay. The map and everything drawn over it share the grid's first row. */
   .lv-mapArea {
-    height: 66svh;
-    min-height: 380px;
+    height: auto;
+    min-height: 0;
+    scroll-margin-top: 8px;
+  }
+  .lv-mapBody {
+    --lv-map-h: clamp(320px, 52svh, 480px);
+    flex: none;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: var(--lv-map-h) auto;
+  }
+  /* both ends of the area named: an absolutely placed child's "auto" end would be the grid's own
+     bottom edge, which would hang the key and pause motion under the case summary */
+  .lv-mapBody > * {
+    grid-area: 1 / 1 / 2 / 2;
+  }
+  .lv-mapBody > .lv-caseCard,
+  .lv-mapBody:has(> .lv-mapHeadEnd) > .lv-caseCard {
+    grid-area: 2 / 1 / 3 / 2;
+    position: static;
+    width: auto;
+    max-height: none;
+    border: 0;
+    border-top: 1px solid var(--rule);
+    border-radius: 0;
+    box-shadow: none; /* taste-skill-ignore: part of the card under the map here, not floating */
+  }
+  .lv-mapBody > .lv-caseCard .lv-caseBody {
+    overflow: visible;
+  }
+  .lv-mapBody:has(> .lv-caseCard) .lv-mapLeft {
+    right: 60px;
   }
   .lv-mapHead {
     padding: 0 0 0 12px;
@@ -1112,20 +1306,17 @@
   .lv-toggle {
     height: 44px;
   }
-  .lv-key {
-    left: 8px;
-    bottom: 8px;
-    max-height: calc(100% - 16px);
+  /* the key opens as a sheet over the whole map, under the replay chip when there is one: nothing
+     drawn on the map (pause motion, the zoom buttons, the credits) pokes through it, and its Key
+     button, still at the bottom, folds it away */
+  .lv-mapLeft:has(> .lv-key[data-state="open"]) {
+    right: 10px;
+    z-index: 6;
   }
   .lv-key[data-state="open"] {
-    width: auto;
-    right: 8px;
-  }
-  .lv-caseCard {
-    left: 8px;
-    right: 8px;
-    top: 8px;
-    width: auto;
+    flex: 1 1 auto;
+    width: 100%;
+    max-height: none;
   }
   .lv-chip,
   .lv-chip img,
@@ -1134,8 +1325,10 @@
     height: auto;
     aspect-ratio: 1;
   }
+  /* two equal halves: min-width 0, or the 512 px pictures hold each half at its own width */
   .lv-chips > * {
     flex: 1;
+    min-width: 0;
   }
   .lv-replay {
     grid-template-columns: minmax(0, 1fr) auto;
@@ -1146,8 +1339,21 @@
       "key key";
     row-gap: 6px;
   }
-  .lv-ctrl {
-    height: 36px;
+  /* and under the readout, which sits right above it here */
+  .lv-replayTrack {
+    margin-top: 14px;
+  }
+  /* a thumb's 44px on every control of the map card */
+  .lv-ctrl,
+  .lv-keyButton {
+    height: 44px;
+  }
+  .lv-keyButton {
+    padding: 0 14px;
+  }
+  .lv-iconButton {
+    width: 44px;
+    height: 44px;
   }
   .lv-stripHead {
     flex-direction: column;
@@ -1166,7 +1372,7 @@
     right: 0;
     bottom: var(--sn-tabs-h);
     z-index: 25;
-    max-height: 52px;
+    max-height: var(--lv-sheet-h);
     contain: none;
     border-radius: var(--radius-card) var(--radius-card) 0 0;
     border-bottom: 0;
@@ -1176,13 +1382,18 @@
   .lv-listCard[data-open] {
     max-height: 74svh;
   }
+  /* what Tab or scrollIntoView brings up from below stops above the sheet's handle as well as the
+     tab bar (the nav's own rule reserves the bar alone); LiveScreen marks <html> while it shows */
+  html[data-lv-sheet] {
+    scroll-padding-bottom: calc(var(--sn-tabs-h) + var(--lv-sheet-h));
+  }
   .lv-sheetHandle {
     display: flex;
     flex: none;
     align-items: center;
     justify-content: space-between;
     width: 100%;
-    height: 52px;
+    height: var(--lv-sheet-h);
     padding: 0 16px;
     font: inherit;
     font-size: 14px;
@@ -1204,11 +1415,6 @@
   }
   .lv-row {
     min-height: 52px;
-  }
-  .lv-mapHeadEnd {
-    top: 8px;
-    right: 48px;
-    bottom: auto;
   }
   /* on a phone, labels and sublines read at 13px (axis ticks and pills stay 11-12px) */
   .lv-figLabel,
@@ -1271,8 +1477,9 @@
   cursor: help;
 }
 
-/* pause motion: in the map's lower right, above the credits however far they unfold (MapPanel
-   measures their corner into --lv-credits-h), so the WCAG 2.2.2 control is never under them */
+/* pause motion: in the map's lower right on every screen, above the credits however far they unfold
+   (MapPanel measures their corner into --lv-credits-h), so the WCAG 2.2.2 control is never under
+   them; a case summary stops above it, and the replay chip and the key keep to the left edge */
 .lv-mapHeadEnd {
   position: absolute;
   z-index: 4;
@@ -1292,12 +1499,28 @@
   color: var(--faint);
   white-space: nowrap;
 }
-/* on a phone the map is short: pause motion goes up beside the zoom buttons */
+
+/* MapLibre paints the zoom buttons white whatever the theme, and the dark theme inverts their icons
+   (--map-icon-filter): light grey on white. On the raised ground they read in both themes; the edge
+   takes the control line of the map card's other buttons (pause motion, Play, Live), the divider
+   the border ink, and hover a step. (:not(:empty) and the extra class outrank maplibre-gl.css,
+   which loads after this sheet.) */
+.lv-mapBody .maplibregl-ctrl-group:not(:empty) {
+  background: var(--raised);
+  border: 1px solid var(--control);
+  box-shadow: none;
+}
+.lv-mapBody .maplibregl-ctrl-group button + button {
+  border-top-color: var(--border);
+}
+.lv-mapBody .maplibregl-ctrl-group button:not(:disabled):hover {
+  background-color: var(--active);
+}
+/* a thumb's size on a phone; the icon stays centred at its own 29px */
 @media (max-width: 700px) {
-  .lv-mapHeadEnd {
-    top: 8px;
-    right: 48px;
-    bottom: auto;
+  .lv-mapBody .maplibregl-ctrl-group button {
+    width: 40px;
+    height: 40px;
   }
 }
 .lv-toggle,
@@ -1358,5 +1581,128 @@
   }
   .lv-stripKey {
     justify-content: flex-start;
+  }
+}
+
+/* ---------------------------------------------------------------------------------------------
+   laptops and projectors (1101-1699px wide: 1280 x 720, 1366 x 768, 1440 x 900, 1536 x 864). Three
+   columns left the map ~500-750px wide and under 400px tall there, so the map takes the side
+   column's width as well: the title and the map fill one screen together (.lv-first), the
+   investigator keeps its column on the right and stays in view, and the pass strip and the side
+   panels (two up) follow under the map. */
+
+@media (min-width: 1101px) and (max-width: 1699px) {
+  .lv-screen,
+  .lv-screen:has(> .lv-console > *) {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto;
+    grid-template-areas:
+      "first"
+      "strip"
+      "side";
+    height: auto;
+  }
+  .lv-screen:has(> .lv-console > *) {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "first console"
+      "strip console"
+      "side console";
+  }
+  .lv-first {
+    grid-area: first;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+    /* one screen under the site bar, less the screen's padding above and the gap below */
+    height: calc(100svh - var(--sn-top-h) - 32px);
+    min-height: 540px;
+  }
+  .lv-titleRow {
+    flex: none;
+  }
+  .lv-mapArea {
+    flex: 1;
+  }
+  .lv-console {
+    position: sticky;
+    top: calc(var(--sn-top-h) + 16px);
+    align-self: start;
+    height: calc(100svh - var(--sn-top-h) - 32px);
+    min-height: 540px;
+  }
+  /* the side panels two up under the strip: the list takes the air card's height and scrolls in it */
+  .lv-side {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: stretch;
+    overflow: visible;
+  }
+  .lv-listCard {
+    min-height: 0;
+    contain: size;
+  }
+  /* the replay's readout on one line, so the foot is no taller than its chart */
+  .lv-replay {
+    grid-template-columns: 340px minmax(0, 1fr) auto;
+  }
+}
+
+/* Over 1100px the layer toggles keep to one row that scrolls sideways (its far edge fades while more
+   lie beyond, scroll-cue.ts; a mouse wheel over it moves it, MapPanel), so the map keeps the height a
+   second row of them took; on a wide screen they all fit. */
+@media (min-width: 1101px) {
+  /* room inside the scroller for a focused toggle's ring, which it would otherwise clip */
+  .lv-toggles {
+    flex-wrap: nowrap;
+    gap: 0 14px;
+    margin: -4px -4px;
+    padding: 4px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .lv-toggles::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* A short screen (720-820px tall at any width over 1100px): the header gives the map its height.
+   The finding and the next look read a size smaller, and the screen's gutters close to 12px. */
+@media (min-width: 1101px) and (max-height: 820px) {
+  .lv-screen,
+  .lv-screen:has(> .lv-console > *) {
+    gap: 12px;
+    padding: 12px 16px;
+  }
+  .lv-first {
+    height: calc(100svh - var(--sn-top-h) - 24px);
+    gap: 10px;
+  }
+  .lv-console {
+    top: calc(var(--sn-top-h) + 12px);
+    height: calc(100svh - var(--sn-top-h) - 24px);
+  }
+  .lv-titleRow {
+    padding-top: 0;
+  }
+  .lv-finding {
+    margin-top: 2px;
+    font-size: 15px;
+    line-height: 21px;
+  }
+  .lv-findingFigure {
+    font-size: 24px;
+    line-height: 26px;
+  }
+  .lv-titleSide {
+    gap: 6px;
+  }
+  .lv-nextValue {
+    font-size: 18px;
+    line-height: 24px;
+  }
+  .lv-replay {
+    padding-block: 6px;
   }
 }

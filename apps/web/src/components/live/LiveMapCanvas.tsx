@@ -13,6 +13,7 @@ import {
   describeDistrictTile,
   describeScar,
   describeScarTile,
+  districtNameAt,
   districtTiles,
   describePick,
   firesLayer,
@@ -68,7 +69,15 @@ export type MapData = {
   now: Date | null;
   /** Scar case files for highlighted or selected scars that are not among the drawn ones. */
   cases: readonly LiveScarCase[];
+  /** The replay's fires and scars, when `fires` and `scars` above are still the last day's while this
+   *  day loads (MapPanel). Neither may read as this day: the scars stay, faded, so the map keeps its
+   *  ground between days, and the fires step aside until their own day lands (a deck.gl scatter layer
+   *  drew the same at any opacity, measured on screen, so fading them was no cue). */
+  held?: { fires: boolean; scars: boolean };
 };
+
+/** How strongly the last replay day's scars show while the next day loads. */
+const HELD_SCARS_OPACITY = 0.35;
 
 const css = (c: readonly number[]) => `rgba(${c[0]},${c[1]},${c[2]},${(c[3] ?? 255) / 255})`;
 const LOOK_LABEL_LAYOUT: SymbolLayerSpecification['layout'] = {
@@ -129,14 +138,17 @@ function ringBounds(g: AreaGeometry, acc: [number, number, number, number]) {
   }
 }
 
-/** A layer (or an animated layer's every frame) drawn at `opacity`. */
+/** A layer (or an animated layer's every frame, or each layer of a list) drawn at `opacity` times
+ *  its own. */
 function withOpacity(input: MapLayerInput, opacity: number): MapLayerInput {
-  if (!input || Array.isArray(input)) return input;
+  if (!input) return input;
+  if (Array.isArray(input)) return (input as readonly MapLayerInput[]).map((l) => withOpacity(l, opacity));
+  const times = (l: Layer) => l.clone({ opacity: (l.props.opacity ?? 1) * opacity });
   if ('animated' in input && input.animated) {
     const a = input;
-    return { ...a, render: (f) => a.render(f)?.clone({ opacity }) ?? null };
+    return { ...a, render: (f) => { const l = a.render(f); return l ? times(l) : null; } };
   }
-  return (input as Layer).clone({ opacity });
+  return times(input as Layer);
 }
 
 /** Risk scores arrive 0-100; the shared risk layer bins 0-1. Scale a copy for drawing only. */
@@ -198,21 +210,37 @@ export default function LiveMapCanvas({ data, label }: { data: MapData; label: s
   useEffect(() => {
     dispatch({ type: 'scarsView', view: scarsView });
   }, [scarsView, dispatch]);
+  // Zoomed in past the district tiles, however the map got there (the wheel, a location link, the
+  // investigator), it also loads the district under its centre, as a click on that district's tile
+  // does: the newest scars overall miss whole districts (Moga, Amritsar), which would otherwise
+  // look unburnt up close. Live only, like the district read itself.
+  const rows = summary.data?.by_district;
+  useEffect(() => {
+    if (s.replayDay || zoom == null || zoom < SCAR_TILE_GEOMETRY.districtZoom || !view || !shapes.length || !rows?.length) return;
+    const name = districtNameAt(rows, shapes, [(view[0] + view[2]) / 2, (view[1] + view[3]) / 2]);
+    if (name) dispatch({ type: 'scarDistrict', district: name });
+  }, [s.replayDay, zoom, view, shapes, rows, dispatch]);
 
   // in the replay, a detection's age is counted from the end of the day shown, not from now
   const fireClock = s.replayDay ? Date.parse(istDayEndUtc(s.replayDay)) : data.now ? data.now.getTime() : 0;
   const fireBucket = Math.floor(fireClock / 600_000);
-  const fires = useMemo(() => (on.fires ? firesLayer(data.fires, { now: new Date(fireBucket * 600_000), theme }) : null), [on.fires, data.fires, fireBucket, theme]);
+  const heldFires = !!data.held?.fires;
+  const heldScars = !!data.held?.scars;
+  const fires = useMemo(
+    () => (on.fires && !heldFires ? firesLayer(data.fires, { now: new Date(fireBucket * 600_000), theme }) : null),
+    [on.fires, data.fires, fireBucket, theme, heldFires],
+  );
   // tiles are re-binned per half zoom step, so a pinch does not rebuild them on every frame
   const scars = useMemo(() => {
     if (!on.scars) return null;
     if (scarsView === 'districts') return scarTilesLayer(districts, { theme });
+    let layers: MapLayerInput;
     if (scarsView === 'tiles') {
       if (binZoom == null) return null;
-      return scarTilesLayer(binScars((data.scars?.features.features ?? []) as unknown as ScarFeature[], binZoom), { theme });
-    }
-    return scarsLayers(data.scars as ScarsResponse | undefined, { selectedId: s.selectedScar, theme });
-  }, [on.scars, scarsView, districts, binZoom, data.scars, s.selectedScar, theme]);
+      layers = scarTilesLayer(binScars((data.scars?.features.features ?? []) as unknown as ScarFeature[], binZoom), { theme });
+    } else layers = scarsLayers(data.scars as ScarsResponse | undefined, { selectedId: s.selectedScar, theme });
+    return heldScars ? withOpacity(layers, HELD_SCARS_OPACITY) : layers;
+  }, [on.scars, scarsView, districts, binZoom, data.scars, s.selectedScar, theme, heldScars]);
   const risk = useMemo(() => (on.risk ? riskLayers(riskForLayer(data.risk), { theme }) : null), [on.risk, data.risk, theme]);
   // 2,000 overlapping trails at the shared style's alpha bury the scars; drawn at half strength here
   const smoke = useMemo(() => (on.smoke ? smokeLayers(data.smoke, { theme }).map((l) => withOpacity(l, 0.45)) : null), [on.smoke, data.smoke, theme]);

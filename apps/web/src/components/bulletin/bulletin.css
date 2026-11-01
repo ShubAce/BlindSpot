@@ -49,6 +49,25 @@
   font-size: 12px;
 }
 
+/* the switch and, at its right end, Listen for the language on screen (components/live/investigator/
+   Listen.tsx, read with the device's own voice for that language) */
+.lang-bar {
+  position: relative;
+  margin-bottom: 32px;
+}
+.lang-bar .lang-tabs {
+  margin-bottom: 0;
+}
+.lang-listen {
+  position: absolute;
+  right: 0;
+  /* centred on the 44px tabs */
+  top: 4px;
+}
+.lang-listen.vo-none {
+  top: 13px;
+}
+
 .bulletin-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 360px;
@@ -224,6 +243,11 @@
   background: var(--raised);
 }
 
+/* the second Print, after the text: shown on phones only (see the 640px block) */
+.print-foot__row {
+  display: none;
+}
+
 @media (max-width: 1000px) {
   .bulletin-grid {
     grid-template-columns: minmax(0, 1fr);
@@ -251,6 +275,26 @@
   .lang-tabs {
     gap: 22px;
     margin-bottom: 24px;
+  }
+  /* under the tabs on a phone, where three of them fill the width */
+  .lang-bar {
+    margin-bottom: 24px;
+  }
+  .lang-listen,
+  .lang-listen.vo-none {
+    position: static;
+    margin-top: 12px;
+  }
+  /* Print moves after the text it prints: the page opens on the languages and Listen */
+  .print-top {
+    display: none;
+  }
+  .print-foot__row {
+    display: block;
+    margin-top: 24px;
+  }
+  .print-foot__row .button-secondary {
+    min-height: 44px;
   }
   /* on a phone a flag sits under its language, so three flagged tabs still fit without scrolling */
   .lang-tab.is-held {

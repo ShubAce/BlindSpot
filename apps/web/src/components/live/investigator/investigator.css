@@ -125,6 +125,47 @@
   max-width: 68ch;
 }
 
+/* the guardrails' 30-day record under the intro: the same mark and tone step as an answer's own
+   check, so the promise and its proof read as one thing */
+.iv-proof {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: 8px;
+  margin: -6px 0 22px;
+  padding: 10px 12px;
+  font-size: 12.5px;
+  line-height: 18px;
+  color: var(--muted);
+  background: var(--raised);
+  border-radius: var(--radius-card);
+  text-wrap: pretty;
+}
+.iv-proofMark {
+  margin-top: 2px;
+  color: var(--positive);
+}
+.iv-proofLead {
+  font-weight: 600;
+  color: var(--text);
+}
+.iv-proofLink {
+  color: var(--text);
+  white-space: nowrap;
+  text-decoration: underline;
+  text-decoration-color: var(--control);
+  text-underline-offset: 3px;
+  transition: text-decoration-color var(--t-hover) ease;
+}
+.iv-proofLink:hover {
+  text-decoration-color: var(--accent);
+}
+.iv-proofSkeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 1px;
+}
+
 .iv-group + .iv-group {
   margin-top: 22px;
 }
@@ -243,6 +284,85 @@
   line-height: 24px !important;
   font-weight: 600 !important;
   color: var(--text) !important;
+}
+
+/* a follow-up's thread: the earlier questions folded on one 1px rule, the way a reply hangs off
+   what it answers; each opens to the answer Gemini was given */
+.iv-thread {
+  margin: 12px 0 0;
+}
+.iv-threadHead {
+  margin: 0 0 4px;
+  font-size: 12px !important;
+  line-height: 16px !important;
+  font-weight: 500 !important;
+  color: var(--faint) !important;
+}
+.iv-threadList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-left: 1px solid var(--border);
+}
+.iv-ctx summary {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 4px 0 4px 10px;
+  font-size: 13px;
+  line-height: 19px;
+  color: var(--muted);
+  cursor: pointer;
+  list-style: none;
+  transition: color var(--t-hover) ease;
+}
+.iv-ctx summary::-webkit-details-marker {
+  display: none;
+}
+.iv-ctx summary:hover {
+  color: var(--text);
+}
+.iv-ctxChevron {
+  flex: none;
+  margin-top: 4px;
+  transition: transform var(--t-hover) ease;
+}
+.iv-ctx[open] .iv-ctxChevron {
+  transform: rotate(90deg);
+}
+.iv-ctxQ {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.iv-ctx[open] .iv-ctxQ {
+  display: block;
+  color: var(--text);
+}
+.iv-ctxA {
+  margin: 0 0 8px 28px;
+  font-size: 12.5px;
+  line-height: 18px;
+  color: var(--muted);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.iv-threadNote {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--faint);
+}
+.iv-kicker {
+  margin: 14px 0 0;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.iv-kicker + .iv-question {
+  margin-top: 2px;
 }
 /* focus lands here when a question starts; it is not a control, so it shows no ring */
 .iv-question:focus {
@@ -406,6 +526,73 @@
 .iv-answer[data-empty] {
   display: none;
 }
+/* "Answer" and, once it is finished, its Listen control on the same line */
+.iv-answerHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  min-height: 28px;
+  margin: 0 0 6px;
+}
+.iv-answerHead .iv-subhead {
+  margin: 0;
+}
+
+/* after a finished answer: the follow-up, the next step a reader takes */
+.iv-next {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--rule);
+}
+.iv-followButton {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--control);
+  border-radius: var(--radius-control);
+  cursor: pointer;
+  transition: border-color var(--t-hover) ease;
+}
+.iv-followButton svg {
+  color: var(--muted);
+}
+.iv-followButton:hover {
+  border-color: var(--muted);
+}
+/* the box below is writing this follow-up: the one selection line */
+.iv-followButton[data-active] {
+  border-color: var(--accent);
+}
+.iv-followButton:active {
+  transform: translateY(1px);
+}
+.iv-followButton:disabled {
+  color: var(--muted);
+  border-color: var(--border);
+  cursor: not-allowed;
+  transform: none;
+}
+.iv-followNote {
+  flex: 1 1 200px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--faint);
+}
 .iv-answerText {
   max-width: 70ch;
 }
@@ -525,6 +712,52 @@ a.iv-cite:focus-visible {
   color: var(--muted);
 }
 
+/* the connection dropped mid-run: the stored copy is on its way */
+.iv-recovering {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--text);
+}
+.iv-recovering svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--muted);
+}
+
+/* a draft the number check never saw: folded, muted, named for what it is */
+.iv-draftNote {
+  margin: 0 0 6px;
+}
+.iv-draft {
+  margin: 0 0 10px;
+  font-size: 12.5px;
+  line-height: 18px;
+  color: var(--muted);
+}
+.iv-draft summary {
+  cursor: pointer;
+  color: var(--muted);
+  transition: color var(--t-hover) ease;
+}
+.iv-draft summary:hover {
+  color: var(--text);
+}
+.iv-draftText {
+  margin-top: 8px;
+  padding-left: 12px;
+  border-left: 1px solid var(--control);
+}
+.iv-draftText .iv-lead,
+.iv-draftText .iv-para,
+.iv-draftText .iv-list,
+.iv-draftText .iv-caveat {
+  font-size: 13px;
+  line-height: 19px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
 .iv-fields,
 .iv-sources {
   margin-top: 18px;
@@ -639,21 +872,32 @@ a.iv-cite:focus-visible {
   background: var(--surface);
   border-radius: 0 0 var(--radius-card) var(--radius-card);
 }
+/* the buttons keep to the box's last line as it grows */
 .iv-askRow {
   display: flex;
+  align-items: flex-end;
   gap: 8px;
 }
+/* one line, growing to four with the question (field-sizing; measured in script elsewhere) */
 .iv-input {
+  display: block;
   flex: 1;
   min-width: 0;
-  height: 40px;
-  padding: 0 12px;
+  min-height: 40px;
+  max-height: 112px;
+  margin: 0;
+  padding: 9px 12px;
   font: inherit;
   font-size: 14px;
+  line-height: 20px;
   color: var(--text);
   background: var(--ground);
   border: 1px solid var(--control);
   border-radius: var(--radius-control);
+  resize: none;
+  overflow-y: auto;
+  field-sizing: content;
+  scrollbar-width: thin;
   transition: border-color var(--t-hover) ease;
 }
 .iv-input::placeholder {
@@ -693,6 +937,14 @@ a.iv-cite:focus-visible {
   background: transparent;
   border: 1px solid var(--control);
 }
+/* Ask with no way to run (offline): legible, flat, and the line below says why */
+.iv-button:disabled {
+  color: var(--muted);
+  background: var(--active);
+  cursor: not-allowed;
+  opacity: 1;
+  transform: none;
+}
 .iv-budget {
   margin: 8px 0 0;
   font-size: 12px;
@@ -702,17 +954,185 @@ a.iv-cite:focus-visible {
 .iv-budget[data-tone="warning"] {
   color: var(--warning);
 }
+.iv-composerNote {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  line-height: 18px;
+  color: var(--warning);
+}
+
+/* the box writing a follow-up: what it follows, and the way back to a question on its own */
+.iv-followTo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: -4px 0 6px;
+}
+.iv-followToText {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 18px;
+  color: var(--muted);
+}
+.iv-followToText > span {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  overflow: hidden;
+}
+.iv-followToText q {
+  color: var(--text);
+}
+.iv-followToMark {
+  flex: none;
+  margin-top: 2px;
+  color: var(--accent);
+}
+/* the window closed while it was being written: the line says so, and wraps to say all of it */
+.iv-followTo[data-closed] .iv-followToText {
+  color: var(--warning);
+}
+.iv-followTo[data-closed] .iv-followToText > span {
+  display: block;
+}
+.iv-followTo[data-closed] .iv-followToMark {
+  color: var(--warning);
+}
+.iv-followCancel {
+  flex: none;
+  height: 28px;
+  padding: 0 6px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-control);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 3px;
+  transition: color var(--t-hover) ease, text-decoration-color var(--t-hover) ease;
+}
+.iv-followCancel:hover {
+  color: var(--text);
+  text-decoration-color: currentColor;
+}
+
+/* the microphone: an outlined square beside Ask; listening, it turns the recording red and its icon
+   becomes Stop */
+.iv-mic {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--control);
+  border-radius: var(--radius-control);
+  cursor: pointer;
+  transition: color var(--t-hover) ease, border-color var(--t-hover) ease;
+}
+.iv-mic:hover {
+  color: var(--text);
+  border-color: var(--muted);
+}
+.iv-mic[data-listening] {
+  color: var(--negative);
+  border-color: var(--negative);
+}
+.iv-mic:disabled {
+  color: var(--faint);
+  border-color: var(--border);
+  cursor: not-allowed;
+}
+.iv-mic:active {
+  transform: translateY(1px);
+}
+.iv-voice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 12px;
+  margin-top: 8px;
+}
+.iv-voiceText {
+  flex: 1 1 180px;
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 18px;
+  color: var(--text);
+}
+.iv-voice[data-state="error"] .iv-voiceText {
+  color: var(--warning);
+}
+.iv-recDot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 7px;
+  vertical-align: 1px;
+  border-radius: 50%;
+  background: var(--negative);
+  animation: iv-rec 1.1s ease-in-out infinite alternate;
+}
+@keyframes iv-rec {
+  to {
+    opacity: 0.3;
+  }
+}
+.iv-voiceLangs {
+  display: flex;
+  gap: 4px;
+}
+.iv-voiceLang {
+  height: 26px;
+  padding: 0 8px;
+  font: inherit;
+  font-family: var(--face-text), var(--font-devanagari, sans-serif), var(--font-gurmukhi, sans-serif);
+  font-size: 12px;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  cursor: pointer;
+  transition: color var(--t-hover) ease, border-color var(--t-hover) ease;
+}
+.iv-voiceLang:hover {
+  color: var(--text);
+  border-color: var(--control);
+}
+.iv-voiceLang[aria-pressed="true"] {
+  color: var(--text);
+  background: var(--active);
+  border-color: var(--control);
+}
 
 /* phone: thumb-sized targets, 16px text in the field (no zoom on focus) */
 @media (max-width: 700px) {
   .iv-input {
-    height: 44px;
+    min-height: 44px;
+    max-height: 120px;
+    padding: 10px 12px;
     font-size: 16px;
+    line-height: 22px;
     /* the ranked-list sheet and the nav bar (108px) stay over the page's foot */
     scroll-margin-bottom: 124px;
   }
-  .iv-button {
+  .iv-button,
+  .iv-mic {
     height: 44px;
+  }
+  .iv-mic {
+    width: 44px;
   }
   .iv-ex {
     padding: 12px 8px 13px;
@@ -720,14 +1140,51 @@ a.iv-cite:focus-visible {
   .iv-step {
     padding: 8px 0;
   }
+  .iv-back {
+    min-height: 44px;
+  }
+  .iv-actions .lv-ctrl,
+  .iv-error .lv-ctrl {
+    height: 44px;
+    padding: 0 14px;
+    font-size: 13px;
+  }
+  .iv-followButton {
+    height: 44px;
+    padding: 0 14px;
+    font-size: 14px;
+  }
+  .iv-followCancel {
+    height: 44px;
+    padding: 0 10px;
+    font-size: 13px;
+  }
+  .iv-voiceLang {
+    height: 44px;
+    padding: 0 12px;
+    font-size: 14px;
+  }
+  .iv-ctx summary {
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+  .iv-draft summary {
+    padding: 12px 0;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .iv-spin {
+  .iv-spin,
+  .iv-recDot {
     animation: none;
   }
+  .iv-ctxChevron {
+    transition: none;
+  }
   .iv-ex:active,
-  .iv-button:active {
+  .iv-button:active,
+  .iv-mic:active,
+  .iv-followButton:active {
     transform: none;
   }
 }

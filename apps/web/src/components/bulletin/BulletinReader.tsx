@@ -4,8 +4,11 @@ import { Fragment, useCallback, useRef, useState, type KeyboardEvent, type React
 
 import { Freshness } from '@/components/ui/states';
 import { shortUrl } from '@/components/case/audit';
+import { Listen } from '@/components/voice/Listen';
+import { speakable } from '@/components/voice/voice';
 import { dateIST, dateTimeIST, number } from '@/lib/format';
-import { LANGS } from '@/lib/langs';
+import { LANGS, langEnglish } from '@/lib/langs';
+import { modelName } from '@/lib/models';
 
 import { devanagari, gurmukhi } from './fonts';
 import type { Bulletin, BulletinLangCode, BulletinSet } from './types';
@@ -37,7 +40,7 @@ type Usable = { ok: true; data: Bulletin } | { ok: false; reason: string; flag: 
 
 function usable(set: BulletinSet, code: BulletinLangCode): Usable {
   const r = set[code];
-  const english = LANGS.find((l) => l.code === code)?.english ?? code;
+  const english = langEnglish(code);
   if (!r.ok)
     return r.error.status === 404
       ? { ok: false, flag: 'none today', reason: `There is no ${english} bulletin today.` }
@@ -56,10 +59,35 @@ function usable(set: BulletinSet, code: BulletinLangCode): Usable {
   return { ok: true, data: r.data };
 }
 
+/** A range of figures takes an en dash ("67.9%-95.5%" reads "67.9%–95.5%"); an ISO date keeps its hyphens. */
+const rangeDash = (text: string): string => text.replace(/\b\d{4}-\d{2}-\d{2}\b|(\d%?)-(?=\d)/g, (all, a?: string) => (a ? `${a}–` : all));
+
+/**
+ * The text's figures as the rest of the site writes them: Indian digit grouping ("106682.8 ha" reads
+ * "1,06,682.8 ha") and an en dash in a range. Display only: no value is rounded and no word changes,
+ * so every figure still reads exactly as the number check matched it. A year (1900 to 2100, no
+ * decimals), a figure with a leading zero ("01 Nov") and an id after "case", "scar" or "id" stay as written.
+ */
+export function displayFigures(text: string): string {
+  return rangeDash(text).replace(/(^|[^\p{L}\p{N}#.,:/_-])(\d{4,})(\.\d+)?(?![\p{N},])/gu, (all, pre: string, int: string, dec: string | undefined, offset: number, whole: string) => {
+    if (int.startsWith('0')) return all;
+    if (int.length === 4 && !dec && Number(int) >= 1900 && Number(int) <= 2100) return all;
+    if (/(case|scar|id)\s*$/i.test(whole.slice(Math.max(0, offset - 8), offset + pre.length))) return all;
+    return `${pre}${Number(int).toLocaleString('en-IN')}${dec ?? ''}`;
+  });
+}
+
+/** What Listen says first when the number check did not pass, as the verdict card does on screen. */
+const CHECK_FAILED: Record<BulletinLangCode, string> = {
+  en: 'The number check did not pass for this bulletin.',
+  hi: 'इस बुलेटिन के अंकों की जाँच पास नहीं हुई।',
+  pa: 'ਇਸ ਬੁਲੇਟਿਨ ਦੇ ਅੰਕਾਂ ਦੀ ਜਾਂਚ ਪਾਸ ਨਹੀਂ ਹੋਈ।',
+};
+
 /** Body text with the run's citation markers ("[22]") turned into links to the source list. */
 function withMarkers(text: string, markers: Set<string>, prefix: string): ReactNode[] {
   // "31 Oct [2]." reads as "31 Oct²." : the marker sits against the word it cites.
-  return text.replace(/\s+(\[\d+\])/g, '$1').split(/(\[\d+\])/g).map((part, i) => {
+  return displayFigures(text).replace(/\s+(\[\d+\])/g, '$1').split(/(\[\d+\])/g).map((part, i) => {
     const m = part.match(/^\[(\d+)\]$/);
     if (!m) return <Fragment key={i}>{part}</Fragment>;
     if (!markers.has(m[1])) return <Fragment key={i}>{part}</Fragment>;
@@ -164,6 +192,25 @@ export function BulletinReader({ set, initial, auditNote }: { set: BulletinSet; 
   const markers = new Set((b?.citations ?? []).map((c) => String(c.marker)));
   const prefix = `src-${lang}`;
   const day = any?.date ? dateIST(`${any.date}T12:00:00+05:30`, { weekday: true, year: true }) : null;
+  // The language on screen, read aloud in its own voice: title, summary, then each section. A
+  // bulletin whose number check did not pass says so first, as the verdict card does. The figures are
+  // read as written (only a range's hyphen becomes a dash): a voice can misread Indian digit grouping.
+  const english = langEnglish(lang);
+  const spoken = b
+    ? speakable(
+        [b.verification?.passed === false ? CHECK_FAILED[lang] : null, b.title, b.summary, ...b.sections.flatMap((s) => [s.heading, s.body])]
+          .filter((x): x is string => Boolean(x))
+          .map(rangeDash)
+          .join('\n'),
+        lang,
+      )
+    : '';
+  const print = (where: 'top' | 'foot') =>
+    b ? (
+      <button type="button" className={`button-secondary print-${where}`} onClick={() => window.print()}>
+        Print this bulletin
+      </button>
+    ) : null;
 
   return (
     <>
@@ -172,57 +219,56 @@ export function BulletinReader({ set, initial, auditNote }: { set: BulletinSet; 
           <h1>{day ? `Daily bulletin, ${day}` : 'Daily bulletin'}</h1>
           {any ? (
             <p className="finding">
-              Written by the BlindSpot investigator ({any.model ?? 'model not stated'}) from the data as of {asOf(any.data_as_of) ?? dateTimeIST(any.generated_at, { suffix: true })}, then checked
+              Written by the BlindSpot investigator ({any.model ? modelName(any.model) : 'model not stated'}) from the data as of {asOf(any.data_as_of) ?? dateTimeIST(any.generated_at, { suffix: true })}, then checked
               number by number against the sources it cites.
             </p>
           ) : null}
         </div>
         <div className="title-row__actions" data-print="hide">
-          {b ? (
-            <button type="button" className="button-secondary" onClick={() => window.print()}>
-              Print this bulletin
-            </button>
-          ) : null}
+          {print('top')}
           {any ? <Freshness resp={any} cadenceMs={DAY_MS} verb="written" /> : null}
         </div>
       </div>
 
-      <div className="lang-tabs" role="tablist" aria-label="Language" data-print="hide">
-        {LANGS.map((l, i) => {
-          const s = states[l.code];
-          return (
-            <button
-              key={l.code}
-              ref={(el) => {
-                tabs.current[i] = el;
-              }}
-              type="button"
-              role="tab"
-              id={`tab-${l.code}`}
-              aria-selected={lang === l.code}
-              aria-controls="bulletin-panel"
-              tabIndex={lang === l.code ? 0 : -1}
-              lang={l.code}
-              className={`lang-tab ${FONT[l.code]}${lang === l.code ? ' selected-line' : ''}${s.ok ? '' : ' is-held'}`}
-              onClick={() => choose(l.code)}
-              onKeyDown={(e) => onKey(e, i)}
-            >
-              {l.label}
-              {s.ok ? null : <span className="lang-tab__flag">{s.flag}</span>}
-            </button>
-          );
-        })}
+      <div className="lang-bar" data-print="hide">
+        <div className="lang-tabs" role="tablist" aria-label="Language">
+          {LANGS.map((l, i) => {
+            const s = states[l.code];
+            return (
+              <button
+                key={l.code}
+                ref={(el) => {
+                  tabs.current[i] = el;
+                }}
+                type="button"
+                role="tab"
+                id={`tab-${l.code}`}
+                aria-selected={lang === l.code}
+                aria-controls="bulletin-panel"
+                tabIndex={lang === l.code ? 0 : -1}
+                lang={l.code}
+                className={`lang-tab ${FONT[l.code]}${lang === l.code ? ' selected-line' : ''}${s.ok ? '' : ' is-held'}`}
+                onClick={() => choose(l.code)}
+                onKeyDown={(e) => onKey(e, i)}
+              >
+                {l.label}
+                {s.ok ? null : <span className="lang-tab__flag">{s.flag}</span>}
+              </button>
+            );
+          })}
+        </div>
+        {b ? <Listen id={`bulletin-${lang}`} text={spoken} lang={lang} what={`the ${english} bulletin`} size="regular" className="lang-listen" /> : null}
       </div>
 
       <div className="bulletin-grid" id="bulletin-panel" role="tabpanel" aria-labelledby={`tab-${lang}`}>
         <article className={`bulletin ${FONT[lang]}`} lang={lang}>
           {b ? (
             <>
-              <p className="bulletin__title">{b.title}</p>
+              <p className="bulletin__title">{displayFigures(b.title)}</p>
               <p className="bulletin__summary">{withMarkers(b.summary, markers, prefix)}</p>
               {b.sections.map((sct, i) => (
                 <section key={i} className="bulletin__section">
-                  <h2>{sct.heading}</h2>
+                  <h2>{displayFigures(sct.heading)}</h2>
                   <p>{withMarkers(sct.body, markers, prefix)}</p>
                 </section>
               ))}
@@ -231,6 +277,10 @@ export function BulletinReader({ set, initial, auditNote }: { set: BulletinSet; 
                 <h2>Reading the figures</h2>
                 {auditNote}
               </footer>
+              {/* on a phone Print comes last, after the text it prints (the one at the top is hidden there) */}
+              <div className="print-foot__row" data-print="hide">
+                {print('foot')}
+              </div>
             </>
           ) : (
             <p className="bulletin__held" lang="en" role="status">

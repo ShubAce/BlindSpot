@@ -421,6 +421,36 @@ export type AgentExamplesResponse = Envelope & {
   examples?: { id?: string | number; question: string; answer?: string | null; run_id?: string | number }[];
 };
 
+/** GET /api/agent/stats: questions (kinds ask and featured) and bulletins share this shape. `of` is
+ *  the answered runs that record a field and `unknown` those stored before it existed: unknown runs
+ *  are left out of the shares, never counted as false (contract notes, "Agent and bulletin"). Read
+ *  by the method page and the investigator console's guardrail line. */
+export type AgentGroupStats = {
+  kinds: Record<string, number>;
+  runs: number;
+  answered: number;
+  failed: number;
+  first_run_at: IsoTime | null;
+  last_run_at: IsoTime | null;
+  figures: { checked: number; matched: number; matched_share: number | null; runs: number; unknown: number };
+  all_matched: { runs: number; of: number; share: number | null; without_figures: number; unknown: number };
+  corrected_figures: { runs: number; of: number; share: number | null; then_passed: number; then_passed_share: number | null; sentences_removed: number | null; unknown: number; how?: string };
+  honesty: { passed: number; of: number; share: number | null; first_draft_issues: number; first_draft_issues_share: number | null; then_passed: number; then_passed_share: number | null; fallback_runs: number; fallback_sentences: number; unknown: number };
+  duration_ms: { p50: number | null; p90: number | null; n: number };
+  tool_calls: { median: number | null; n: number };
+  models: { model: string; runs: number; share: number | null }[];
+  languages: { lang: string; runs: number; share: number | null }[];
+};
+export type AgentStats = Envelope & {
+  days: number;
+  window: { from_utc: IsoTime; to_utc: IsoTime; first_day_ist: string; last_day_ist: string };
+  basis: string | null;
+  questions: AgentGroupStats | null;
+  bulletins: AgentGroupStats | null;
+};
+/** The window both readers of /api/agent/stats ask for, so "the last 30 days" means the same on each. */
+export const AGENT_STATS_DAYS = 30;
+
 export type BoundaryLevel = 'state' | 'district' | 'subdistrict';
 export type BoundaryProps = { level?: BoundaryLevel | string; name?: string | null; state?: string | null; code?: string | number | null };
 /** GET /api/geo/boundaries: GeoJSON today; an MVT tile template is accepted too (`readBoundaries`). */
@@ -637,6 +667,7 @@ export const PATHS = {
   agentAsk: '/api/agent/ask',
   agentRun: (id: string | number) => `/api/agent/runs/${encodeURIComponent(String(id))}`,
   agentExamples: '/api/agent/examples',
+  agentStats: '/api/agent/stats',
   bulletinLatest: '/api/bulletin/latest',
   geoBoundaries: '/api/geo/boundaries',
   geoCities: '/api/geo/cities',

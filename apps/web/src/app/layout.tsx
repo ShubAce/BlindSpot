@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Anton, Work_Sans } from 'next/font/google';
 import type { ReactNode } from 'react';
 
+import { LoadRecovery } from '@/components/pwa/LoadRecovery';
 import { OfflineSupport } from '@/components/pwa/OfflineSupport';
 import { ThemeScript } from '@/lib/theme';
 
@@ -9,7 +10,9 @@ import './globals.css';
 
 // Anton: one heavy condensed cut for the display moments. Work Sans: the text face, also used for
 // every figure (its `tnum` feature is real; see globals.css). Self-hosted by next/font, so the
-// browser never calls Google.
+// browser never calls Google. Anton's stand-in while it loads is Impact, scaled to Anton's size, so
+// the titles keep their lines (the "Anton Fallback" face in globals.css, which must stay imported
+// after this font).
 const anton = Anton({
   weight: '400',
   subsets: ['latin'],
@@ -62,6 +65,8 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
       <body>
         {children}
         <OfflineSupport />
+        {/* a section the server could not fill (a cold API) asks again by itself: LoadRecovery.tsx */}
+        <LoadRecovery />
       </body>
     </html>
   );

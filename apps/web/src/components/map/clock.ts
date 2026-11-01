@@ -156,7 +156,9 @@ function subscribeReduced(cb: () => void): () => void {
   mq.addEventListener('change', cb);
   return () => mq.removeEventListener('change', cb);
 }
-const getReduced = () => (typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia(QUERY).matches);
+/** The preference read once, for a one-off choice outside render (a scroll's behaviour, a playback's pace). */
+export const prefersReducedMotion = () => typeof window !== 'undefined' && !!window.matchMedia && window.matchMedia(QUERY).matches;
+const getReduced = prefersReducedMotion;
 
 /** True when the viewer asked for reduced motion. False during server rendering. */
 export function usePrefersReducedMotion(): boolean {
