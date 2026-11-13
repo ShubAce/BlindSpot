@@ -46,10 +46,13 @@ PUBLIC_URL = "https://blindspot-api-azure.vercel.app"
 # Where the function runs: Singapore, beside Neon (aws ap-southeast-1) and near the users in India.
 # Vercel's default (iad1, Washington) puts ~220 ms on every database round trip. Hobby allows one region.
 FUNCTION_REGION = "sin1"
-# The website's production address and its own deployments (blindspot-<hash>-<team>,
-# blindspot-web-git-<branch>-<team>). Not every *.vercel.app name that starts with "blindspot":
-# anyone can register one of those.
-WEB_ORIGIN_REGEX = r"^https://blindspot(-web-five|(-web)?-[a-z0-9-]+-shubaces-projects)\.vercel\.app$"
+# The website's own domain (blindspotin.tech redirects to www.blindspotin.tech), its production
+# alias and its own deployments (blindspot-<hash>-<team>, blindspot-web-git-<branch>-<team>).
+# Not every *.vercel.app name that starts with "blindspot": anyone can register one of those.
+WEB_ORIGIN_REGEX = (
+    r"^https://((www\.)?blindspotin\.tech"
+    r"|blindspot(-web-five|(-web)?-[a-z0-9-]+-shubaces-projects)\.vercel\.app)$"
+)
 SECRET_NAMES = (
     "GEMINI_API_KEY", "FIRMS_MAP_KEY", "DATA_GOV_IN_API_KEY", "OPENAQ_API_KEY",
     "LSASAF_USERNAME", "LSASAF_PASSWORD",

@@ -9,12 +9,12 @@ Sentinel-2 photographs days later, whatever hour it was lit. BlindSpot matches e
 measures the evening burning from a geostationary satellite, and follows the smoke to Delhi. A Gemini investigator
 explains the past week's air with cited, number-checked answers.
 
-- **Live site:** https://blindspot-web-five.vercel.app (mission control at
-  [/live](https://blindspot-web-five.vercel.app/live), district field briefs at
-  [/brief](https://blindspot-web-five.vercel.app/brief), the daily bulletin at
-  [/bulletin](https://blindspot-web-five.vercel.app/bulletin))
+- **Live site:** https://www.blindspotin.tech (mission control at
+  [/live](https://www.blindspotin.tech/live), district field briefs at
+  [/brief](https://www.blindspotin.tech/brief), the daily bulletin at
+  [/bulletin](https://www.blindspotin.tech/bulletin))
 - **Live API:** https://blindspot-api-azure.vercel.app/api/stats/headline (every response lists its sources)
-- **Method and accuracy:** [/method](https://blindspot-web-five.vercel.app/method), with every validation number read
+- **Method and accuracy:** [/method](https://www.blindspotin.tech/method), with every validation number read
   live
 - **Design and contracts:** [docs/architecture.md](docs/architecture.md), [docs/api-contract-notes.md](docs/api-contract-notes.md)
 - **Team Praise** (Forge'26 NxtWave Launchpad buildathon, Theme 2): Shubham Suman (lead), Anurag Ranjan, Durgesh Kumar

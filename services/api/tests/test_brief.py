@@ -233,7 +233,7 @@ def test_district_brief_lists_villages_and_the_watchlist(client: TestClient, row
     assert alpha["case_ids"] == [ids["a2"], ids["a1"]]  # largest first
     assert (alpha["lat"], alpha["lon"]) == (-8.0, 65.01)  # the largest scar's centroid
     assert alpha["maps_url"] == "https://www.google.com/maps/search/?api=1&query=-8.000000,65.010000"
-    assert alpha["case_url"] == f"https://blindspot-web-five.vercel.app/case/{ids['a2']}"
+    assert alpha["case_url"] == f"https://www.blindspotin.tech/case/{ids['a2']}"
     # the totals are the district's row of GET /api/brief
     row = next(d for d in client.get("/api/brief", params={"days": 7}).json()["districts"] if d["district"] == A)
     for key in ("unseen_clusters", "unseen_area_ha", "villages", "newest_pass", "harvested_fields",
@@ -347,12 +347,12 @@ def test_csv_opens_in_excel_with_links_in_three_languages(client: TestClient, ro
                          "burns, 95% CI 68%-96%)")
     assert lines[0] == ["Alpha", "North", A, "2", "8.00", "2026-10-30", "-8.000000", "65.010000",
                         "https://www.google.com/maps/search/?api=1&query=-8.000000,65.010000",
-                        f"https://blindspot-web-five.vercel.app/case/{ids['a2']}"]
+                        f"https://www.blindspotin.tech/case/{ids['a2']}"]
     assert [line[0] for line in lines] == ["Alpha", "Beta", brief.UNNAMED["en"], "Alpha"]
     for line in lines:
         lat, lon = line[6], line[7]
         assert line[8] == f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
-        assert re.fullmatch(r"https://blindspot-web-five\.vercel\.app/case/\d+", line[9])
+        assert re.fullmatch(r"https://www\.blindspotin\.tech/case/\d+", line[9])
     for lang in ("hi", "pa"):
         r, (header, *localized) = _csv(client, lang)
         assert r.content.startswith(b"\xef\xbb\xbf")

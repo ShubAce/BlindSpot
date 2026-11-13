@@ -25,6 +25,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 WEB_DIR = REPO_ROOT / "apps" / "web"
 PROJECT = "blindspot-web"
 API_URL = "https://blindspot-api-azure.vercel.app"
+SITE_URL = "https://www.blindspotin.tech"  # the custom domain; blindspotin.tech redirects here
 FUNCTION_REGION = "sin1"
 
 
@@ -56,7 +57,7 @@ def link_once(folder: Path, project: str, token: str) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--api-url", default=API_URL, help="the deployed API's address")
-    parser.add_argument("--site-url", default="", help="the site's own address (canonical and share-card URLs)")
+    parser.add_argument("--site-url", default=SITE_URL, help="the site's own address (canonical and share-card URLs)")
     parser.add_argument("--skip-env", action="store_true", help="do not rewrite environment variables")
     args = parser.parse_args()
 

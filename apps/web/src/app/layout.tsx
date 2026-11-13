@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Anton, Work_Sans } from 'next/font/google';
 import type { ReactNode } from 'react';
-
+import { Analytics } from "@vercel/analytics/next"
 import { LoadRecovery } from '@/components/pwa/LoadRecovery';
 import { OfflineSupport } from '@/components/pwa/OfflineSupport';
 import { ThemeScript } from '@/lib/theme';
