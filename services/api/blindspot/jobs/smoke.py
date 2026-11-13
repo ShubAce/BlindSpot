@@ -892,6 +892,22 @@ def _as_read_back(value: Any) -> tuple[Any, str]:
     return orjson.loads(rendered), rendered
 
 
+def prune_superseded_bodies(dry_run: bool = False) -> dict[str, Any]:
+    """Delete the stored answers of smoke runs that are not the newest of their kind and city.
+
+    The smoke routes serve only the newest run (they take no run id), so a replaced run's answers
+    are never read again, while each run stores ~6 MB of them four times a day. Left to the 3-day
+    rule for unread answers, they were 55 of the 85 MB response_body held on 13 Nov 2026. Run after
+    each smoke run and by the daily prune (which deletes the replaced runs themselves)."""
+    from blindspot.api.routers.smoke import RUN_KEY_PATTERN
+    from blindspot.jobs.prune import KEEP_SMOKE_RUNS
+    from blindspot.models.assets import prune_bodies
+
+    return prune_bodies(dry_run=dry_run, params={"pattern": RUN_KEY_PATTERN}, where=(
+        "key ~ :pattern AND substring(key FROM CAST(:pattern AS text))::bigint "
+        f"NOT IN ({KEEP_SMOKE_RUNS})"))
+
+
 def store_bodies(ids: dict[str, Any], forward: dict[str, Any] | None, backs: list[dict[str, Any]],
                  common: dict[str, Any]) -> dict[str, Any]:
     """Store the website's /forward and /back answers for the runs just written (see above)."""
@@ -1018,6 +1034,10 @@ def smoke() -> dict[str, Any]:
     except Exception as exc:  # noqa: BLE001  (an optimisation: the routes compute live without it)
         log.warning("smoke: could not store the answers: %s", exc)
         bodies = {"error": f"{type(exc).__name__}: {exc}"[:300]}
+    try:
+        bodies["superseded"] = prune_superseded_bodies()
+    except Exception as exc:  # noqa: BLE001  (space housekeeping; the prune job catches what is left)
+        log.warning("smoke: could not prune the replaced answers: %s", exc)
     verdicts = {b["city"]: b["verdict_hint"] for b in backs}
     return {
         "bodies": bodies,

@@ -272,6 +272,8 @@ run needs about one spare copy of the harvested fields instead of four. The room
 given back by hand, once: `infra/neon_compact.py` (VACUUM FULL per table, ~2 minutes, no row
 deleted).
 
+That was not enough: see section 7.
+
 ## 6. What to watch in the Neon console
 
 - **Billing / Usage**: compute hours and data transfer month to date. Healthy pace: under
@@ -294,3 +296,59 @@ deleted).
 - After loading data by hand (`infra/load_neon.py`), stored answers follow by themselves: smoke
   answers are keyed by run id; scar lists by `cache.content_stamp` (the rows each query selects,
   in the columns it shows); boundaries by `cache.table_stamp`.
+- **The cap counts every database of the project**, not only `neondb`: watch
+  `SELECT sum(pg_database_size(datname)) FROM pg_database` (the `postgres` and template databases
+  add ~22 MB). Keep it under ~850 MB through the season; the daily runs need room for one step of
+  rewrites (section 7), not a copy of a table.
+- Each `sentinel` run's summary lists, per tile, `stored`: rows `computed`, `kept`, `deleted`,
+  `inserted`. On a normal day `kept` is most of `computed`; if it is not, the run is rewriting
+  everything again (section 7) and the size will climb.
+
+## 7. The 1 GB cap, 8-13 November 2026
+
+**What happened.** From 8 November every daily `sentinel` run failed with `DiskFull: could not
+extend file because project size limit (1024 MB) has been exceeded`. On 13 November the project
+held 999 MB: `neondb` 977 MB plus 22 MB of system databases.
+
+**Why.** GitHub's runner starts each run without the block memory (`CACHE_DIR/sentinel`), so every
+tile is rebuilt from all of the season's passes, and `store_tile` replaced every row of the tile:
+~277k scars and ~264k harvested fields a day by November. Fire matching then rewrote every new scar
+for its verdict, and the risk job every field for its score. Each of those writes leaves a dead copy
+of the row until VACUUM, so a run needed room for two to three copies of the two tables (~300 MB
+live by then) at once. Section 5's fixes cut the extra writes per row, but not the number of rows
+rewritten.
+
+**What broke.** A failed run had already committed the rebuilt rows, and then failed in fire
+matching. From 8 November every scar was left without a verdict (`unseen_share: null` on the site,
+no candidate unseen burns), and every field without a score (an empty ranking and empty field-brief
+watchlists), because the risk job runs only after a successful `sentinel`. Fires, air, GK-2A, smoke
+and the bulletin kept running.
+
+**What changed in the code:**
+
+| Change | Where | Effect |
+| --- | --- | --- |
+| A rebuilt tile keeps every stored row whose content (every column the run computes) equals a new row's: same id, verdict, names and score. Only changed rows are deleted and inserted, new ones named first | `jobs/sentinel.py` (`_replace_rows`) | a rebuild writes only the new passes' rows; scar ids stay the same across daily runs, so a case link no longer breaks at 16:47 IST |
+| Fire matching in steps of 25,000 scars (`db.STEP_ROWS`), each its own transaction | `sentinel.match_fires_in_batches`, `db.id_ranges` | a change of every verdict needs room for about one step, not a second copy of the table |
+| Risk scores written the same way, in steps of 25,000 fields on one connection (the temporary stage outlives the commits) | `jobs/risk.py` (`_apply_stage_in_steps`) | the same for `harvest_cluster`; for the minutes the steps take, readers may pair some rows' previous numbers with the new run |
+| Every job write that leaves dead rows (a tile's replaced rows, a matching step, a scoring step) is counted; a plain VACUUM runs each time 20,000 have piled up (`db.VACUUM_EVERY`), and one VACUUM ANALYZE at the end of the job; a VACUUM that fails is logged, never fails the job | `db.DeadRows`, `db.vacuum_quietly` | the next writes reuse the room; no whole-table ANALYZE after every step |
+| `air_obs` older than 15 days is pruned (its longest reader, `/api/air/series`, looks back 14 days) | `jobs/prune.py` | it grew ~20k rows (~10 MB with its indexes) a day |
+| The stored answers of a replaced smoke run are deleted as soon as the next run has stored its own (the key pattern lives next to the key builders, `routers/smoke.RUN_KEY_PATTERN`) | `smoke.prune_superseded_bodies`, run by the smoke and prune jobs | 244 such answers held 55 of `response_body`'s 85 MB |
+| Unreferenced `source_fetch` rows go after 15 days (was 30) | `jobs/prune.py` | |
+
+**What was done by hand on 13 November** (no scar, field, fire or GK-2A row deleted):
+
+| Step | Result |
+| --- | --- |
+| Deleted the 244 stored answers of replaced smoke runs and 20,345 air readings older than 15 days; `VACUUM FULL` of `response_body`, `place`, `rendered_asset`, `fire_detection` | all databases 999 -> 873 MB (`response_body` 85 -> 7 MB, `place` 39 -> 10 MB) |
+| `infra/neon_compact.py` (`burn_cluster`, `harvest_cluster`, `smoke_run`) | `neondb` 851 -> 703 MB |
+| `match_fires_in_batches()` (the first version, a VACUUM ANALYZE after each step) | 113,180 verdicts set in 12 steps, 44 s; 164,112 scars stay without one (see below): 1,49,114 of 1,81,971 ha checked are candidate unseen burns, 81.9 %, the figure of 3 November |
+| `python -m blindspot.jobs run risk` (the same first version) | all 264,124 fields scored again (run 11), backtest stored; 43 minutes |
+| Sizes after | `neondb` 754 MB, all databases 777 MB (the rewrites took about one step of room each) |
+
+**Still open: verdicts stop at 2 November.** A scar gets a verdict only when `fire_coverage` holds
+every FIRMS source for every day of its window. NASA's `data_availability` has listed no
+`VIIRS_SNPP_NRT` data after 2 November (the backfill's own range for it ends there), so since then
+no day is complete and no newer scar gets a verdict: the headline share describes scars up to
+2 November. The fix is to require, for each day, only the sources that FIRMS publishes for that day.
+It changes the method, so it is left for a decision.

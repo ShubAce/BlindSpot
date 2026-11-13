@@ -10,10 +10,12 @@ import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
 from decimal import Decimal
+from itertools import pairwise
 from typing import Any
 
 import orjson
 from sqlalchemy import create_engine, event, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from blindspot.config import get_settings
@@ -83,13 +85,67 @@ def session_scope() -> Iterator[Session]:
         session.close()
 
 
-def vacuum(table: str) -> None:
-    """VACUUM (ANALYZE) one table, outside any transaction: the space of its old row versions is
-    reused at once instead of whenever autovacuum gets to it, and no lock blocks the readers. Never
-    VACUUM FULL from a job: it locks the table and needs a second copy of it on disk (giving space
-    back to Neon is done by hand, infra/neon_compact.py)."""
+def vacuum(table: str, analyze: bool = True) -> None:
+    """VACUUM (with ANALYZE unless told not to) one table, outside any transaction: the space of its
+    old row versions is reused at once instead of whenever autovacuum gets to it, and no lock blocks
+    the readers. Never VACUUM FULL from a job: it locks the table and needs a second copy of it on
+    disk (giving space back to Neon is done by hand, infra/neon_compact.py)."""
     with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
-        conn.execute(text(f"VACUUM (ANALYZE) {table}"))
+        conn.execute(text(f"VACUUM {'(ANALYZE) ' if analyze else ''}{table}"))
+
+
+def vacuum_quietly(table: str, analyze: bool = True) -> bool:
+    """vacuum(); False instead of an exception, because space housekeeping never fails a job."""
+    try:
+        vacuum(table, analyze)
+        return True
+    except SQLAlchemyError as exc:
+        log.warning("VACUUM %s failed: %s", table, exc)
+        return False
+
+
+# Neon's free plan stops every write at 1 GB, and a write that touches most of a big table in one
+# transaction needs room for a second copy of it. Such writes go in steps of STEP_ROWS rows, each
+# its own transaction (id_ranges), with a VACUUM whenever VACUUM_EVERY dead rows have piled up
+# (DeadRows), so each step reuses the room of the old row versions before it.
+STEP_ROWS = 25_000
+VACUUM_EVERY = 20_000
+MAX_ID = 2**63 - 1  # above every bigint id: the open end of the last id range
+
+
+def id_ranges(session: Session, table: str, rows: int = STEP_ROWS) -> list[tuple[int, int]]:
+    """[lo, hi) id ranges that cover every id of `table` (and any id outside it), each holding
+    about `rows` of its current rows."""
+    starts = session.execute(text(
+        f"SELECT id FROM (SELECT id, row_number() OVER (ORDER BY id) AS rn FROM {table}) t "
+        "WHERE (rn - 1) % :rows = 0 ORDER BY id"), {"rows": max(1, rows)}).scalars().all()
+    return list(pairwise([0, *(int(s) for s in starts[1:]), MAX_ID]))
+
+
+class DeadRows:
+    """Rows of one table that a job has rewritten or deleted since its last VACUUM. Each time
+    VACUUM_EVERY of them have piled up it runs a plain VACUUM, so the next writes reuse their room
+    instead of growing the file; finish() vacuums the rest and refreshes the statistics, once."""
+
+    def __init__(self, table: str) -> None:
+        self.table = table
+        self.pending = 0
+        self.vacuums = 0
+        self.written = False
+
+    def add(self, rows: int) -> None:
+        self.pending += rows
+        self.written = self.written or rows > 0
+        if self.pending >= VACUUM_EVERY:
+            self._vacuum(analyze=False)
+
+    def finish(self) -> None:
+        if self.written:
+            self._vacuum(analyze=True)
+
+    def _vacuum(self, analyze: bool) -> None:
+        self.vacuums += vacuum_quietly(self.table, analyze)
+        self.pending = 0
 
 
 def get_session() -> Iterator[Session]:

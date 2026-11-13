@@ -10,10 +10,13 @@ What one run does:
    judged only inside the stage's districts, on cropland, and in the tile's own 100 km MGRS square,
    so the ~10 km overlap between tiles is never counted twice.
 3. Stitch clusters cut by block edges, drop those under 0.52 ha, and replace this tile's rows for
-   the passes just processed (so a rerun after a crash never duplicates a scar). The harvested-but-
-   unburnt snapshot of the tile is rebuilt the same way.
+   the passes just processed (so a rerun after a crash never duplicates a scar); a stored row that
+   came out the same is kept, id and verdict included, so a rebuild writes only what changed. The
+   harvested-but-unburnt snapshot of the tile is replaced the same way.
 4. Match every scar against fire detections (fire_detection, filled by the fires module) and name
-   its district, sub-district and nearest village from the boundary and place tables.
+   its district, sub-district and nearest village from the boundary and place tables. Writes that
+   can touch most of a table go in steps of their own, each followed by a VACUUM, so the database
+   never needs room for a second copy of a table (Neon's free plan stops every write at 1 GB).
 
 A run stops starting new tiles after SENTINEL_BUDGET_MIN minutes (default 50); the next run picks
 up where it stopped, because each block remembers which passes it has folded in (an .npz file per
@@ -42,15 +45,14 @@ from rasterio import features
 from rasterio.windows import Window
 from shapely.geometry import Polygon, mapping, shape
 from shapely.geometry.base import BaseGeometry
-from sqlalchemy import column, delete, func, insert, select, table, text, update
+from sqlalchemy import column, func, insert, select, table, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from blindspot.analytics import burnscar
 from blindspot.analytics.burnscar import RULE, BlockState, Part
 from blindspot.config import get_settings
-from blindspot.db import session_scope, vacuum
+from blindspot.db import MAX_ID, STEP_ROWS, DeadRows, id_ranges, session_scope
 from blindspot.geo import fill_admin
 from blindspot.jobs import job
 from blindspot.models.sentinel import BurnCluster, HarvestCluster, S2Scene
@@ -539,25 +541,31 @@ def _pass_time(passes: dict[int, list[stac.SceneItem]], day: int, sensing: dict[
     return dt.datetime.combine(stac.from_day_number(day), dt.time(), dt.UTC)
 
 
-def store_tile(result: TileResult, fetch_id: int | None) -> None:
-    """Replace this tile's rows for the passes just processed, then swap in its new memory."""
+def store_tile(result: TileResult, fetch_id: int | None) -> dict[str, dict[str, int]]:
+    """Bring this tile's rows for the passes just processed in line with what was computed (rows
+    that came out the same are kept as they are, see _replace_rows), then swap in its new memory.
+    Returns _replace_rows' counts per table."""
     stage_name, tile = result.stage, result.tile
+    tile_sql = "t.mgrs_tile = :tile AND t.scope = :scope"
+    tile_params: dict[str, Any] = {"tile": tile, "scope": stage_name}
+    burn_scope: str | None = None
+    burn_params = dict(tile_params)
+    if result.rebuilt:
+        burn_scope = tile_sql
+    elif result.post_days:
+        # Only rows of blocks that were reprocessed for those passes; others stay as they are.
+        burn_scope = (f"{tile_sql} AND date(t.burn_before) = ANY(CAST(:days AS date[]))"
+                      " AND t.block = ANY(CAST(:blocks AS text[]))")
+        burn_params.update(days=[stac.from_day_number(d) for d in sorted(result.post_days)],
+                           blocks=sorted(result.processed_blocks))
     with session_scope() as session:
-        cond = (BurnCluster.mgrs_tile == tile) & (BurnCluster.scope == stage_name)
-        if result.rebuilt:
-            session.execute(delete(BurnCluster).where(cond))
-        elif result.post_days:
-            # Only rows of blocks that were reprocessed for those passes; others stay as they are.
-            days = [stac.from_day_number(d) for d in result.post_days]
-            session.execute(delete(BurnCluster).where(
-                cond & func.date(BurnCluster.burn_before).in_(days)
-                & BurnCluster.block.in_(sorted(result.processed_blocks))))
-        if result.burn_rows:
-            _insert_named(session, BurnCluster, [{**r, "fetch_id": fetch_id} for r in result.burn_rows])
-        session.execute(delete(HarvestCluster).where(
-            (HarvestCluster.mgrs_tile == tile) & (HarvestCluster.scope == stage_name)))
-        if result.harvest_rows:
-            _insert_named(session, HarvestCluster, [{**r, "fetch_id": fetch_id} for r in result.harvest_rows])
+        stored = {
+            "burn_cluster": _replace_rows(session, BurnCluster, burn_scope, burn_params,
+                                          [{**r, "fetch_id": fetch_id} for r in result.burn_rows]),
+            # The harvested-but-unburnt snapshot of the tile is always computed whole.
+            "harvest_cluster": _replace_rows(session, HarvestCluster, tile_sql, tile_params,
+                                             [{**r, "fetch_id": fetch_id} for r in result.harvest_rows]),
+        }
         current = dict(session.execute(
             select(S2Scene.item_id, S2Scene.stats).where(S2Scene.item_id.in_(list(result.item_stats)))
         ).all())
@@ -580,6 +588,7 @@ def store_tile(result: TileResult, fetch_id: int | None) -> None:
         tile_dir.rename(old_dir)
     next_dir.rename(tile_dir)
     shutil.rmtree(old_dir, ignore_errors=True)
+    return stored
 
 
 def apply_cluster_filter(session: Session) -> dict[str, int]:
@@ -629,7 +638,7 @@ _MATCH_SQL = text(
                ON f.geom && ST_Expand(b.geom, 0.05)
               AND f.acq_utc >= b.burn_after - interval '1 day'
               AND f.acq_utc <= b.burn_before + interval '1 day'
-        WHERE {_COVERED}
+        WHERE b.id >= :lo AND b.id < :hi AND {_COVERED}
         GROUP BY b.id
     )
     UPDATE burn_cluster b
@@ -644,7 +653,7 @@ _MATCH_SQL = text(
 _UNCOVERED_SQL = text(
     f"""
     UPDATE burn_cluster b SET fire_matches = NULL, unseen = NULL, nearest_fire_m = NULL, matched_at = now()
-     WHERE NOT ({_COVERED}) AND (b.unseen IS NOT NULL OR b.matched_at IS NULL)
+     WHERE b.id >= :lo AND b.id < :hi AND NOT ({_COVERED}) AND (b.unseen IS NOT NULL OR b.matched_at IS NULL)
     """
 )
 
@@ -669,7 +678,7 @@ def covered_days(session: Session) -> tuple[list, str]:
 
 
 def match_fires(session: Session) -> dict[str, Any]:
-    """Count fire detections that explain each scar and set `unseen`.
+    """Count fire detections that explain each scar and set `unseen`, in one transaction.
 
     A detection explains a scar when it lies within max(1 km, its own pixel half-diagonal + 200 m)
     of the scar polygon (SYNTHESIS section 2.5: VIIRS 465-760 m, MODIS ~1-2.8 km; never less than
@@ -678,15 +687,60 @@ def match_fires(session: Session) -> dict[str, Any]:
     day of its window for every FIRMS source; otherwise unseen stays NULL: no data is not the same as
     no fire. Re-run every job run, so verdicts follow late-arriving fire data, but only scars whose
     verdict changes are rewritten (an UPDATE writes a whole new row version, and rewriting all of
-    them every run kept the table twice its size), so matched_at is when the current verdict was set."""
+    them every run kept the table twice its size), so matched_at is when the current verdict was set.
+    The job runs it in steps: match_fires_in_batches."""
+    records = _fire_records(session)
+    if isinstance(records, str):
+        return {"skipped": records}
+    matched, unknown = _match_range(session, records[1], 0, MAX_ID)
+    return _match_summary(records, matched, unknown)
+
+
+def match_fires_in_batches(rows: int = STEP_ROWS, dead: DeadRows | None = None) -> dict[str, Any]:
+    """match_fires in steps of `rows` scars, each its own transaction, counting the rows it rewrites
+    into `dead` (a DeadRows of burn_cluster; by default its own, finished here), which vacuums as
+    they pile up, so each step reuses the room of the old row versions before it.
+
+    Every verdict can change at once: all of a rebuilt tile's new scars arrive without one, and a
+    FIRMS backfill can complete many days. In one transaction that wrote a second copy of the whole
+    table (277k scars, ~250 MB with its indexes), more than Neon's 1 GB cap had room for: 8-12 Nov
+    2026 every run failed there and every scar was left without a verdict."""
+    with session_scope() as session:
+        records = _fire_records(session)
+        ranges = id_ranges(session, "burn_cluster", rows)
+    if isinstance(records, str):
+        return {"skipped": records}
+    own = dead is None
+    dead = dead or DeadRows("burn_cluster")
+    matched = unknown = 0
+    for lo, hi in ranges:
+        with session_scope() as session:
+            step = _match_range(session, records[1], lo, hi)
+        matched, unknown = matched + step[0], unknown + step[1]
+        dead.add(sum(step))
+    if own:
+        dead.finish()
+    return {**_match_summary(records, matched, unknown), "steps": len(ranges), "vacuums": dead.vacuums}
+
+
+def _fire_records(session: Session) -> tuple[int, list, str] | str:
+    """(fire records held, covered days, how they were found), or why there is nothing to match."""
     if session.execute(text("SELECT to_regclass('public.fire_detection')")).scalar() is None:
-        return {"skipped": "fire_detection table does not exist yet (fires module)"}
+        return "fire_detection table does not exist yet (fires module)"
     n_fires = session.execute(text("SELECT count(*) FROM fire_detection")).scalar()
     if not n_fires:
-        return {"skipped": "fire_detection is empty"}
-    days, basis = covered_days(session)
-    matched = session.execute(_MATCH_SQL, {"days": days}).rowcount
-    unknown = session.execute(_UNCOVERED_SQL, {"days": days}).rowcount
+        return "fire_detection is empty"
+    return (n_fires, *covered_days(session))
+
+
+def _match_range(session: Session, days: list, lo: int, hi: int) -> tuple[int, int]:
+    """Set the verdicts of the scars with ids in [lo, hi): (rows rewritten with a verdict, without)."""
+    ids = {"days": days, "lo": lo, "hi": hi}
+    return session.execute(_MATCH_SQL, ids).rowcount, session.execute(_UNCOVERED_SQL, ids).rowcount
+
+
+def _match_summary(records: tuple[int, list, str], matched: int, unknown: int) -> dict[str, Any]:
+    n_fires, days, basis = records
     return {"fire_records": n_fires, "covered_days": [str(days[0]), str(days[-1]), len(days)] if days else [],
             "coverage_basis": basis, "verdicts_changed": matched, "verdicts_withdrawn_no_coverage": unknown}
 
@@ -722,22 +776,56 @@ def _name_places(session: Session, name: str) -> dict[str, int]:
     }
 
 
-def _insert_named(session: Session, model: type[BurnCluster | HarvestCluster], rows: list[dict[str, Any]]) -> None:
-    """Insert new rows with their place names already set, so each is written once: they go into a
-    temporary copy of the table (same columns, defaults and id sequence), are named there, then move
-    over in one INSERT. Naming them after they landed wrote every new row three more times, and the
-    daily rebuild left both tables four to six times their live size on a 1 GB database."""
+def _replace_rows(session: Session, model: type[BurnCluster | HarvestCluster], scope: str | None,
+                  params: dict[str, Any], rows: list[dict[str, Any]]) -> dict[str, int]:
+    """Make the stored rows inside `scope` (an SQL condition on alias `t` with `params`; None: no
+    stored row is replaced) equal to `rows`, writing only what changed.
+
+    A stored row inside the scope whose content equals a new row's (every column the run computes,
+    i.e. every key of `rows` but fetch_id) is kept as it is: its id, so links to it keep working,
+    and its fire verdict, place names and risk score. Stored rows that nothing matched are deleted;
+    new rows that nothing matched are named in a temporary copy of the table (same columns,
+    defaults and id sequence), so each is written once, then inserted. (Naming rows after they
+    landed wrote every new row three more times.)
+
+    Why: GitHub's runner starts every run without the block memory, so each tile is rebuilt from
+    all of the season's passes, and replacing all its rows rewrote every scar and harvested field
+    daily (~277k and ~264k by November), each again for its fire verdict and its risk score. The
+    dead copies needed more room than Neon's 1 GB cap left: the runs of 8-12 Nov 2026 all failed.
+    Kept rows also keep their ids, so a case link stays valid across daily runs."""
     real = model.__table__
     stage = table(f"new_{real.name}", *(column(c.name, c.type) for c in real.columns))
+    out = {"computed": len(rows), "kept": 0, "deleted": 0, "inserted": 0}
     session.execute(text(f"CREATE TEMP TABLE {stage.name} (LIKE {real.name} INCLUDING DEFAULTS) ON COMMIT DROP"))
-    session.execute(insert(stage), rows)
-    _name_places(session, stage.name)
-    session.execute(text(f"INSERT INTO {real.name} SELECT * FROM {stage.name}"))
+    if rows:
+        session.execute(insert(stage), rows)
+    if scope is not None and rows:
+        content = ", ".join(f"t.{name}" for name in rows[0] if name != "fetch_id")
+        sig = f"md5(ROW({content})::text)"  # geometry as its EWKB hex, floats as exact text
+        # Pair new and stored rows of equal content one to one (row_number among equals), then delete
+        # the stored rows nothing paired and the new rows already stored, all in one statement.
+        out["deleted"], out["kept"] = session.execute(text(f"""
+            WITH n AS (SELECT id, sig, row_number() OVER (PARTITION BY sig ORDER BY id) AS rn
+                       FROM (SELECT t.id, {sig} AS sig FROM {stage.name} t) s),
+                 o AS (SELECT id, sig, row_number() OVER (PARTITION BY sig ORDER BY id) AS rn
+                       FROM (SELECT t.id, {sig} AS sig FROM {real.name} t WHERE {scope}) s),
+                 pair AS (SELECT n.id AS new_id, o.id AS old_id FROM n JOIN o USING (sig, rn)),
+                 gone AS (DELETE FROM {real.name} t USING o WHERE t.id = o.id
+                           AND NOT EXISTS (SELECT 1 FROM pair p WHERE p.old_id = o.id) RETURNING 1),
+                 kept AS (DELETE FROM {stage.name} t USING pair p WHERE t.id = p.new_id RETURNING 1)
+            SELECT (SELECT count(*) FROM gone), (SELECT count(*) FROM kept)
+        """), params).one()
+    elif scope is not None:
+        out["deleted"] = session.execute(text(f"DELETE FROM {real.name} t WHERE {scope}"), params).rowcount
+    if out["computed"] > out["kept"]:
+        _name_places(session, stage.name)
+        out["inserted"] = session.execute(text(f"INSERT INTO {real.name} SELECT * FROM {stage.name}")).rowcount
     session.execute(text(f"DROP TABLE {stage.name}"))
+    return out
 
 
 def label_places(session: Session) -> dict[str, int]:
-    """Names for rows that are still unnamed: new rows arrive named (_insert_named), so this catches
+    """Names for rows that are still unnamed: new rows arrive named (_replace_rows), so this catches
     rows stored before the boundary and place tables were loaded."""
     out: dict[str, int] = {}
     for name in ("burn_cluster", "harvest_cluster"):
@@ -773,6 +861,9 @@ def run_sentinel(*, budget_min: float | None = None, stages: tuple[str, ...] | N
     done: list[dict[str, Any]] = []
     errors: list[str] = []
     pending: list[str] = []
+    # Rows each table's writes leave dead; vacuumed as they pile up, so the next tile, the fire
+    # matching and then the risk job reuse that room instead of growing the files.
+    dead = {name: DeadRows(name) for name in ("burn_cluster", "harvest_cluster")}
     for stage in STAGES:
         if stages and stage.name not in stages:
             continue
@@ -802,13 +893,15 @@ def run_sentinel(*, budget_min: float | None = None, stages: tuple[str, ...] | N
                         tracker.meta.update(passes=res.passes, blocks=res.blocks)
                 if res is None:
                     continue
-                store_tile(res, tracker.fetch_id)
+                stored = store_tile(res, tracker.fetch_id)
+                for name, counts in stored.items():
+                    dead[name].add(counts["deleted"])
                 done.append({
                     "stage": stage.name, "tile": tile, "passes": res.passes, "blocks": res.blocks,
                     "burn_clusters": len(res.burn_rows), "filtered_lookalikes": res.filtered_clusters,
                     "harvest_clusters": len(res.harvest_rows),
                     "hazy_passes": sorted(res.hazy_passes), "gate_failures": res.gate_failures[:5],
-                    "rebuilt": res.rebuilt, "seconds": res.seconds,
+                    "rebuilt": res.rebuilt, "seconds": res.seconds, "stored": stored,
                 })
                 log.info("sentinel %s %s: %s", stage.name, tile, done[-1])
             except Exception as exc:  # one bad tile must not stop the others
@@ -817,20 +910,13 @@ def run_sentinel(*, budget_min: float | None = None, stages: tuple[str, ...] | N
     summary.update(tiles=done, errors=errors, pending=pending)
     with session_scope() as session:
         summary["cluster_filter"] = apply_cluster_filter(session)
-    with session_scope() as session:
-        summary["fire_match"] = match_fires(session)
+    summary["fire_match"] = match_fires_in_batches(dead=dead["burn_cluster"])
     with session_scope() as session:
         summary["labels"] = label_places(session)
-    if done:
-        # The stored tiles' old rows are dead now: make their room reusable before the risk job
-        # writes a score onto every new harvested field, instead of growing the files for it.
-        summary["vacuumed"] = []
-        for name in ("burn_cluster", "harvest_cluster"):
-            try:
-                vacuum(name)
-                summary["vacuumed"].append(name)
-            except SQLAlchemyError as exc:  # space housekeeping; the stored rows are already committed
-                log.warning("sentinel: VACUUM %s failed: %s", name, exc)
+    # Whatever is still dead goes before the risk job writes a score onto every new harvested field.
+    for counter in dead.values():
+        counter.finish()
+    summary["vacuums"] = {name: counter.vacuums for name, counter in dead.items()}
     with session_scope() as session:
         summary["totals"] = dict(session.execute(text(
             "SELECT count(*) AS burn_clusters, coalesce(round(sum(area_ha)::numeric, 1), 0) AS burn_area_ha, "

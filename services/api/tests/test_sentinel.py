@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+from itertools import pairwise
 from pathlib import Path
 
 import numpy as np
@@ -334,7 +335,7 @@ def test_new_rows_arrive_named() -> None:
         # Differences, not totals: the view also holds this pooled connection's unflushed counts.
         writes = text("SELECT n_tup_ins, n_tup_upd FROM pg_stat_xact_user_tables WHERE relname = 'burn_cluster'")
         before = session.execute(writes).one()
-        job._insert_named(session, BurnCluster, [row])
+        job._replace_rows(session, BurnCluster, None, {}, [row])
         after = session.execute(writes).one()
         got = session.execute(text(
             "SELECT id, state, district, created_at, (SELECT last_value FROM burn_cluster_id_seq) AS seq "
@@ -468,3 +469,131 @@ def test_scar_labels_say_candidate(client, stored_scar) -> None:
     assert "precision_ci95" in body["method"]["audit"]["candidate_unseen"]
     for f in body["features"]["features"]:
         assert f["properties"]["label"].startswith("candidate")
+
+
+KEEP_TILE = "TEST2"  # the stored-row tests' own tile: other tests' fixtures use TEST_TILE
+
+
+def _scar_row(scar: dict, block: str, **changes) -> dict:
+    """One burn_cluster row as _finish_tile builds it (the recorded Tarn Taran/Amritsar scar)."""
+    from shapely import wkt
+
+    poly = wkt.loads(scar["wkt"])
+    return {
+        "geom": f"SRID=4326;{poly.wkt}", "centroid": f"SRID=4326;{poly.representative_point().wkt}",
+        "area_ha": scar["area"], "n_px": scar["n"], "res_m": 20, "mgrs_tile": KEEP_TILE, "scope": "hotspots",
+        "block": block, "burn_after": dt.datetime.fromisoformat(scar["after"]),
+        "burn_before": dt.datetime.fromisoformat(scar["before"]), "gap_days": 5.0, "scene_pre": scar["pre"],
+        "scene_post": scar["post"], "collection": scar["col"], "hazy": False, "dnbr": 0.31, "nbr_post": -0.12,
+        "confidence": 0.5, "model_version": RULE.version, "fetch_id": None, **changes,
+    }
+
+
+TILE_SCOPE = ("t.mgrs_tile = :tile AND t.scope = :scope", {"tile": KEEP_TILE, "scope": "hotspots"})
+
+
+def test_a_rebuilt_tile_keeps_the_rows_that_came_out_the_same() -> None:
+    """GitHub's runner rebuilds every tile from all its passes each day. Rows that come out the same
+    must stay as they are (id, verdict, names): only changed rows are rewritten, vanished rows go and
+    new rows arrive named. Rewriting all ~277k scars daily filled Neon's 1 GB in November 2026."""
+    from blindspot.jobs import sentinel as job
+    from blindspot.models.sentinel import BurnCluster
+
+    scar = json.loads((FIXTURES / "matched_scar.json").read_text())["scar"]
+    scope, params = TILE_SCOPE
+    same, changed, gone = _scar_row(scar, "r0_a"), _scar_row(scar, "r0_b"), _scar_row(scar, "r0_c")
+    new = _scar_row(scar, "r0_d")
+    with SessionLocal() as session:
+        first = job._replace_rows(session, BurnCluster, scope, params, [same, changed, gone])
+        ids = dict(session.execute(text(
+            "SELECT block, id FROM burn_cluster WHERE mgrs_tile = :t"), {"t": KEEP_TILE}).all())
+        # a verdict set after the first run (fire matching) must survive the rebuild of its row
+        session.execute(text("UPDATE burn_cluster SET unseen = true, fire_matches = 0 WHERE id = :i"),
+                        {"i": ids["r0_a"]})
+        rebuilt = [dict(same), {**changed, "confidence": 0.61}, new]
+        again = job._replace_rows(session, BurnCluster, scope, params, rebuilt)
+        rows = {r.block: r for r in session.execute(text(
+            "SELECT block, id, unseen, fire_matches, confidence FROM burn_cluster WHERE mgrs_tile = :t"),
+            {"t": KEEP_TILE})}
+        idle = job._replace_rows(session, BurnCluster, scope, params, [dict(r) for r in rebuilt])
+        session.rollback()
+    assert first == {"computed": 3, "kept": 0, "deleted": 0, "inserted": 3}
+    assert again == {"computed": 3, "kept": 1, "deleted": 2, "inserted": 2}
+    assert set(rows) == {"r0_a", "r0_b", "r0_d"}
+    assert rows["r0_a"].id == ids["r0_a"] and rows["r0_a"].unseen is True and rows["r0_a"].fire_matches == 0
+    assert rows["r0_b"].id != ids["r0_b"] and rows["r0_b"].confidence == pytest.approx(0.61)
+    assert rows["r0_b"].unseen is None  # a changed row is a new row: it waits for its own verdict
+    assert idle == {"computed": 3, "kept": 3, "deleted": 0, "inserted": 0}  # the same run again writes nothing
+
+
+def test_a_scope_with_nothing_computed_is_emptied() -> None:
+    from blindspot.jobs import sentinel as job
+    from blindspot.models.sentinel import BurnCluster
+
+    scar = json.loads((FIXTURES / "matched_scar.json").read_text())["scar"]
+    scope, params = TILE_SCOPE
+    with SessionLocal() as session:
+        job._replace_rows(session, BurnCluster, scope, params, [_scar_row(scar, "r0_e")])
+        out = job._replace_rows(session, BurnCluster, scope, params, [])
+        left = session.execute(text("SELECT count(*) FROM burn_cluster WHERE mgrs_tile = :t"), {"t": KEEP_TILE}).scalar()
+        session.rollback()
+    assert out == {"computed": 0, "kept": 0, "deleted": 1, "inserted": 0} and left == 0
+
+
+def test_id_ranges_cover_every_id_once() -> None:
+    from blindspot.db import MAX_ID, id_ranges
+
+    with SessionLocal() as session:
+        session.execute(text("CREATE TEMP TABLE idr (id bigint) ON COMMIT DROP"))
+        session.execute(text("INSERT INTO idr SELECT g FROM generate_series(5, 1000, 7) g"))
+        ranges = id_ranges(session, "idr", 30)
+        counts = [session.execute(text("SELECT count(*) FROM idr WHERE id >= :lo AND id < :hi"),
+                                  {"lo": lo, "hi": hi}).scalar() for lo, hi in ranges]
+        session.execute(text("DELETE FROM idr"))
+        empty = id_ranges(session, "idr", 30)
+        session.rollback()
+    assert ranges[0][0] == 0 and ranges[-1][1] == MAX_ID
+    assert all(a[1] == b[0] for a, b in pairwise(ranges))  # contiguous, no overlap
+    assert sum(counts) == len(range(5, 1001, 7)) and max(counts) == 30
+    assert empty == [(0, MAX_ID)]
+
+
+def test_fire_matching_in_steps_gives_the_same_verdicts() -> None:
+    """match_fires_in_batches (one transaction per step, a VACUUM between) sets exactly what one
+    match_fires over the whole table would. Commits, so only on the tests' own database; cleaned up."""
+    from blindspot.db import engine
+    from blindspot.jobs import sentinel as job
+    from blindspot.models.sentinel import BurnCluster
+
+    if not (engine.url.database or "").endswith("_test"):
+        pytest.skip("commits: only on the *_test database")
+    rec = json.loads((FIXTURES / "matched_scar.json").read_text())
+    added: list[int] = []
+    with SessionLocal() as session:
+        if session.execute(text("SELECT to_regclass('public.fire_detection')")).scalar() is None:
+            pytest.skip("fire_detection table not created by the fires module in this database")
+        cols = [k for k in rec["fires"][0] if k != "in_window"]
+        for fire in rec["fires"]:
+            fid = session.execute(text(
+                f"INSERT INTO fire_detection ({', '.join(cols)}, geom) VALUES "
+                f"({', '.join(':' + c for c in cols)}, ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)) "
+                "ON CONFLICT DO NOTHING RETURNING id"), {c: fire[c] for c in cols}).scalar()
+            if fid is not None:
+                added.append(fid)
+        job._replace_rows(session, BurnCluster, None, {}, [_scar_row(rec["scar"], f"r0_s{i}") for i in range(7)])
+        session.commit()
+    try:
+        out = job.match_fires_in_batches(rows=3)
+        with SessionLocal() as session:
+            got = session.execute(text(
+                "SELECT fire_matches, unseen, nearest_fire_m FROM burn_cluster WHERE mgrs_tile = :t"),
+                {"t": KEEP_TILE}).all()
+            again = job.match_fires(session)  # one pass over everything: nothing is left to change
+            session.rollback()
+        assert out["steps"] >= 3 and len(got) == 7 and len(set(got)) == 1  # seven copies, one verdict
+        assert again["verdicts_changed"] == 0 and again["verdicts_withdrawn_no_coverage"] == 0
+    finally:
+        with SessionLocal() as session:
+            session.execute(text("DELETE FROM burn_cluster WHERE mgrs_tile = :t"), {"t": KEEP_TILE})
+            session.execute(text("DELETE FROM fire_detection WHERE id = ANY(:i)"), {"i": added})
+            session.commit()

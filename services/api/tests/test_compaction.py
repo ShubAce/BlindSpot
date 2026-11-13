@@ -229,7 +229,19 @@ def test_prune_counts_in_dry_run_then_deletes_only_what_nothing_needs() -> None:
                                   "VALUES ('prunetest', 'test', :t, true) RETURNING id"), {"t": started}).scalar_one()
 
         f_json, f_column, f_free, f_recent = fetch(old), fetch(old), fetch(old), fetch(now)
-        made["source_fetch"] = [f_json, f_column, f_free, f_recent]
+        f_air_old, f_air_new = fetch(old), fetch(old)  # named only by an air row that goes / that stays
+        made["source_fetch"] = [f_json, f_column, f_free, f_recent, f_air_old, f_air_new]
+
+        def air(observed, fetch_id):
+            return s.execute(text("""
+                INSERT INTO air_obs (provider, station_id, station_name, lat, lon, geom, parameter, value, unit,
+                                     observed_at, period_minutes, is_model, fetch_id)
+                VALUES ('prunetest', 'prunetest', 'prunetest', 30, 75, ST_SetSRID(ST_MakePoint(75, 30), 4326),
+                        'pm25', 1, 'ug/m3', :t, 60, false, :f) RETURNING id
+            """), {"t": observed, "f": fetch_id}).scalar_one()
+
+        air_old, air_new = air(now - timedelta(days=16), f_air_old), air(now - timedelta(days=14), f_air_new)
+        made["air_obs"] = [air_old, air_new]
 
         def met(run_at, fetch_id=None):
             return s.execute(text("""
@@ -252,6 +264,15 @@ def test_prune_counts_in_dry_run_then_deletes_only_what_nothing_needs() -> None:
         smoke_old = smoke(now - timedelta(hours=3))
         smoke_new = smoke(now, {"sources": [{"key": "test", "fetch_id": f_json}]})
         made["smoke_run"] = [smoke_old, smoke_new]
+        # Stored answers of both runs, just written (so the 3-day unread rule keeps them both).
+        from blindspot.api.routers.smoke import back_key, validation_key
+
+        bodies = [back_key(smoke_old, 72, 72, None, 1), back_key(smoke_new, 72, 72, None, 1),
+                  validation_key(smoke_old), "scars?prunetest=1"]
+        made["response_body"] = bodies
+        for key in bodies:
+            s.execute(text("INSERT INTO response_body (key, stamp, codec, body, raw_bytes) "
+                           "VALUES (:k, 'test', 'xz', '\\x00', 1)"), {"k": key})
         made["job_run"] = [s.execute(text(
             "INSERT INTO job_run (name, trigger, started_at, finished_at, ok, duration_ms) "
             "VALUES ('prunetest', 'cli', :t, :t, true, 1) RETURNING id"), {"t": old}).scalar_one()]
@@ -259,8 +280,10 @@ def test_prune_counts_in_dry_run_then_deletes_only_what_nothing_needs() -> None:
         plan = run_prune(dry_run=True)
         assert plan["dry_run"] and plan["smoke_run"]["rows"] >= 1 and plan["met_run"]["rows"] >= 1
         assert plan["met_grid"]["rows"] >= 1 and plan["job_run"]["rows"] >= 1 and plan["source_fetch"]["rows"] >= 1
+        assert plan["air_obs"]["rows"] >= 1
         with session_scope() as s:  # nothing deleted yet
             assert s.execute(text("SELECT count(*) FROM smoke_run WHERE id = ANY(:i)"), {"i": made["smoke_run"]}).scalar() == 2
+            assert s.execute(text("SELECT count(*) FROM air_obs WHERE id = ANY(:i)"), {"i": made["air_obs"]}).scalar() == 2
         done = run_prune()
         assert not done["dry_run"]
         with session_scope() as s:
@@ -271,12 +294,20 @@ def test_prune_counts_in_dry_run_then_deletes_only_what_nothing_needs() -> None:
             assert alive("met_run", made["met_run"]) == {met_new}
             assert s.execute(text("SELECT count(*) FROM met_grid WHERE run_id = :r"), {"r": met_old}).scalar() == 0
             assert alive("job_run", made["job_run"]) == set()
-            # referenced from JSON, referenced by a column, and recent stay; the old orphan goes
-            assert alive("source_fetch", made["source_fetch"]) == {f_json, f_column, f_recent}
-            assert not {"fire_detection", "burn_cluster", "harvest_cluster", "air_obs"} & done.keys()  # never touched
+            # air readings older than AIR_KEEP_DAYS go; the newer one stays
+            assert alive("air_obs", made["air_obs"]) == {air_new}
+            # referenced from JSON, by a column, by a kept air row, and recent stay; the old orphan and
+            # the fetch only a deleted air row named go
+            assert alive("source_fetch", made["source_fetch"]) == {f_json, f_column, f_recent, f_air_new}
+            # the replaced smoke run's stored answers go; the newest run's and other answers stay
+            kept = set(s.execute(text("SELECT key FROM response_body WHERE key = ANY(:k)"), {"k": bodies}).scalars())
+            assert kept == {bodies[1], bodies[3]}
+            assert done["response_body"]["smoke_superseded"]["removed"] >= 2
+            assert not {"fire_detection", "burn_cluster", "harvest_cluster"} & done.keys()  # never touched
     finally:
         with session_scope() as s:
-            for table in ("smoke_run", "met_run", "job_run", "source_fetch"):
+            s.execute(text("DELETE FROM response_body WHERE key = ANY(:k)"), {"k": made.get("response_body", [])})
+            for table in ("smoke_run", "met_run", "job_run", "air_obs", "source_fetch"):
                 s.execute(text(f"DELETE FROM {table} WHERE id = ANY(:i)"), {"i": made.get(table, [])})
 
 

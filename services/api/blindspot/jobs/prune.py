@@ -1,10 +1,15 @@
 """Job `prune` (daily): delete what nothing needs any more, so the hosted database (Neon free tier,
-0.5 GB) stays small through the season.
+1 GB, and every write fails once it is full) stays small through the season.
 
 What goes, and why it is safe:
 - smoke_run: every run except the newest of each (kind, city). GET /api/smoke/*, /api/met/now,
   the headline and the agent read only the newest run of a kind and city; smoke_validate reads
-  winds and air, not old smoke runs. (The smoke job itself keeps 14 days; this keeps one.)
+  winds and air, not old smoke runs. (The smoke job itself keeps 14 days; this keeps one.) The
+  answers stored for the other runs go too (jobs/smoke.py prune_superseded_bodies, which the smoke
+  job also runs after each run).
+- air_obs older than 15 days. The longest look back is GET /api/air/series (14 days at most);
+  the air job and the smoke validation read 7 days, the rest the last 24 to 72 hours. At ~20k
+  rows a day (every CPCB station's sub-indices, OpenAQ and CAMS) it was the fastest-growing table.
 - met_run, with its met_grid rows (ON DELETE CASCADE): every run except the newest of each model.
   Each run holds 7 days of past hours plus the forecast, so the newest one covers the 72 h
   back-trajectories, the validation hindcast and the weather routes, which all read only the
@@ -14,12 +19,12 @@ What goes, and why it is safe:
   backtest (what GET /api/risk serves).
 - job_run older than 30 days.
 - response_body (stored API answers) that nobody read for 3 days.
-- source_fetch older than 30 days that no row points at: no fetch_id column of any table and no
+- source_fetch older than 15 days that no row points at: no fetch_id column of any table and no
   `fetch_id` / `fetch_ids` key anywhere in any JSON column (citations in agent runs, bulletins,
   smoke and risk runs...). Provenance of every number still shown stays.
 
 Season data is never touched: fire_detection, official fire events, burn_cluster,
-harvest_cluster, air_obs, geostationary pixels, boundaries and places.
+harvest_cluster, geostationary pixels, boundaries and places.
 
 PRUNE_DRY_RUN=1 makes the job count what it would delete (rows and bytes) and delete nothing:
 `PRUNE_DRY_RUN=1 uv run python -m blindspot.jobs run prune`.
@@ -36,13 +41,17 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from blindspot.db import session_scope, vacuum
+from blindspot.db import session_scope, vacuum_quietly
 from blindspot.jobs import job
 from blindspot.provenance import utcnow
 
 log = logging.getLogger(__name__)
 
-KEEP_DAYS = 30  # job_run and unreferenced source_fetch rows older than this go
+KEEP_DAYS = 30  # job_run rows older than this go
+FETCH_KEEP_DAYS = 15  # unreferenced source_fetch rows older than this go
+AIR_KEEP_DAYS = 15  # air_obs rows older than this go (GET /api/air/series looks back 14 days at most)
+# Tables pruned by age: table -> (its time column, days kept).
+AGED = {"job_run": ("started_at", KEEP_DAYS), "air_obs": ("observed_at", AIR_KEEP_DAYS)}
 
 # The rows each rule keeps, as SELECTs of ids (infra/load_neon.py copies only these, too).
 KEEP_SMOKE_RUNS = """
@@ -74,39 +83,44 @@ def prune() -> dict[str, Any]:
 
 def run_prune(dry_run: bool = False) -> dict[str, Any]:
     """Delete (or with dry_run, only count) what the rules above let go, in one transaction."""
-    cutoff = utcnow() - timedelta(days=KEEP_DAYS)
+    now = utcnow()
+    cutoffs = {table: now - timedelta(days=days) for table, (_column, days) in AGED.items()}
     with session_scope() as session:
         doomed = {
             "smoke_run": _ids(session, "smoke_run", f"id NOT IN ({KEEP_SMOKE_RUNS})"),
             "met_run": _ids(session, "met_run", f"id NOT IN ({KEEP_MET_RUNS})"),
             "risk_run": _ids(session, "risk_run", f"id NOT IN ({KEEP_RISK_RUNS})"),
-            "job_run": _ids(session, "job_run", "started_at < :cutoff", {"cutoff": cutoff}),
-            "source_fetch": _unreferenced_fetches(session, cutoff),
+            **{table: _ids(session, table, f"{column} < :cutoff", {"cutoff": cutoffs[table]})
+               for table, (column, _days) in AGED.items()},
+            "source_fetch": _unreferenced_fetches(session, now - timedelta(days=FETCH_KEEP_DAYS), cutoffs),
         }
-        summary: dict[str, Any] = {"dry_run": dry_run, "keep_days": KEEP_DAYS}
+        summary: dict[str, Any] = {"dry_run": dry_run, "keep_days": KEEP_DAYS,
+                                   "fetch_keep_days": FETCH_KEEP_DAYS, "air_keep_days": AIR_KEEP_DAYS}
         for table, ids in doomed.items():
             summary[table] = {"rows": len(ids), "bytes": _row_bytes(session, table, ids)}
         met_grid = session.execute(text("SELECT count(*), coalesce(sum(pg_column_size(g.*)), 0) FROM met_grid g "
                                         "WHERE run_id = ANY(:ids)"), {"ids": doomed["met_run"]}).one()
         summary["met_grid"] = {"rows": met_grid[0], "bytes": int(met_grid[1]), "via": "met_run (cascade)"}
         if not dry_run:
-            # job_run before source_fetch: the fetch rule above already ignored job_run rows it deletes.
-            for table in ("smoke_run", "met_run", "risk_run", "job_run", "source_fetch"):
+            # job_run and air_obs before source_fetch: the fetch rule above already ignored the rows of
+            # theirs that this run deletes.
+            for table in ("smoke_run", "met_run", "risk_run", "job_run", "air_obs", "source_fetch"):
                 if doomed[table]:
                     session.execute(text(f"DELETE FROM {table} WHERE id = ANY(:ids)"), {"ids": doomed[table]})
-    # Stored API answers (models/assets.response_body) nobody read for RESPONSE_KEEP_DAYS: old runs'
-    # bodies and one-off queries. A body still in use is kept; a pruned one is re-stored on demand.
+    # Stored API answers (models/assets.response_body): those of the smoke runs just deleted, and
+    # those nobody read for RESPONSE_KEEP_DAYS (one-off queries, old variants). A body still in use is
+    # kept; a pruned one is re-stored on demand.
+    from blindspot.jobs.smoke import prune_superseded_bodies
     from blindspot.models.assets import prune_bodies
 
     try:
-        summary["response_body"] = prune_bodies(dry_run=dry_run)
+        summary["response_body"] = {"smoke_superseded": prune_superseded_bodies(dry_run=dry_run),
+                                    **prune_bodies(dry_run=dry_run)}
     except SQLAlchemyError as exc:  # an optimisation's table; never fail the prune for it
         summary["response_body"] = {"error": f"{type(exc).__name__}: {str(exc)[:200]}"}
     if not dry_run:
-        touched = [t for t in ("smoke_run", "met_grid", "met_run", "source_fetch") if summary[t]["rows"]]
-        for table in touched:
-            vacuum(table)
-        summary["vacuumed"] = touched
+        touched = [t for t in ("smoke_run", "met_grid", "met_run", "air_obs", "source_fetch") if summary[t]["rows"]]
+        summary["vacuumed"] = [t for t in touched if vacuum_quietly(t)]
     summary["database_bytes"] = _database_bytes()
     return summary
 
@@ -128,9 +142,9 @@ def _row_bytes(session: Session, table: str, ids: list[int]) -> int:
                                     "WHERE id = ANY(:ids)"), {"ids": ids}).scalar_one())
 
 
-def _unreferenced_fetches(session: Session, cutoff: Any) -> list[int]:
+def _unreferenced_fetches(session: Session, cutoff: Any, aged_cutoffs: dict[str, Any]) -> list[int]:
     """source_fetch ids older than `cutoff` that no column and no JSON value of any table names.
-    Rows of job_run older than the cutoff do not count: they are deleted in the same run."""
+    Rows of the AGED tables older than their cutoff do not count: they are deleted in the same run."""
     candidates = set(session.execute(text("SELECT id FROM source_fetch WHERE started_at < :c"),
                                      {"c": cutoff}).scalars())
     if not candidates:
@@ -143,15 +157,15 @@ def _unreferenced_fetches(session: Session, cutoff: Any) -> list[int]:
     for table, column, data_type in columns:
         if not candidates:
             break
-        skip_old_jobs = "AND t.started_at >= :c" if table == "job_run" else ""
+        skip_doomed = f"AND t.{AGED[table][0]} >= :aged" if table in AGED else ""
         if data_type == "jsonb":
             sql = f"""SELECT DISTINCT (n #>> '{{}}')::numeric::bigint FROM {table} t,
                           jsonb_path_query(t.{column}, :keys) v, jsonb_path_query(v, :nums) n
-                      WHERE t.{column} IS NOT NULL {skip_old_jobs}"""
+                      WHERE t.{column} IS NOT NULL {skip_doomed}"""
         else:
-            sql = f"SELECT DISTINCT t.{column} FROM {table} t WHERE t.{column} = ANY(:ids) {skip_old_jobs}"
+            sql = f"SELECT DISTINCT t.{column} FROM {table} t WHERE t.{column} = ANY(:ids) {skip_doomed}"
         used = session.execute(text(sql), {"keys": _JSON_KEYS, "nums": _JSON_NUMBERS, "ids": list(candidates),
-                                           "c": cutoff}).scalars()
+                                           "aged": aged_cutoffs.get(table)}).scalars()
         candidates -= {int(i) for i in used if i is not None}
     return sorted(candidates)
 

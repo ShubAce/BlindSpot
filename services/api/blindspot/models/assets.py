@@ -229,20 +229,22 @@ def save_body(key: str, stamp: str, codec: str, body: bytes, raw_bytes: int, *,
         return False
 
 
-def prune_bodies(keep_days: int = RESPONSE_KEEP_DAYS, dry_run: bool = False) -> dict[str, Any]:
-    """Delete stored bodies nobody read for `keep_days` days (one-off queries, old variants)."""
-    where = "last_used_at < now() - make_interval(days => :days)"
+def prune_bodies(keep_days: int = RESPONSE_KEEP_DAYS, dry_run: bool = False, where: str | None = None,
+                 params: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Delete stored bodies nobody read for `keep_days` days (one-off queries, old variants), or,
+    given `where` (SQL over response_body, with `params`), the bodies it selects."""
+    if where is None:
+        where, params = "last_used_at < now() - make_interval(days => :days)", {"days": keep_days}
     with session_scope() as session:
         if session.execute(text("SELECT to_regclass('public.response_body')")).scalar() is None:
             return {"removed": 0, "removed_bytes": 0, "stored": 0, "stored_bytes": 0, "dry_run": dry_run}
         if dry_run:
             removed = session.execute(
-                text(f"SELECT octet_length(body) FROM response_body WHERE {where}"), {"days": keep_days}
+                text(f"SELECT octet_length(body) FROM response_body WHERE {where}"), params or {}
             ).scalars().all()
         else:
             removed = session.execute(
-                text(f"DELETE FROM response_body WHERE {where} RETURNING octet_length(body)"),
-                {"days": keep_days},
+                text(f"DELETE FROM response_body WHERE {where} RETURNING octet_length(body)"), params or {}
             ).scalars().all()
         left = session.execute(
             text("SELECT count(*), coalesce(sum(octet_length(body)), 0) FROM response_body")

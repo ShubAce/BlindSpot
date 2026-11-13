@@ -404,3 +404,57 @@ def test_method_says_when_stored_scores_are_from_an_older_model() -> None:
     assert _method(None, {"model": model.MODEL_VERSION}) == METHOD
     old = _method(None, {"model": "risk-v2"})
     assert old["scores_model"] == "risk-v2" and old["scale"].startswith("Today's stored scores were made by risk-v2")
+
+
+def test_scores_are_written_in_steps_on_one_connection(monkeypatch) -> None:
+    """The job writes each field's score in steps, each committed (with a VACUUM between) so the
+    table never needs room for a second copy of itself; risk_stage, a temporary table, has to
+    outlive those commits on the job's one connection. Commits, so only on the tests' database."""
+    from datetime import timedelta
+
+    from sqlalchemy.orm import Session
+
+    from blindspot.db import engine
+    from blindspot.jobs import risk as job
+
+    if not (engine.url.database or "").endswith("_test"):
+        pytest.skip("commits: only on the *_test database")
+    from blindspot import db
+
+    monkeypatch.setattr(job, "STEP_ROWS", 2)
+    monkeypatch.setattr(db, "VACUUM_EVERY", 1)  # vacuum after every step, as a big run does
+    now = datetime.now(UTC)
+    with session_scope() as s:
+        ids = [s.execute(text("""
+            INSERT INTO harvest_cluster (geom, centroid, area_ha, n_px, res_m, mgrs_tile, scope, harvested_after,
+                                         harvested_before, last_seen_unburnt, scene_last, collection, ndvi_last,
+                                         model_version)
+            VALUES (ST_GeomFromText('POLYGON((75 30, 75.001 30, 75.001 30.001, 75 30))', 4326),
+                    ST_SetSRID(ST_MakePoint(75.0005, 30.0003), 4326), 1, 25, 20, 'TESTR', 'hotspots',
+                    :a, :b, :b, 'test', 'test', 0.2, 'test') RETURNING id"""),
+            {"a": now - timedelta(days=4), "b": now}).scalar_one()
+               for _ in range(5)]
+        run_id = s.execute(text("INSERT INTO risk_run (as_of, model, fields, factors) "
+                                "VALUES (:t, 'test', 5, '{}'::jsonb) RETURNING id"), {"t": now}).scalar_one()
+    try:
+        with engine.connect() as conn, Session(bind=conn, expire_on_commit=False) as session:
+            session.execute(text("CREATE TEMP TABLE risk_stage (id bigint PRIMARY KEY, score float8, v jsonb)"))
+            session.execute(text("INSERT INTO risk_stage SELECT id, id % 100, to_jsonb('[1]'::text) "
+                                 "FROM harvest_cluster WHERE id = ANY(:i)"), {"i": ids})
+            session.commit()
+            changed = job._apply_stage_in_steps(session, run_id)
+            again = job._apply_stage_in_steps(session, run_id)  # the same numbers: nothing to rewrite
+            session.execute(text("DROP TABLE risk_stage"))
+            session.commit()
+        with session_scope() as s:
+            got = dict(s.execute(text("SELECT id, risk_score FROM harvest_cluster WHERE id = ANY(:i)"), {"i": ids}).all())
+            runs = {r.id: r for r in s.execute(text(
+                "SELECT id, risk_factors ->> 'run' AS run FROM harvest_cluster WHERE id = ANY(:i)"), {"i": ids})}
+            stored = s.execute(text("SELECT changed FROM risk_run WHERE id = :r"), {"r": run_id}).scalar()
+    finally:
+        with session_scope() as s:
+            s.execute(text("DELETE FROM harvest_cluster WHERE id = ANY(:i)"), {"i": ids})
+            s.execute(text("DELETE FROM risk_run WHERE id = :r"), {"r": run_id})
+    assert changed == 5 and again == 0 and stored == 5  # the run row adds up its steps
+    assert got == {i: float(i % 100) for i in ids}
+    assert {int(r.run) for r in runs.values()} == {run_id}

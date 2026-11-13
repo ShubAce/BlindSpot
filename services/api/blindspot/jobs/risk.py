@@ -8,7 +8,8 @@ risk, every 3 h and after each `sentinel` run:
      disk and copied in), and the rain forecast for the next 72 h (Open-Meteo, per 0.1 degree cell);
   3. score them in SQL with the formula of blindspot.analytics.risk (re-checked in Python on a sample
      every run); store what the run shares once (risk_run) and each field's own numbers on its row
-     (risk_score, risk_factors), rewriting only rows that changed;
+     (risk_score, risk_factors), rewriting only rows that changed, in steps with a VACUUM between
+     them (the free database has no room for a second copy of the table);
   4. backtest, also in the database: for each pair of clear passes this season, score the fields
      that were harvested and unburnt on the first pass using only what was known then, and check
      which ones had burnt by the second pass (AUC, precision@k and lift with 95% intervals, against
@@ -42,7 +43,7 @@ from sqlalchemy.orm import Session
 
 from blindspot.analytics import risk as model
 from blindspot.config import get_settings
-from blindspot.db import session_scope, vacuum
+from blindspot.db import MAX_ID, STEP_ROWS, DeadRows, engine, id_ranges, session_scope
 from blindspot.geo import AOI_BBOX
 from blindspot.http import FetchError, fetch, set_fetch_records
 from blindspot.jobs import job
@@ -372,7 +373,9 @@ def risk() -> dict[str, Any]:
     summary: dict[str, Any] = {"as_of": as_of, "history_season": season.season, "history_reason": season.reason}
     run_id, changed, n = None, 0, 0
     tested: dict[str, Any] | None = None
-    with session_scope() as session:
+    # One connection for the whole scoring step: risk_stage, a temporary table, outlives the commit
+    # after which the scores are written in steps (_apply_stage_in_steps).
+    with engine.connect() as conn, Session(bind=conn, expire_on_commit=False) as session:
         if not _exists(session, "harvest_cluster"):
             return {"skipped": "harvest_cluster does not exist yet (the sentinel module creates it)"}
         n = _load_field_table(session, as_of)
@@ -387,18 +390,23 @@ def risk() -> dict[str, Any]:
             shared, checked = _self_check(session, as_of, history, rain)
             run_id = _insert_run(session, shared, as_of, n)
             session.execute(text("DROP TABLE IF EXISTS risk_stage"))
-            session.execute(text("CREATE TEMP TABLE risk_stage ON COMMIT DROP AS "
+            session.execute(text("CREATE TEMP TABLE risk_stage AS "
                                  "SELECT k AS id, s AS score, to_jsonb(v) AS v FROM rk"))
-            changed = _apply_stage(session, run_id)
+            session.execute(text("ALTER TABLE risk_stage ADD PRIMARY KEY (id)"))
             tested = {"run_id": run_id, **_tested_order(session)}
             summary["tested_order"] = {k: tested[k] for k in ("spearman_with_risk_score", "top_1pct_overlap")}
-            summary.update(scored=n, run_id=run_id, rows_rewritten=changed, rain_cells=len(rain.by_cell),
-                           rain_reason=rain.reason, history_fires=history.kept, self_checked=checked,
-                           **_score_stats(session))
+            summary.update(scored=n, run_id=run_id, rain_cells=len(rain.by_cell), rain_reason=rain.reason,
+                           history_fires=history.kept, self_checked=checked, **_score_stats(session))
+            session.commit()  # the run row; rk (ON COMMIT DROP) goes, risk_stage stays
+            try:
+                changed = _apply_stage_in_steps(session, run_id)
+            finally:
+                session.rollback()  # a step that failed
+                session.execute(text("DROP TABLE IF EXISTS risk_stage"))
+                session.commit()
+            summary["rows_rewritten"] = changed
         else:
             summary["skipped_scoring"] = "no harvested-but-unburnt fields yet"
-    if run_id is not None and changed > VACUUM_SHARE * n:
-        vacuum("harvest_cluster")
     try:
         with session_scope() as session:
             report = backtest(session, season, as_of)
@@ -569,19 +577,45 @@ def _insert_run(session: Session, shared: dict[str, Any], as_of: datetime, n: in
            "f": orjson.dumps(shared, option=orjson.OPT_UTC_Z).decode()}).scalar_one()
 
 
-def _apply_stage(session: Session, run_id: int) -> int:
-    """Rewrite only the harvest_cluster rows whose numbers changed, from the temporary risk_stage
-    (id, score, v): Postgres writes a whole new row version on every UPDATE, so rewriting all 172k
-    rows every run would keep the table twice its size between vacuums. Rows left alone already
-    hold what this run computed, which is why readers pair every row with the newest run."""
-    changed = session.execute(text("""
-        UPDATE harvest_cluster AS h
-        SET risk_score = s.score, risk_factors = jsonb_build_object('run', CAST(:run AS bigint), 'v', s.v)
-        FROM risk_stage AS s
-        WHERE h.id = s.id
-          AND (h.risk_score IS DISTINCT FROM s.score OR h.risk_factors -> 'v' IS DISTINCT FROM s.v)
-    """), {"run": run_id}).rowcount
-    session.execute(text("UPDATE risk_run SET changed = :c WHERE id = :id"), {"c": changed, "id": run_id})
+_APPLY_SQL = text("""
+    UPDATE harvest_cluster AS h
+    SET risk_score = s.score, risk_factors = jsonb_build_object('run', CAST(:run AS bigint), 'v', s.v)
+    FROM risk_stage AS s
+    WHERE h.id = s.id AND s.id >= :lo AND s.id < :hi AND h.id >= :lo AND h.id < :hi
+      AND (h.risk_score IS DISTINCT FROM s.score OR h.risk_factors -> 'v' IS DISTINCT FROM s.v)
+""")
+
+
+def _apply_stage(session: Session, run_id: int, lo: int = 0, hi: int = MAX_ID) -> int:
+    """Rewrite only the harvest_cluster rows (ids in [lo, hi)) whose numbers changed, from the
+    temporary risk_stage (id, score, v): Postgres writes a whole new row version on every UPDATE, so
+    rewriting all 172k rows every run would keep the table twice its size between vacuums. Rows left
+    alone already hold what this run computed, which is why readers pair every row with the newest
+    run. Records the count on the run row (the whole table's, in the job: _apply_stage_in_steps)."""
+    changed = session.execute(_APPLY_SQL, {"run": run_id, "lo": lo, "hi": hi}).rowcount
+    session.execute(text("UPDATE risk_run SET changed = coalesce(changed, 0) + :c WHERE id = :id"),
+                    {"c": changed, "id": run_id})
+    return changed
+
+
+def _apply_stage_in_steps(session: Session, run_id: int) -> int:
+    """_apply_stage in steps of STEP_ROWS fields, each committed on its own, the rows it rewrites
+    vacuumed as they pile up (DeadRows), so each step reuses the room of the old row versions before
+    it. Nearly every field's score changes daily (its timing and its neighbourhood do), and in one
+    transaction that wrote a second copy of harvest_cluster (264k fields, ~185 MB with its indexes),
+    more than Neon's 1 GB cap had room for in November 2026.
+
+    `session` must stay on one connection (risk_stage is its temporary table). The run row was
+    committed first, so for the minutes the steps take, rows not yet rewritten still hold the
+    previous run's numbers while readers pair them with the new run."""
+    dead = DeadRows("harvest_cluster")
+    changed = 0
+    for lo, hi in id_ranges(session, "risk_stage", STEP_ROWS):
+        step = _apply_stage(session, run_id, lo, hi)
+        session.commit()
+        changed += step
+        dead.add(step)
+    dead.finish()
     return changed
 
 
@@ -593,6 +627,7 @@ def store_scores(scored: list[model.Scored], as_of: datetime) -> tuple[int, int]
     shared = model.run_constants(scored[0].factors)
     with session_scope() as session:
         run_id = _insert_run(session, shared, as_of, len(scored))
+        session.execute(text("DROP TABLE IF EXISTS risk_stage"))  # one a failed job left on this pooled connection
         session.execute(text(
             "CREATE TEMP TABLE risk_stage (id bigint PRIMARY KEY, score float8, v jsonb) ON COMMIT DROP"))
         driver = session.connection().connection.driver_connection  # the psycopg 3 connection
@@ -604,7 +639,6 @@ def store_scores(scored: list[model.Scored], as_of: datetime) -> tuple[int, int]
     return run_id, changed
 
 
-VACUUM_SHARE = 0.1  # vacuum harvest_cluster when a run rewrote more than this share of its rows
 
 
 # --- 4. backtest ----------------------------------------------------------------------------------------

@@ -165,6 +165,11 @@ def validation_key(run_id: int) -> str:
     return f"smoke/validation/{run_id}"
 
 
+# Every key above starts with its run's kind and id; the pattern's one group is the run id
+# (jobs/smoke.py prune_superseded_bodies finds the answers of replaced runs with it).
+RUN_KEY_PATTERN = r"^smoke/(?:forward|back|validation)/([0-9]+)"
+
+
 def forward_payload(run: dict[str, Any], max_trails: int | None, stride: int) -> Built:
     """The /forward answer for a loaded run (load_run's dict): payload, sources, max-age."""
     params = run["params"] or {}
