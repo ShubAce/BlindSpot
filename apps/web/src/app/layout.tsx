@@ -58,9 +58,11 @@ export const viewport: Viewport = {
 // nothing from the request, so every page stays static.
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
+    
     <html lang="en" className={`${anton.variable} ${workSans.variable}`} suppressHydrationWarning>
       <head>
         <ThemeScript />
+        <Analytics/>
       </head>
       <body>
         {children}
