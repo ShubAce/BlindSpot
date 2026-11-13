@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Anton, Work_Sans } from 'next/font/google';
 import type { ReactNode } from 'react';
-import { Analytics } from "@vercel/analytics/next"
+import { Analytics } from '@vercel/analytics/next';
 import { LoadRecovery } from '@/components/pwa/LoadRecovery';
 import { OfflineSupport } from '@/components/pwa/OfflineSupport';
 import { ThemeScript } from '@/lib/theme';
@@ -58,17 +58,18 @@ export const viewport: Viewport = {
 // nothing from the request, so every page stays static.
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
-    
     <html lang="en" className={`${anton.variable} ${workSans.variable}`} suppressHydrationWarning>
       <head>
         <ThemeScript />
-        <Analytics/>
       </head>
       <body>
         {children}
         <OfflineSupport />
         {/* a section the server could not fill (a cold API) asks again by itself: LoadRecovery.tsx */}
         <LoadRecovery />
+        {/* Vercel Web Analytics: page views go to this site's own /_vercel/insights, which the
+            service worker never handles; it counts nothing until Analytics is enabled on the project */}
+        <Analytics />
       </body>
     </html>
   );
