@@ -86,7 +86,9 @@ def run_vercel(args: list[str], cwd: Path, token: str, stdin: str | None = None,
     env = {**os.environ, "VERCEL_TOKEN": token}
     proc = subprocess.run(
         [npx, "--yes", "vercel@65.8.0", *args, "--token", token],
-        cwd=cwd, env=env, input=stdin, capture_output=True, text=True, shell=False,
+        cwd=cwd, env=env, input=stdin, capture_output=True, shell=False,
+        # the CLI prints UTF-8 (spinners, box lines); Windows' default code page cannot decode it
+        text=True, encoding="utf-8", errors="replace",
     )
     out = (proc.stdout or "") + (proc.stderr or "")
     out = out.replace(token, "***")
