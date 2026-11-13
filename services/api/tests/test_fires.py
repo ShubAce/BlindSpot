@@ -424,3 +424,51 @@ def test_fire_endpoints_follow_the_contract(stored_fires: list) -> None:
         assert bad.status_code == 422
         backwards = client.get("/api/fires/daily", params={"since": "2026-10-30", "until": "2026-10-01"})
         assert backwards.status_code == 400
+
+
+def test_a_source_nasa_stopped_publishing_no_longer_holds_days_back() -> None:
+    """NASA has listed no VIIRS_SNPP_NRT data after 2 Nov 2026; requiring it left every later day
+    incomplete, so no burn scar after 2 Nov got a verdict. Which sources NASA still publishes comes
+    from its data_availability answer, kept on the backfill's source_fetch row: a source whose last
+    day lags the newest by more than SOURCE_ENDED_DAYS is not needed after it; one that lags less,
+    or publishes again, still holds its days back; other products (the SP archives) never count.
+    Everything runs in a transaction that is rolled back."""
+    import orjson
+
+    from blindspot.jobs.sentinel import covered_days
+
+    d0 = date(2026, 10, 20)
+    days = [d0 + timedelta(days=i) for i in range(10)]
+    with SessionLocal() as session:
+        session.execute(text("DELETE FROM fire_coverage"))
+        for source, upto in (("VIIRS_NOAA20_NRT", days[-1]), ("VIIRS_NOAA21_NRT", days[-1]), ("MODIS_NRT", days[-1]),
+                             ("VIIRS_SNPP_NRT", days[2])):
+            for d in days:
+                if d <= upto:
+                    session.execute(text("INSERT INTO fire_coverage (source, day, rows, complete, fetched_at) "
+                                         "VALUES (:s, :d, 0, true, now())"), {"s": source, "d": d})
+        answer = 0
+
+        def nasa_lists(snpp_last: date) -> None:
+            nonlocal answer
+            answer += 1  # each answer newer than the last, and than any the database already holds
+            ranges = {s: ["2026-09-01", days[-1].isoformat()] for s in ("VIIRS_NOAA20_NRT", "VIIRS_NOAA21_NRT", "MODIS_NRT")}
+            ranges |= {"VIIRS_SNPP_NRT": ["2026-09-01", snpp_last.isoformat()], "VIIRS_SNPP_SP": ["2012-01-20", "2026-06-30"]}
+            session.execute(text(
+                "INSERT INTO source_fetch (source_key, url, started_at, ok, meta) VALUES "
+                "('firms', 'test', now() + make_interval(days => :n), true, CAST(:m AS jsonb))"),
+                {"n": 1000 + answer, "m": orjson.dumps({"check": "data_availability", "ranges": ranges}).decode()})
+
+        nasa_lists(days[2])
+        ended = fires_stats.ended_sources(session)
+        complete = fires_stats.complete_ist_days(session, days[1], days[-1], ended)
+        verdict_days, basis = covered_days(session)
+        nasa_lists(days[-1] - timedelta(days=fires_stats.SOURCE_ENDED_DAYS))  # behind, but not by more
+        lagging = fires_stats.ended_sources(session)
+        held_back = fires_stats.complete_ist_days(session, days[1], days[-1], lagging)
+        session.rollback()
+    assert ended == {"VIIRS_SNPP_NRT": days[2]}  # the SP archive's old last day is not a source we need
+    assert complete == set(days[1:])  # every day: the stopped source is not needed after its last day
+    assert verdict_days == days and "VIIRS_SNPP_NRT" in basis
+    assert lagging == {}
+    assert held_back == {days[1], days[2]}  # back to every day the four sources all cover

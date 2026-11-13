@@ -33,7 +33,12 @@ from pydantic import SecretStr
 
 from blindspot.config import BBox, get_settings
 from blindspot.http import FetchError, FetchResult, fetch
-from blindspot.provenance import HOURLY_GROUP_CADENCE, SourceInfo, register_source
+from blindspot.provenance import (
+    HOURLY_GROUP_CADENCE,
+    SourceInfo,
+    register_source,
+    set_fetch_records,
+)
 
 log = logging.getLogger(__name__)
 
@@ -341,7 +346,11 @@ def key_status(key: SecretStr) -> KeyStatus:
 
 
 def data_availability(key: SecretStr) -> dict[str, tuple[date, date]]:
-    """First and last available UTC day of every FIRMS source, e.g. {'MODIS_NRT': (09-01, 10-30)}."""
+    """First and last available UTC day of every FIRMS source, e.g. {'MODIS_NRT': (09-01, 10-30)}.
+
+    The answer is also kept on its source_fetch row (meta "ranges"): which sources NASA still
+    publishes is what decides whether a day's fire records can be complete (analytics/fires_stats.py
+    ended_sources)."""
     result = fetch(
         "firms",
         f"{FIRMS_BASE}/api/data_availability/csv/{key.get_secret_value()}/ALL",
@@ -351,7 +360,10 @@ def data_availability(key: SecretStr) -> dict[str, tuple[date, date]]:
     reader = csv.DictReader(io.StringIO(result.data or ""))
     if not {"data_id", "min_date", "max_date"} <= set(reader.fieldnames or []):
         raise FirmsFormatError(f"unexpected data_availability answer: {result.data[:160]!r}")
-    return {
+    ranges = {
         r["data_id"]: (date.fromisoformat(r["min_date"]), date.fromisoformat(r["max_date"]))
         for r in reader
     }
+    set_fetch_records(result.fetch_id, len(ranges),
+                      {"ranges": {s: [a.isoformat(), b.isoformat()] for s, (a, b) in ranges.items()}})
+    return ranges

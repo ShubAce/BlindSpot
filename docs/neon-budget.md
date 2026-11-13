@@ -346,9 +346,15 @@ and the bulletin kept running.
 | `python -m blindspot.jobs run risk` (the same first version) | all 264,124 fields scored again (run 11), backtest stored; 43 minutes |
 | Sizes after | `neondb` 754 MB, all databases 777 MB (the rewrites took about one step of room each) |
 
-**Still open: verdicts stop at 2 November.** A scar gets a verdict only when `fire_coverage` holds
-every FIRMS source for every day of its window. NASA's `data_availability` has listed no
-`VIIRS_SNPP_NRT` data after 2 November (the backfill's own range for it ends there), so since then
-no day is complete and no newer scar gets a verdict: the headline share describes scars up to
-2 November. The fix is to require, for each day, only the sources that FIRMS publishes for that day.
-It changes the method, so it is left for a decision.
+**Verdicts had stopped at 2 November (fixed the same day).** A scar gets a verdict only when
+`fire_coverage` holds every FIRMS source for every day of its window. NASA's `data_availability`
+has listed no `VIIRS_SNPP_NRT` data after 2 November (the backfill's own range for it ends there),
+so from 3 November no day was complete: no newer scar got a verdict, the headline share described
+scars up to 2 November only, and the season replay marked every later day "partial". Now a source
+NASA no longer publishes is not required after its last day. The answer is NASA's own: the
+backfill's daily `data_availability` call keeps every source's first and last day on its
+`source_fetch` row (`meta.ranges`), and `fires_stats.ended_sources` counts a source as ended when
+its last day lies more than 3 days behind the newest of the four NRT sources (NASA has no "retired"
+flag). One shared rule, `fires_stats.covered_utc_days`, serves both the verdicts
+(`sentinel.covered_days`) and the season curve. A source whose backfill merely fails still holds
+its days back. `/api/fires/daily` lists the ended sources in `sources_ended`, with NASA's last day.

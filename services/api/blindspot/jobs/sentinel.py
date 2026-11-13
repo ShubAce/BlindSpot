@@ -49,7 +49,7 @@ from sqlalchemy import column, func, insert, select, table, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
-from blindspot.analytics import burnscar
+from blindspot.analytics import burnscar, fires_stats
 from blindspot.analytics.burnscar import RULE, BlockState, Part
 from blindspot.config import get_settings
 from blindspot.db import MAX_ID, STEP_ROWS, DeadRows, id_ranges, session_scope
@@ -659,17 +659,20 @@ _UNCOVERED_SQL = text(
 
 
 def covered_days(session: Session) -> tuple[list, str]:
-    """UTC days for which we hold fire records from every FIRMS source.
+    """UTC days for which we hold fire records from every FIRMS source that published on that day.
 
     Uses the fires module's fire_coverage table (one row per source and day fetched from the FIRMS
-    area API). Without it, falls back to every day between the first and last detection stored."""
+    area API). A source that has stopped publishing is not needed after its last day
+    (fires_stats.ended_sources: VIIRS_SNPP_NRT after 2 Nov 2026, which had left every later scar
+    without a verdict). Without the table, falls back to every day between the first and last
+    detection stored."""
     if session.execute(text("SELECT to_regclass('public.fire_coverage')")).scalar() is not None:
-        days = session.execute(text(
-            "SELECT day FROM fire_coverage GROUP BY day "
-            "HAVING count(DISTINCT source) = (SELECT count(DISTINCT source) FROM fire_coverage) ORDER BY day"
-        )).scalars().all()
+        sources = session.execute(text("SELECT DISTINCT source FROM fire_coverage")).scalars().all()
+        ended = fires_stats.ended_sources(session, sources)
+        days = sorted(fires_stats.covered_utc_days(session, sources, ended, complete_only=False))
         if days:
-            return list(days), "fire_coverage: days fetched for every FIRMS source"
+            stopped = "".join(f"; NASA lists no {s} after {d}" for s, d in sorted(ended.items()))
+            return days, f"fire_coverage: days fetched for every FIRMS source NASA published{stopped}"
     first, last = session.execute(text("SELECT min(acq_utc)::date, max(acq_utc)::date FROM fire_detection")).one()
     if first is None:
         return [], "no fire records"

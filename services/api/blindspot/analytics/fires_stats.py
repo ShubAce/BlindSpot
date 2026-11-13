@@ -16,7 +16,7 @@ box. Days are IST days, because a day of burning in Punjab is an IST day.
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
@@ -34,6 +34,7 @@ SEASON_START = (9, 15)  # month, day
 
 FIRMS_SOURCES = ("VIIRS_NOAA20_NRT", "VIIRS_NOAA21_NRT", "VIIRS_SNPP_NRT", "MODIS_NRT")
 FIRE_SATELLITES = ("Suomi NPP", "NOAA-20", "NOAA-21", "Aqua", "Terra")
+SOURCE_ENDED_DAYS = 3  # see ended_sources
 
 # Region -> lower-case LIKE patterns on the state label. "all" is the AOI's states: Punjab,
 # Haryana, Delhi and Chandigarh (the shapeISO set IN-PB, IN-HR, IN-DL, IN-CH in SYNTHESIS).
@@ -138,20 +139,51 @@ def fire_refs(session: Session, where: str, params: Mapping[str, Any]) -> list[S
 # --- season curve --------------------------------------------------------------------------------
 
 
-def complete_ist_days(session: Session, first: date, last: date) -> set[date]:
+def ended_sources(session: Session, sources: Collection[str] = FIRMS_SOURCES) -> dict[str, date]:
+    """Those of `sources` NASA no longer publishes -> the last UTC day it lists for each.
+
+    A day's fire records are complete when every source has given its detections for it, but only
+    a source that still publishes can: NASA has listed no VIIRS_SNPP_NRT data after 2 November 2026,
+    and requiring it left every later day incomplete (no burn scar after 2 Nov got a verdict). The
+    answer is NASA's own: data_availability's last day of each source, kept on the source_fetch row
+    of the firms_backfill job's daily call. NASA has no "retired" flag, so a source counts as ended
+    when its last day lies more than SOURCE_ENDED_DAYS behind the newest last day of `sources`."""
+    ranges = session.execute(text("""
+        SELECT meta -> 'ranges' FROM source_fetch
+         WHERE source_key = 'firms' AND ok AND meta ->> 'check' = 'data_availability' AND meta ? 'ranges'
+         ORDER BY started_at DESC LIMIT 1
+    """)).scalar()
+    last = {s: date.fromisoformat(r[1]) for s, r in (ranges or {}).items() if s in sources}
+    if not last:
+        return {}
+    newest = max(last.values())
+    return {s: d for s, d in last.items() if (newest - d).days > SOURCE_ENDED_DAYS}
+
+
+def publishing(sources: Iterable[str], day: date, ended: Mapping[str, date]) -> set[str]:
+    """The sources expected to hold detections for UTC `day`: all but those ended before it."""
+    return {s for s in sources if s not in ended or day <= ended[s]}
+
+
+def covered_utc_days(session: Session, sources: Collection[str], ended: Mapping[str, date], *,
+                     complete_only: bool, first: date = date.min, last: date = date.max) -> set[date]:
+    """UTC days (first..last) that fire_coverage holds for every one of `sources` NASA published on
+    that day (`ended`, see ended_sources); with complete_only, only days fetched complete (a full day
+    after they ended, so no NRT rows can still arrive)."""
+    rows = session.execute(text("""
+        SELECT day, array_agg(DISTINCT source) FROM fire_coverage
+         WHERE source = ANY(:sources) AND (complete OR NOT :complete_only) AND day BETWEEN :d0 AND :d1
+         GROUP BY day
+    """), {"sources": list(sources), "complete_only": complete_only, "d0": first, "d1": last}).all()
+    return {day for day, have in rows if publishing(sources, day, ended).issubset(have)}
+
+
+def complete_ist_days(session: Session, first: date, last: date, ended: Mapping[str, date]) -> set[date]:
     """IST days whose detections are all in: every FIRMS product's UTC days overlapping that IST
-    day (the day before and the day itself) were fetched complete through the area API."""
-    rows = session.execute(
-        text(
-            "SELECT source, day FROM fire_coverage "
-            "WHERE complete AND day BETWEEN :d0 AND :d1 AND source = ANY(:sources)"
-        ),
-        {"d0": first - timedelta(days=1), "d1": last, "sources": list(FIRMS_SOURCES)},
-    ).all()
-    have: dict[date, set[str]] = defaultdict(set)
-    for source, day in rows:
-        have[day].add(source)
-    full = {d for d, s in have.items() if len(s) == len(FIRMS_SOURCES)}
+    day (the day before and the day itself) were fetched complete through the area API, from every
+    product NASA still published on that day (`ended`, see ended_sources)."""
+    full = covered_utc_days(session, FIRMS_SOURCES, ended, complete_only=True,
+                            first=first - timedelta(days=1), last=last)
     out, d = set(), first
     while d <= last:
         if d in full and d - timedelta(days=1) in full:
@@ -167,7 +199,8 @@ def daily_series(
     Returns the payload and the fetches behind it."""
     rf = region_filter(session, region, include_static)
     t0, t1 = ist_day_bounds(first, last)
-    complete = complete_ist_days(session, first, last)
+    ended = ended_sources(session)
+    complete = complete_ist_days(session, first, last, ended)
     per_day: dict[date, Counter[str]] = defaultdict(Counter)
     frp: dict[date, float] = defaultdict(float)
     if rf.available:
@@ -211,6 +244,9 @@ def daily_series(
             "frp_sum": round(sum(s["frp_sum"] for s in series), 2),
         },
         "complete_days": sum(1 for s in series if s["complete"]),
+        # FIRMS products that stopped publishing, with the last UTC day they cover: a later day is
+        # complete without them, and its counts hold the other satellites only.
+        "sources_ended": {s: d.isoformat() for s, d in sorted(ended.items())},
         **_static_summary(session, rf, "f.acq_utc >= :t0 AND f.acq_utc < :t1", {"t0": t0, "t1": t1}),
         "note": rf.note,
     }
