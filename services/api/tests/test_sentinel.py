@@ -11,6 +11,7 @@ Database tests write only their own rows and delete them again.
 
 from __future__ import annotations
 
+import dataclasses
 import datetime as dt
 import json
 from itertools import pairwise
@@ -144,6 +145,139 @@ def test_hazy_pass_neither_harvests_nor_moves_ndvi_memory(window) -> None:
     candidates = burnscar.harvest_candidates(state, _scope(window), DAYS[2])
     assert not candidates[32, 32]
     assert not (candidates & (a["burn_day"] > 0)).any()
+
+
+RULES_2 = dataclasses.replace(RULE, defer_hazy=False)  # the per-pixel rule before s2burn-rules-3
+
+
+def _haze_of_23_oct(window: dict[str, np.ndarray]) -> dict[str, float]:
+    """Per-band haze of the recorded 23 Oct pass: its median excess over the mean of the clear 18 and
+    28 Oct passes, on pixels that did not change between those two in NIR and SWIR (doc 3.8)."""
+    r18, r23, r28 = (_refl(window, p) for p in PASSES)
+    with np.errstate(invalid="ignore"):
+        still = _scope(window) & np.all([np.abs(r18[b] - r28[b]) < 0.02 for b in ("B8A", "B11", "B12")], axis=0)
+    return {b: float(np.nanmedian((r23[b] - (r18[b] + r28[b]) / 2)[still])) for b in stac.REFLECTANCE_BANDS}
+
+
+def test_a_hazy_pass_opens_a_burn_but_never_uses_it_up(window) -> None:
+    """The 28 Oct pass made smoke-hazy with the 23 Oct haze, then the clear 28 Oct pixels as a pass 5
+    days later. Under s2burn-rules-2 the burnt pixels whose char the haze hid took the hazy pass as
+    their memory and were never found; now they wait (pending) and the clear pass finds them,
+    against the 23 Oct view, each pixel once."""
+    haze = _haze_of_23_oct(window)
+    assert haze["B02"] > 0.03 and haze["B8A"] > 0.015 and abs(haze["B12"]) < 0.01  # blue and NIR up, SWIR-2 not
+    hazy28 = {b: v + haze[b] for b, v in _refl(window, PASSES[2]).items()}
+    passes = [(PASSES[0], _refl(window, PASSES[0]), DAYS[0]), (PASSES[1], _refl(window, PASSES[1]), DAYS[1]),
+              (PASSES[2], hazy28, DAYS[2]), (PASSES[2], _refl(window, PASSES[2]), DAYS[2] + 5)]
+    runs = {}
+    for rule in (RULES_2, RULE):
+        state, registry = BlockState.empty(SHAPE), []
+        runs[rule.defer_hazy] = [burnscar.apply_pass(
+            state, refl, window[f"{item}__SCL"], [item], np.zeros(SHAPE, np.uint8), day, _scope(window), registry,
+            rule=rule) for item, refl, day in passes]
+    old, new = runs[False], runs[True]
+    assert old[2].hazy and new[2].hazy and not new[3].hazy
+    assert not old[3].burn.any()  # rules-2: nothing left to find after the hazy pass
+    # The hazy pass decides as before (plus the pixels pending since 23 Oct, judged against 18 Oct).
+    assert (old[2].burn <= new[2].burn).all()
+    deferred = new[3].deferred
+    assert deferred is not None and deferred.sum() >= 15 and (new[3].burn == deferred).all()
+    assert (new[3].pre_day[deferred] == DAYS[1]).all()  # judged against the view before the hazy pass
+    assert not (new[2].burn & new[3].burn).any()  # every pixel is recorded once
+    assert new[2].opened[deferred].all()  # ...after the hazy pass left it pending
+
+
+def _synthetic_pass(burnt: str | None, hazy: bool) -> tuple[dict[str, np.ndarray], np.ndarray]:
+    """A 32 x 32 block of harvested cropland with a 4 x 4 field in it. `burnt`: None (straw like the
+    rest), "char" (burnt and charred), "dark" (darker in SWIR but not charred: what a burnt field can
+    look like through haze). `hazy` adds the haze of 23 Oct 2026 (B02 +0.05, B12 -0.005)."""
+    straw = {"B02": 0.06, "B03": 0.08, "B04": 0.08, "B06": 0.20, "B07": 0.25, "B08": 0.30, "B8A": 0.30,
+             "B11": 0.30, "B12": 0.22}
+    field_px = {
+        "char": {"B02": 0.04, "B03": 0.05, "B04": 0.06, "B06": 0.08, "B07": 0.10, "B08": 0.11, "B8A": 0.12,
+                 "B11": 0.15, "B12": 0.14},
+        "dark": {"B02": 0.12, "B03": 0.12, "B04": 0.12, "B06": 0.20, "B07": 0.25, "B08": 0.30, "B8A": 0.20,
+                 "B11": 0.18, "B12": 0.15},
+    }
+    haze = {"B02": 0.05, "B03": 0.04, "B04": 0.03, "B06": 0.03, "B07": 0.03, "B08": 0.02, "B8A": 0.03,
+            "B11": 0.01, "B12": -0.005}
+    refl = {}
+    for b in stac.REFLECTANCE_BANDS:
+        a = np.full((32, 32), straw[b], np.float32)
+        if burnt:
+            a[10:14, 10:14] = field_px[burnt][b]
+        refl[b] = a + (haze[b] if hazy else 0.0)
+    return refl, np.full((32, 32), 4, np.uint8)  # SCL 4: vegetation (clear)
+
+
+def _fold(state: BlockState, day: int, burnt: str | None, hazy: bool) -> burnscar.PassResult:
+    refl, scl = _synthetic_pass(burnt, hazy)
+    return burnscar.apply_pass(state, refl, scl, [f"S{day}"], np.zeros((32, 32), np.uint8), day,
+                               np.ones((32, 32), bool), [])
+
+
+def test_pending_pixels_wait_for_a_clear_pass_within_six_days() -> None:
+    """Clear, hazy (the field darkened in SWIR, no char visible), hazy again, then clear and charred:
+    the field stays pending through both hazy passes and burns on the clear one, against the view
+    before the first hazy pass. Under s2burn-rules-2 it is lost."""
+    state = BlockState.empty((32, 32))
+    first = _fold(state, 100, None, hazy=False)
+    opened = _fold(state, 105, "dark", hazy=True)
+    assert first.used and opened.hazy and opened.opened[10:14, 10:14].all() and not opened.burn.any()
+    held = _fold(state, 108, "dark", hazy=True)
+    assert held.hazy and not held.burn.any()
+    assert (state.arrays["last_day"][10:14, 10:14] == 100).all() and (state.arrays["pend_day"][10:14, 10:14] == 105).all()
+    assert (state.arrays["last_day"][0, 0] == 108) and state.arrays["last_hazy"][0, 0] == 1  # the rest moved on
+    found = _fold(state, 110, "char", hazy=False)
+    assert not found.hazy and found.burn[10:14, 10:14].all() and found.burn.sum() == 16
+    assert found.deferred[10:14, 10:14].all() and (found.pre_day[10:14, 10:14] == 100).all()
+    assert (state.arrays["pend_day"] == 0).all() and (state.arrays["burn_day"][10:14, 10:14] == 110).all()
+    old = BlockState.empty((32, 32))
+    for day, burnt, hazy in ((100, None, False), (105, "dark", True), (108, "dark", True), (110, "char", False)):
+        refl, scl = _synthetic_pass(burnt, hazy)
+        last = burnscar.apply_pass(old, refl, scl, [f"S{day}"], np.zeros((32, 32), np.uint8), day,
+                                   np.ones((32, 32), bool), [], rule=RULES_2)
+    assert not last.burn.any() and (old.arrays["pend_day"] == 0).all()
+
+
+def test_pending_pixels_are_released_by_a_clear_pass_or_after_six_days() -> None:
+    """A clear pass that does not show a burn releases the field (it becomes its memory); without a
+    clear pass, a pass more than 6 days after the hazy one releases it. Memory is never held longer."""
+    state = BlockState.empty((32, 32))
+    _fold(state, 100, None, hazy=False)
+    _fold(state, 105, "dark", hazy=True)
+    clear = _fold(state, 110, "dark", hazy=False)
+    assert not clear.burn.any() and (state.arrays["pend_day"] == 0).all()
+    assert (state.arrays["last_day"][10:14, 10:14] == 110).all() and state.arrays["last_hazy"][10, 10] == 0
+    late = BlockState.empty((32, 32))
+    _fold(late, 100, None, hazy=False)
+    _fold(late, 105, "dark", hazy=True)
+    expired = _fold(late, 112, "char", hazy=True)  # 7 days after the hazy pass: too late to judge
+    assert not expired.burn.any() and (late.arrays["pend_day"] == 0).all()
+    assert (late.arrays["last_day"][10:14, 10:14] == 112).all() and late.arrays["last_hazy"][10, 10] == 1
+
+
+def test_a_pass_whose_dark_targets_are_clear_leaves_nothing_pending() -> None:
+    """The blue-rise flag compares with the last pass it called clear, so a stale reference can call
+    a clear pass hazy (43REP block r4096_c1024 in 2026). Pixels are left pending only when the
+    dark-target estimate (median B02 - 0.25 B12 over SWIR-dark pixels) agrees that the pass is hazy."""
+    def fold(state: BlockState, day: int, b02: float, field_dark: bool) -> burnscar.PassResult:
+        refl, scl = _synthetic_pass("dark" if field_dark else None, hazy=False)
+        ground = np.ones((32, 32), bool)
+        ground[10:14, 10:14] = False  # the field keeps its straw (or dark) values
+        refl["B12"][ground] = 0.10  # the rest is SWIR-dark: dark targets for the estimate
+        refl["B02"][ground] = b02
+        return burnscar.apply_pass(state, refl, scl, [f"S{day}"], np.zeros((32, 32), np.uint8), day,
+                                   np.ones((32, 32), bool), [])
+
+    for b02, defers in ((0.06, False), (0.08, True)):  # dark-target haze 0.035, then 0.055
+        state = BlockState.empty((32, 32))
+        fold(state, 100, 0.02, field_dark=False)  # the reference: blue 0.02
+        out = fold(state, 105, b02, field_dark=True)  # blue up by 0.04 or more: the flag says hazy
+        assert out.hazy and out.stats["deferring"] is defers
+        assert out.stats["haze_dark_target"] == pytest.approx(b02 - 0.025, abs=1e-3)
+        assert bool(state.arrays["pend_day"][10:14, 10:14].all()) is defers
+        assert (state.arrays["last_day"][10:14, 10:14] == (100 if defers else 105)).all()
 
 
 def test_harvest_rule_needs_ndvi_drop_and_swir_rise(window) -> None:
@@ -460,13 +594,14 @@ def test_lookalike_filter_and_audit_interval() -> None:
     are dropped; char keeps NBR negative. The recorded burnt field at the window centre passes."""
     assert RULE.keeps(-0.2) and RULE.keeps(None)
     assert not RULE.keeps(0.0) and not RULE.keeps(0.08)
-    assert RULE.pixel_version == "s2burn-rules-1" and RULE.version != RULE.pixel_version
+    # s2burn-rules-3 changed the per-pixel rule (pending pixels), so the block memory is rebuilt.
+    assert RULE.pixel_version == RULE.version == "s2burn-rules-3"
     # Wilson interval: 11/11 is not "100 % +- 0"; the lower bound is n / (n + z^2).
     lo, hi = burnscar.wilson_interval(11, 11)
     assert hi == 1.0 and lo == pytest.approx(11 / (11 + 1.96**2), abs=1e-3)
     assert burnscar.wilson_interval(0, 0) is None
     audit = burnscar.audit_summary()
-    assert audit["current"] is True
+    assert audit["current"] is (burnscar.AUDIT["model_version"] == RULE.version)
     assert 0 < audit["candidate_unseen"]["precision_ci95"][0] <= audit["candidate_unseen"]["precision"] <= 1
 
 

@@ -425,7 +425,7 @@ def _process_block(
                     "hazy": np.full(outcome.burn.shape, int(outcome.hazy), np.uint16),
                 }
                 burn_parts[day].extend(burnscar.extract_parts(
-                    outcome.burn, outcome.pre_day, grid.window_transform(window), ev, tags))
+                    outcome.burn, outcome.key, grid.window_transform(window), ev, tags))
             del refl, read, outcome
     finally:
         for _items, future in futures.values():  # an error above: drop reads still queued
@@ -464,9 +464,11 @@ def _note_outcome(result: TileResult, item_ids: list[str], outcome: burnscar.Pas
     iso = stac.from_day_number(day).isoformat()
     gate_failed = (not outcome.used) and bool(outcome.reason) and "implausible" in (outcome.reason or "")
     for item_id in item_ids:
-        st = result.item_stats.setdefault(item_id, {"blocks_used": 0, "blocks_failed": 0, "hazy_blocks": 0})
+        st = result.item_stats.setdefault(item_id, {"blocks_used": 0, "blocks_failed": 0, "hazy_blocks": 0,
+                                                    "deferring_blocks": 0})
         st["blocks_used" if outcome.used else "blocks_failed"] += 1
         st["hazy_blocks"] += int(outcome.hazy)
+        st["deferring_blocks"] += int(bool(outcome.stats.get("deferring")))  # hazy by both estimates
         if gate_failed:
             st["error"] = outcome.reason
     if gate_failed:
@@ -503,7 +505,7 @@ def _finish_tile(
             poly = _clean_polygon(part.geom, stage.res)
             if poly is None:
                 continue
-            pre_id = registry[part.mode("pre_item") or 0]
+            pre_id = _earliest_pre_item(part, registry, sensing)
             post_id = registry[part.mode("post_item") or 0]
             after = sensing.get(pre_id) or _pass_time(passes, part.key, sensing)
             before = sensing.get(post_id) or _pass_time(passes, post_day, sensing)
@@ -549,6 +551,19 @@ def _finish_tile(
         })
     result.seconds = round(time.perf_counter() - t0, 1)
     return result
+
+
+def _earliest_pre_item(part: Part, registry: list[str], sensing: dict[str, dt.datetime]) -> str:
+    """The item of a cluster's pass before the burn: the most common pre item of its pixels. When
+    they were judged against different passes (a view kept through a hazy pass, BurnRule.defer_hazy),
+    the most common item of the earliest of those passes, so the burn window (and with it the fire
+    match) covers every pixel's own. Clusters with one pre pass get what Part.mode gives."""
+    counts = {registry[i]: c for i, c in (part.tags.get("pre_item") or {}).items()}
+    if not counts or any(i not in sensing for i in counts):
+        return registry[part.mode("pre_item") or 0]
+    first = min(sensing[i].date() for i in counts)
+    earliest = {i: c for i, c in counts.items() if sensing[i].date() == first}
+    return max(earliest, key=earliest.__getitem__)
 
 
 def _pass_time(passes: dict[int, list[stac.SceneItem]], day: int, sensing: dict[str, dt.datetime]) -> dt.datetime:
