@@ -185,6 +185,78 @@ def test_verdict_rules():
     assert tj.verdict_hint([None], [0.0])[0] == "stubble_unlikely"
 
 
+def test_obs_hour_labels_each_period_by_its_centre():
+    """A model hour h is the mean of h-30 min..h+30 min. CPCB hourly means arrive stamped at the
+    end of their period (:30 UTC, the recorded OpenAQ week), so each belongs to the hour it is
+    centred on, not to the next one; 15-minute readings to the hour whose window holds their
+    centre; CAMS steps are instantaneous and stay at their own time."""
+    from blindspot.sources import openaq
+
+    payload = orjson.loads((FIX.parent / "air" / "openaq_hourly_50.json").read_bytes())
+    readings = openaq.parse_hourly(payload, location_id=50, sensor_id=12234796, parameter="pm25")
+    starts = {
+        datetime.fromisoformat(x["period"]["datetimeTo"]["utc"].replace("Z", "+00:00")):
+        datetime.fromisoformat(x["period"]["datetimeFrom"]["utc"].replace("Z", "+00:00"))
+        for x in payload["results"]
+    }
+    assert readings
+    for r in readings:
+        label = job.obs_hour(r.observed_at.timestamp(), r.period_minutes, False)
+        centre = starts[r.observed_at] + (r.observed_at - starts[r.observed_at]) / 2
+        assert label == centre.timestamp() and label % 3600 == 0
+        assert label == r.observed_at.timestamp() - 1800  # the old ceil() said +1800
+    h = datetime(2026, 10, 29, 6, tzinfo=UTC).timestamp()
+    ends = [h + m * 60 for m in (15, 30, 45, 60)]  # 15-minute readings ending 06:15..07:00Z
+    assert [job.obs_hour(t, 15, False) for t in ends] == [h, h, h + 3600, h + 3600]
+    assert job.obs_hour(h, 60, True) == h  # CAMS
+
+
+def test_load_pm25_puts_rows_on_their_centre_hour():
+    """load_pm25 on real air_obs rows (inside a rolled-back transaction): an hourly station, a
+    station with 15-minute readings only, and CAMS."""
+    from sqlalchemy import text
+    from sqlalchemy.orm import Session
+
+    from blindspot.db import engine
+
+    init_db()
+    lat, lon = 33.61, 71.37  # far from every other test row; the window is in 2031 as well
+    h = datetime(2031, 1, 5, 6, tzinfo=UTC)
+    rows = [  # provider, station, observed_at (end of period), period, value, is_model
+        ("openaq", "A", h + timedelta(minutes=30), 60, 100.0, False),
+        ("openaq", "A", h + timedelta(minutes=45), 15, 999.0, False),  # A has hourly means: skipped
+        ("openaq", "B", h + timedelta(minutes=15), 15, 40.0, False),
+        ("openaq", "B", h + timedelta(minutes=30), 15, 60.0, False),
+        ("openaq", "B", h + timedelta(minutes=45), 15, 80.0, False),
+        ("openaq", "B", h + timedelta(minutes=60), 15, 100.0, False),
+        ("cams", "Testpur", h, 60, 70.0, True),
+        ("cams", "Testpur", h + timedelta(hours=1), 60, 75.0, True),
+    ]
+    insert = text(
+        """
+        INSERT INTO air_obs (provider, station_id, station_name, lat, lon, geom, parameter, value,
+                             unit, observed_at, period_minutes, is_model)
+        VALUES (:p, :s, :s, :lat, :lon, ST_SetSRID(ST_MakePoint(:lon, :lat), 4326), 'pm25', :v,
+                'µg/m³', :t, :m, :model)
+        """
+    )
+    receptor = job.Receptor("Testpur", lat, lon, None, None, "place")
+    with engine.connect() as conn:
+        tx = conn.begin()
+        try:
+            for p, s, t, m, v, model in rows:
+                conn.execute(insert, {"p": p, "s": s, "lat": lat, "lon": lon, "v": v, "t": t, "m": m,
+                                      "model": model})
+            out = job.load_pm25(Session(bind=conn), [receptor], h - timedelta(hours=1), h + timedelta(hours=2))
+        finally:
+            tx.rollback()
+    got = out["Testpur"]
+    t6, t7 = h.timestamp(), h.timestamp() + 3600
+    assert got["obs"] == {t6: pytest.approx((100.0 + 50.0) / 2), t7: pytest.approx(90.0)}
+    assert got["n_stations"] == {t6: 2, t7: 1} and got["stations"] == 2
+    assert got["cams"] == {t6: 70.0, t7: 75.0}
+
+
 def test_lagged_correlations_find_the_lead():
     hours = np.arange(200, dtype=float)
     model = np.sin(hours / 9.0) + 1.5

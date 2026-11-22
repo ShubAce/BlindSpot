@@ -1059,12 +1059,26 @@ VALIDATION_MAX_DAYS = 7
 STATION_RADIUS_KM = tj.RECEPTOR_RADIUS_KM
 
 
+def obs_hour(t: float, period_minutes: int, is_model: bool) -> float:
+    """The model hour (unix s) an air_obs row is compared with.
+
+    A model hour h is the mean of the records from h - 30 min to h + 30 min
+    (tj.hourly_from_records), so a row goes to the hour nearest the centre of its period. Measured
+    rows are stamped at the end of their period (OpenAQ's datetimeTo): CPCB hours run :30 to :30
+    UTC (IST clock hours), so the mean ending 06:30Z is centred on 06:00Z and labelled 06:00Z, and a
+    15-minute reading ending 06:45Z (centre 06:37:30Z) is labelled 07:00Z. CAMS rows are the model's
+    instantaneous hourly steps (jobs/air.py), labelled at their own time."""
+    centre = t if is_model else t - period_minutes * 30.0
+    return math.floor(centre / 3600.0 + 0.5) * 3600.0
+
+
 def load_pm25(
     session: Session, receptors: list[Receptor], t_from: datetime, t_to: datetime
 ) -> dict[str, dict[str, Any]]:
     """Hourly PM2.5 near each receptor: measured (OpenAQ station hourly means within 30 km,
-    averaged over stations) and the CAMS model (nearest model row within 30 km). µg/m³ only: the
-    data.gov.in rows are NAQI sub-indices (parameter pm25_subindex) and are never mixed in."""
+    averaged over stations) and the CAMS model (nearest model row within 30 km), each on the
+    model hour its period is centred on (obs_hour). µg/m³ only: the data.gov.in rows are NAQI
+    sub-indices (parameter pm25_subindex) and are never mixed in."""
     if not _table_exists(session, "air_obs"):
         return {}
     rows = session.execute(
@@ -1094,7 +1108,7 @@ def load_pm25(
         for r in measured:
             if r["station_id"] in hourly_stations and r["period_minutes"] != 60:
                 continue  # that station reports hourly means; skip its 15-minute readings
-            hour = math.ceil(r["t"] / 3600.0) * 3600.0
+            hour = obs_hour(r["t"], r["period_minutes"], False)
             station_hour.setdefault((r["station_id"], hour), []).append(float(r["value"]))
         by_hour: dict[float, list[float]] = {}
         for (_, hour), values in station_hour.items():
@@ -1105,7 +1119,7 @@ def load_pm25(
             nearest = min(model_rows, key=lambda r: (r["lat"] - rec.lat) ** 2 + (r["lon"] - rec.lon) ** 2)
             for r in model_rows:
                 if r["station_id"] == nearest["station_id"]:
-                    cams[math.ceil(r["t"] / 3600.0) * 3600.0] = float(r["value"])
+                    cams[obs_hour(r["t"], r["period_minutes"], True)] = float(r["value"])
         if by_hour:
             out[rec.name] = {
                 "obs": {h: float(np.mean(v)) for h, v in by_hour.items()},
