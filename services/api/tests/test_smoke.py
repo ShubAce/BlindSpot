@@ -244,6 +244,21 @@ def test_validation_hindcast_spins_up_before_the_scored_hours():
     assert summary["cities"][0]["city"] == "Delhi" and summary["cities"][0]["hours_observed"] == hours.size
 
 
+def test_validation_headline_names_its_city():
+    """With no measurements near Delhi the headline is another city's result, and says so; the
+    method page used to print every headline as Delhi's."""
+    inp = recorded_validation_inputs(("Ludhiana", "Chandigarh"))
+    first = min(inp.obs["Ludhiana"]["obs"])
+    del inp.obs["Ludhiana"]["obs"][first]  # Chandigarh has one hour more
+    summary, _ = job.run_validation(inp, seed=3)
+    assert [c["city"] for c in summary["cities"]] == ["Chandigarh", "Ludhiana"]
+    assert summary["headline_city"] == "Chandigarh"
+    assert summary["headline"] == f"Chandigarh: {summary['cities'][0]['summary']}"
+    assert "Delhi" not in summary["headline"]
+    with_delhi, _ = job.run_validation(recorded_validation_inputs(("Ludhiana", "Delhi")), seed=3)
+    assert with_delhi["headline_city"] == "Delhi" and with_delhi["headline"].startswith("Delhi: ")
+
+
 def test_partial_r_controls_each_series_at_its_own_hour():
     """Observations driven only by their own hour's ventilation leave a model nothing to explain:
     partial r ~ 0 at every lag. Residualising the observation at t + L on the ventilation of the
