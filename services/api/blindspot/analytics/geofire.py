@@ -36,6 +36,8 @@ from typing import Any
 import numpy as np
 from numpy.lib.stride_tricks import sliding_window_view
 
+from blindspot.analytics.fires_stats import STATIC_MIN_NIGHTS, STATIC_RADIUS_KM
+
 
 def _ndimage() -> Any:
     """scipy.ndimage, imported on first use. Only the jobs run this module's image steps; the web
@@ -46,7 +48,10 @@ def _ndimage() -> Any:
     return ndimage
 
 
-ALGORITHM_VERSION = "gk2a-ctx-2"
+# Stored with every slot, pixel and validation row; the API reads only the current version.
+# gk2a-ctx-3: pixels flagged as persistent heat sources (STATIC_RULE below) are
+# left out of fire and of every background.
+ALGORITHM_VERSION = "gk2a-ctx-3"
 
 # --- sun geometry ------------------------------------------------------------------------------------
 
@@ -384,9 +389,11 @@ def detect_fires(
         excluded_fire = fire & exclude
         fire &= ~exclude
 
+    passed = fire | excluded_fire  # excluded pixels that passed keep their confidence, for audit
     with np.errstate(invalid="ignore"):
-        high = fire & (absolute | (frp >= p.high_frp_mw))
-    confidence = np.where(high, 2, np.where(fire, 1, 0)).astype(np.int8)
+        strong = passed & (absolute | (frp >= p.high_frp_mw))
+    confidence = np.where(strong, 2, np.where(passed, 1, 0)).astype(np.int8)
+    high = strong & fire
     stats = {
         "valid": int(valid.sum()),
         "cloud": int(cloud.sum()),
@@ -418,6 +425,25 @@ def detect_fires(
         excluded_fire=excluded_fire,
         stats=stats,
     )
+
+
+# --- persistent heat sources --------------------------------------------------------------------------
+
+# A pixel GK-2A sees burning in the deep night on several nights is a plant, kiln or flare, not a
+# field: crop residue is burnt by day and in the evening. jobs/geostationary.py flags such pixels,
+# and pixels FIRMS's own static rule covers, before each run, and passes them as `exclude`.
+# scripts/gk2a_eval_static.py measured the rule on the 27 Oct - 22 Nov 2026 record with no
+# look-ahead: it removed 0.08% of 16:00-18:30 IST detections and 25% of 23:00-05:00 IST ones.
+STATIC_LOOKBACK_NIGHTS = 14
+STATIC_MIN_DEEP_NIGHTS = 2
+DEEP_NIGHT_IST = ("23:00", "05:00")
+STATIC_RULE = (
+    "GK-2A pixels that are persistent heat sources, not fields, are left out of the counts unless "
+    "include_static=true: pixels whose footprint meets a spot where FIRMS saw heat on "
+    f"{STATIC_MIN_NIGHTS} or more nights (within {STATIC_RADIUS_KM * 1000:.0f} m), and pixels "
+    f"where GK-2A itself saw heat between {DEEP_NIGHT_IST[0]} and {DEEP_NIGHT_IST[1]} IST on "
+    f"{STATIC_MIN_DEEP_NIGHTS} or more of the previous {STATIC_LOOKBACK_NIGHTS} nights."
+)
 
 
 # --- footprints ------------------------------------------------------------------------------------

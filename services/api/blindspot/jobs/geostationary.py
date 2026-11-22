@@ -7,7 +7,10 @@ India's Punjab or Haryana polygons (boundary table, ISO 3166-2 IN-PB / IN-HR; th
 holds Pakistan's Punjab), and store:
 - geo_fire_slot: one row per scan (the diurnal record), geo_fire_pixel: the fire pixels;
 - geo_fire_validation: GK-2A against every polar pass that has a GK-2A scan within 6 minutes,
-  on the GK-2A grid (fire_detection rows, or FIRMS' keyless CSVs if that table has none).
+  on the GK-2A grid (fire_detection rows, or FIRMS' keyless CSVs if that table has none);
+- geo_fire_static: pixels flagged as persistent heat sources, rebuilt each run before any scan is
+  analysed (geofire.STATIC_RULE); the fire test leaves them out of fire and of every background, and
+  what it still finds on them goes to geo_fire_static_pixel, apart from the counts.
 
 `geostationary` (every 30 min) does the last 3 hours; `geostationary_backfill` (daily, and once by
 hand) the last 3 days. Both skip scans already stored and retry failed ones, so they are idempotent.
@@ -16,6 +19,7 @@ hand) the last 3 days. Both skip scans already stored and retry failed ones, so 
 from __future__ import annotations
 
 import logging
+import os
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -31,11 +35,18 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from blindspot.analytics import geofire as gf
+from blindspot.analytics.fires_stats import night_of
 from blindspot.db import session_scope
 from blindspot.geo import AOI_BBOX, point_ewkt
 from blindspot.http import FetchError, SourceUnavailable
 from blindspot.jobs import job
-from blindspot.models.geofires import GeoFirePixel, GeoFireSlot, GeoFireValidation
+from blindspot.models.geofires import (
+    GeoFirePixel,
+    GeoFireSlot,
+    GeoFireStatic,
+    GeoFireStaticPixel,
+    GeoFireValidation,
+)
 from blindspot.provenance import utcnow
 from blindspot.sources import gk2a
 
@@ -56,6 +67,9 @@ STRONG_FRP_MW = (
     30.0  # a polar pixel this strong (summed FRP) "should" be visible to GK-2A
 )
 CACHE_KEEP_DAYS = 8
+STATIC_LOOKBACK_NIGHTS = gf.STATIC_LOOKBACK_NIGHTS  # the persistent-heat-source rule, gf.STATIC_RULE
+STATIC_MIN_DEEP_NIGHTS = gf.STATIC_MIN_DEEP_NIGHTS
+DEEP_NIGHT_IST = gf.DEEP_NIGHT_IST
 
 
 # --- the region ----------------------------------------------------------------------------------
@@ -130,6 +144,192 @@ def window_geometry(scan: gk2a.Scan, polys: dict[str, Any]) -> WindowGeometry:
     return geom
 
 
+def footprint(geom: WindowGeometry, i: int, j: int) -> list[tuple[float, float]]:
+    """Corner lon/lat of window pixel (i, j), closed ring."""
+    ring = [
+        (geom.corner_lon[i, j], geom.corner_lat[i, j]),
+        (geom.corner_lon[i, j + 1], geom.corner_lat[i, j + 1]),
+        (geom.corner_lon[i + 1, j + 1], geom.corner_lat[i + 1, j + 1]),
+        (geom.corner_lon[i + 1, j], geom.corner_lat[i + 1, j]),
+    ]
+    return [*((float(x), float(y)) for x, y in ring), (float(ring[0][0]), float(ring[0][1]))]
+
+
+def footprint_ewkt(geom: WindowGeometry, i: int, j: int) -> str:
+    ring = footprint(geom, i, j)
+    return "SRID=4326;POLYGON((" + ", ".join(f"{x:.5f} {y:.5f}" for x, y in ring) + "))"
+
+
+# --- persistent heat sources -------------------------------------------------------------------------
+
+
+@dataclass
+class StaticEvidence:
+    """What the persistent-heat-source mask is built from, read once per run (no look-ahead: the
+    GK-2A rule reads nights before the current one, FIRMS sites what the firms job last stored)."""
+
+    as_of_night: Any  # date: the IST night the mask applies to
+    sites: list[dict[str, Any]]  # fire_static_site rows, area as a shapely geometry
+    night_pixels: dict[tuple[int, int], dict[str, Any]]  # (row, col) -> deep-night evidence
+
+
+def load_static_evidence(session: Session, now: datetime) -> StaticEvidence:
+    night = night_of(now)
+    sites = [
+        {**r._asdict(), "area": shapely.from_wkb(bytes(r.wkb))}
+        for r in session.execute(
+            text(
+                "SELECT id, ST_AsBinary(area) AS wkb, nights, night_detections, first_night, "
+                "last_night FROM fire_static_site"
+            )
+        ).all()
+    ]
+    # Nights run from 12:00 to 12:00 IST (06:30 UTC). Every stored detection counts, whichever
+    # algorithm version made it, flagged or not (a flagged source must stay flagged while it burns).
+    start = datetime(night.year, night.month, night.day, 6, 30, tzinfo=UTC)
+    rows = session.execute(
+        text(
+            """
+            WITH d AS (
+                SELECT "row", col, slot_utc, t_utc FROM geo_fire_pixel
+                WHERE slot_utc >= :since AND slot_utc < :until
+                UNION ALL
+                SELECT "row", col, slot_utc, t_utc FROM geo_fire_static_pixel
+                WHERE slot_utc >= :since AND slot_utc < :until
+            ), n AS (
+                SELECT "row", col, slot_utc, (t_utc AT TIME ZONE 'Asia/Kolkata') AS local FROM d
+            )
+            SELECT "row", col, count(DISTINCT (local - interval '12 hours')::date) AS nights,
+                   count(DISTINCT slot_utc) AS detections,
+                   min((local - interval '12 hours')::date) AS first_night,
+                   max((local - interval '12 hours')::date) AS last_night
+            FROM n
+            WHERE local::time >= CAST(:deep_start AS time) OR local::time < CAST(:deep_end AS time)
+            GROUP BY "row", col
+            HAVING count(DISTINCT (local - interval '12 hours')::date) >= :min_nights
+            """
+        ),
+        {
+            "since": start - timedelta(days=STATIC_LOOKBACK_NIGHTS),
+            "until": start,
+            "deep_start": DEEP_NIGHT_IST[0],
+            "deep_end": DEEP_NIGHT_IST[1],
+            "min_nights": STATIC_MIN_DEEP_NIGHTS,
+        },
+    ).all()
+    night_pixels = {
+        (r.row, r.col): {
+            "nights": r.nights,
+            "detections": r.detections,
+            "first_night": r.first_night,
+            "last_night": r.last_night,
+        }
+        for r in rows
+    }
+    return StaticEvidence(night, sites, night_pixels)
+
+
+@dataclass
+class StaticMask:
+    """The flagged pixels of a scan window: {(row, col): {rule: evidence}} and the bool mask."""
+
+    pixels: dict[tuple[int, int], dict[str, dict[str, Any]]]
+    exclude: np.ndarray
+    geom: WindowGeometry
+    window: gk2a.GridWindow
+
+    def rules(self, row: int, col: int) -> str:
+        return ",".join(sorted(self.pixels.get((row, col), {})))
+
+
+def static_mask(ev: StaticEvidence, scan: gk2a.Scan, geom: WindowGeometry) -> StaticMask:
+    """Flag the window's region pixels: GK-2A deep-night heat on enough nights (`gk2a_night`), or
+    a footprint that meets a FIRMS persistent-heat-source zone (`firms`). Exact pixels, no
+    dilation: a ring around each source would also remove crop fires next to it."""
+    w, nav = scan.window, scan.navigation
+    shape = w.shape
+    pixels: dict[tuple[int, int], dict[str, dict[str, Any]]] = {}
+
+    def inside(r: int, c: int) -> bool:
+        i, j = r - w.row0, c - w.col0
+        return 0 <= i < shape[0] and 0 <= j < shape[1] and bool(geom.region[i, j])
+
+    for (r, c), info in ev.night_pixels.items():
+        if inside(r, c):
+            pixels.setdefault((r, c), {})["gk2a_night"] = info
+    for site in ev.sites:
+        parts = shapely.get_parts(site["area"])
+        coords = np.array([xy for part in parts for xy in part.exterior.coords])
+        rr, cc = nav.to_rowcol(coords[:, 0], coords[:, 1])
+        near = {(r + di, c + dj) for r, c in zip(rr, cc, strict=True) if r >= 0
+                for di in (-1, 0, 1) for dj in (-1, 0, 1)}  # fmt: skip
+        for r, c in sorted(near):
+            if not inside(r, c):
+                continue
+            if not shapely.Polygon(footprint(geom, r - w.row0, c - w.col0)).intersects(site["area"]):
+                continue
+            firms = pixels.setdefault((r, c), {}).setdefault(
+                "firms", {"site_ids": [], "nights": 0, "detections": 0,
+                          "first_night": None, "last_night": None},
+            )  # fmt: skip
+            firms["site_ids"].append(site["id"])
+            firms["nights"] = max(firms["nights"], site["nights"])
+            firms["detections"] += site["night_detections"]
+            firms["first_night"] = min(filter(None, [firms["first_night"], site["first_night"]]))
+            firms["last_night"] = max(filter(None, [firms["last_night"], site["last_night"]]))
+    exclude = np.zeros(shape, dtype=bool)
+    for r, c in pixels:
+        exclude[r - w.row0, c - w.col0] = True
+    return StaticMask(pixels, exclude, geom, w)
+
+
+class StaticMasks:
+    """One run's masks, computed once per scan window from one StaticEvidence."""
+
+    def __init__(self, evidence: StaticEvidence) -> None:
+        self.evidence = evidence
+        self._by_window: dict[gk2a.GridWindow, StaticMask] = {}
+
+    def for_scan(self, scan: gk2a.Scan, geom: WindowGeometry) -> StaticMask:
+        mask = self._by_window.get(scan.window)
+        if mask is None:
+            mask = self._by_window[scan.window] = static_mask(self.evidence, scan, geom)
+        return mask
+
+    def latest(self) -> StaticMask | None:
+        return next(reversed(self._by_window.values()), None)
+
+
+def store_static_mask(session: Session, mask: StaticMask, now: datetime) -> int:
+    """Replace geo_fire_static with this mask (one row per pixel and rule). Returns the pixels."""
+    session.execute(delete(GeoFireStatic))
+    rows = []
+    for (r, c), rules in sorted(mask.pixels.items()):
+        i, j = r - mask.window.row0, c - mask.window.col0
+        for rule, info in rules.items():
+            rows.append(
+                {
+                    "row": r,
+                    "col": c,
+                    "rule": rule,
+                    "lon": round(float(mask.geom.lon[i, j]), 5),
+                    "lat": round(float(mask.geom.lat[i, j]), 5),
+                    "nights": int(info["nights"]),
+                    "detections": int(info["detections"]),
+                    "first_night": info["first_night"],
+                    "last_night": info["last_night"],
+                    "evidence": {"site_ids": info["site_ids"]} if rule == "firms" else
+                    {"lookback_nights": STATIC_LOOKBACK_NIGHTS,
+                     "deep_night_ist": list(DEEP_NIGHT_IST)},
+                    "footprint": footprint_ewkt(mask.geom, i, j),
+                    "computed_at": now,
+                }
+            )  # fmt: skip
+    if rows:
+        session.execute(insert(GeoFireStatic), rows)
+    return len(mask.pixels)
+
+
 # --- one scan --------------------------------------------------------------------------------------
 
 
@@ -142,23 +342,37 @@ class Analysis:
     bt38: np.ndarray
     bt11: np.ndarray
     result: gf.FireTestResult
+    static: StaticMask | None = None
 
     @property
     def region_fire(self) -> np.ndarray:
         return self.result.fire & self.geom.region
 
+    @property
+    def region_static_fire(self) -> np.ndarray:
+        excluded = self.result.excluded_fire
+        if excluded is None:
+            return np.zeros(self.geom.region.shape, dtype=bool)
+        return excluded & self.geom.region
 
-def analyse(scan: gk2a.Scan, polys: dict[str, Any]) -> Analysis:
-    """Run the fire test on one scan, with sun geometry for the moment it swept Punjab."""
+
+def analyse(
+    scan: gk2a.Scan, polys: dict[str, Any], static: StaticMasks | None = None
+) -> Analysis:
+    """Run the fire test on one scan, with sun geometry for the moment it swept Punjab, leaving
+    out the persistent heat sources of `static` (none when it is not given)."""
     geom = window_geometry(scan, polys)
     t = gk2a.row_time(scan.attrs, scan.window.row0 + geom.region_mid_row)
     sza, saz = gf.solar_position(geom.lon, geom.lat, t)
     back = gf.sun_satellite_angle(sza, saz, geom.sat_dir)
     bt38, bt11 = scan.bt("sw038"), scan.bt("ir112")
-    result = gf.detect_fires(bt38, bt11, sza, geom.area_km2, back)
+    mask = static.for_scan(scan, geom) if static is not None else None
+    exclude = mask.exclude if mask is not None and mask.pixels else None
+    result = gf.detect_fires(bt38, bt11, sza, geom.area_km2, back, exclude=exclude)
     return Analysis(
-        scan=scan, geom=geom, t_utc=t, sza=sza, bt38=bt38, bt11=bt11, result=result
-    )
+        scan=scan, geom=geom, t_utc=t, sza=sza, bt38=bt38, bt11=bt11, result=result,
+        static=mask,
+    )  # fmt: skip
 
 
 def _existing_fetch_id(session: Session, ids: list[int]) -> int | None:
@@ -180,12 +394,44 @@ def _r(value: float, nd: int = 2) -> float | None:
     return round(float(value), nd) if np.isfinite(value) else None
 
 
+def _pixel_rows(a: Analysis, mask: np.ndarray, fid: int | None) -> list[dict[str, Any]]:
+    """geo_fire_pixel / geo_fire_static_pixel rows for the pixels of `mask`."""
+    res, g, w = a.result, a.geom, a.scan.window
+    rows = []
+    for i, j in zip(*(x.tolist() for x in np.nonzero(mask)), strict=True):
+        rows.append(
+            {
+                "slot_utc": a.scan.slot,
+                "t_utc": a.t_utc,
+                "algorithm": gf.ALGORITHM_VERSION,
+                "row": w.row0 + i,
+                "col": w.col0 + j,
+                "lon": round(float(g.lon[i, j]), 5),
+                "lat": round(float(g.lat[i, j]), 5),
+                "state": g.states[int(g.state_idx[i, j])],
+                "confidence": int(res.confidence[i, j]),
+                "bt38_k": _r(a.bt38[i, j]),
+                "bt11_k": _r(a.bt11[i, j]),
+                "btd_k": _r(res.btd[i, j]),
+                "excess_k": _r(res.excess[i, j]),
+                "frp_mw": _r(res.frp_mw[i, j], 1),
+                "area_km2": _r(g.area_km2[i, j], 2),
+                "absolute": bool(res.absolute[i, j]),
+                "geom": point_ewkt(float(g.lon[i, j]), float(g.lat[i, j])),
+                "footprint": footprint_ewkt(g, i, j),
+                "fetch_id": fid,
+            }
+        )
+    return rows
+
+
 def store_analysis(session: Session, a: Analysis) -> int:
-    """Replace this scan's slot row and fire pixels. Returns the region's fire-pixel count."""
+    """Replace this scan's slot row and fire pixels (and the pixels it found on persistent heat
+    sources, kept apart). Returns the region's fire-pixel count."""
     res, g, w = a.result, a.geom, a.scan.window
     fid = _existing_fetch_id(session, a.scan.fetch_ids)
     fire = a.region_fire
-    rr, cc = np.nonzero(fire)
+    static_fire = a.region_static_fire
     per_state = {
         name: int((fire & (g.state_idx == i)).sum()) for i, name in enumerate(g.states)
     }
@@ -200,6 +446,8 @@ def store_analysis(session: Session, a: Analysis) -> int:
         "bytes_fetched": a.scan.bytes_fetched,
         "from_cache": a.scan.from_cache,
         "file": a.scan.attrs.get("file_name"),
+        "static_fires": int(static_fire.sum()),  # region pixels on flagged heat sources
+        "static_pixels_flagged": len(a.static.pixels) if a.static is not None else 0,
     }
     values = {
         "t_utc": a.t_utc,
@@ -222,50 +470,21 @@ def store_analysis(session: Session, a: Analysis) -> int:
     session.execute(
         stmt.on_conflict_do_update(constraint="uq_geo_fire_slot", set_=values)
     )
-    session.execute(
-        delete(GeoFirePixel).where(
-            GeoFirePixel.slot_utc == a.scan.slot,
-            GeoFirePixel.algorithm == gf.ALGORITHM_VERSION,
+    for table in (GeoFirePixel, GeoFireStaticPixel):
+        session.execute(
+            delete(table).where(
+                table.slot_utc == a.scan.slot, table.algorithm == gf.ALGORITHM_VERSION
+            )
         )
-    )
-    pixels = []
-    for i, j in zip(rr.tolist(), cc.tolist(), strict=True):
-        ring = [
-            (g.corner_lon[i, j], g.corner_lat[i, j]),
-            (g.corner_lon[i, j + 1], g.corner_lat[i, j + 1]),
-            (g.corner_lon[i + 1, j + 1], g.corner_lat[i + 1, j + 1]),
-            (g.corner_lon[i + 1, j], g.corner_lat[i + 1, j]),
-        ]
-        wkt = (
-            "SRID=4326;POLYGON(("
-            + ", ".join(f"{x:.5f} {y:.5f}" for x, y in [*ring, ring[0]])
-            + "))"
-        )
-        pixels.append(
-            {
-                "slot_utc": a.scan.slot,
-                "t_utc": a.t_utc,
-                "algorithm": gf.ALGORITHM_VERSION,
-                "row": w.row0 + i,
-                "col": w.col0 + j,
-                "lon": round(float(g.lon[i, j]), 5),
-                "lat": round(float(g.lat[i, j]), 5),
-                "state": g.states[int(g.state_idx[i, j])],
-                "confidence": int(res.confidence[i, j]),
-                "bt38_k": _r(a.bt38[i, j]),
-                "bt11_k": _r(a.bt11[i, j]),
-                "btd_k": _r(res.btd[i, j]),
-                "excess_k": _r(res.excess[i, j]),
-                "frp_mw": _r(res.frp_mw[i, j], 1),
-                "area_km2": _r(g.area_km2[i, j], 2),
-                "absolute": bool(res.absolute[i, j]),
-                "geom": point_ewkt(float(g.lon[i, j]), float(g.lat[i, j])),
-                "footprint": wkt,
-                "fetch_id": fid,
-            }
-        )
+    pixels = _pixel_rows(a, fire, fid)
     if pixels:
         session.execute(insert(GeoFirePixel), pixels)
+    static_rows = _pixel_rows(a, static_fire, fid)
+    if static_rows:
+        assert a.static is not None  # only a mask makes static fire
+        for row in static_rows:
+            row["rules"] = a.static.rules(row["row"], row["col"])
+        session.execute(insert(GeoFireStaticPixel), static_rows)
     return int(fire.sum())
 
 
@@ -309,10 +528,12 @@ def _list_scans(
 
 
 def process_range(start: datetime, end: datetime) -> dict[str, Any]:
-    """Analyse and store every GK-2A scan in [start, end] not yet stored as 'ok'."""
+    """Analyse and store every GK-2A scan in [start, end] not yet stored as 'ok', leaving out the
+    persistent heat sources known now (a backfill applies today's mask to the gaps it fills)."""
     t0 = time.monotonic()
     with session_scope() as session:
         polys = region_polygons(session)
+        static = StaticMasks(load_static_evidence(session, utcnow()))
         done = set(
             session.execute(
                 select(GeoFireSlot.slot_utc).where(
@@ -335,6 +556,7 @@ def process_range(start: datetime, end: datetime) -> dict[str, Any]:
         "from_cache": 0,
         "failed": 0,
         "fire_pixels": 0,
+        "static_source_pixels": 0,
         "bytes_fetched": 0,
     }
     paused: SourceUnavailable | None = None
@@ -347,7 +569,7 @@ def process_range(start: datetime, end: datetime) -> dict[str, Any]:
             slot = futures[fut]
             try:
                 scan = fut.result()
-                analysis = analyse(scan, polys)
+                analysis = analyse(scan, polys, static)
             except (
                 SourceUnavailable
             ) as exc:  # the source is paused: nothing was sent, stop asking
@@ -363,9 +585,14 @@ def process_range(start: datetime, end: datetime) -> dict[str, Any]:
                 continue
             with session_scope() as session:
                 summary["fire_pixels"] += store_analysis(session, analysis)
+            summary["static_source_pixels"] += int(analysis.region_static_fire.sum())
             summary["processed"] += 1
             summary["from_cache"] += int(scan.from_cache)
             summary["bytes_fetched"] += 0 if scan.from_cache else scan.bytes_fetched
+    mask = static.latest()
+    if mask is not None:  # the flags as used, for the API and for audit
+        with session_scope() as session:
+            summary["static_pixels_flagged"] = store_static_mask(session, mask, utcnow())
     summary["seconds"] = round(time.monotonic() - t0, 1)
     if paused is not None and summary["processed"] == 0:
         raise paused
@@ -455,9 +682,11 @@ def validate_range(
     end: datetime,
     loader: Callable[[datetime], gk2a.Scan | None] = _load_for_validation,
 ) -> dict[str, Any]:
-    """Compare GK-2A with every polar pass that started in [start, end]; replaces those rows."""
+    """Compare GK-2A with every polar pass that started in [start, end]; replaces those rows.
+    GK-2A pixels on persistent heat sources are left out, as in the stored record."""
     with session_scope() as session:
         polys = region_polygons(session)
+        static = StaticMasks(load_static_evidence(session, utcnow()))
         ref = polar_reference(session, start - timedelta(minutes=30), end)
     if not len(ref):
         ref = _firms_csv_reference(polys)
@@ -476,7 +705,7 @@ def validate_range(
         if nearest is not None:
             try:
                 scan = loader(nearest[0])
-                a = analyse(scan, polys) if scan is not None else None
+                a = analyse(scan, polys, static) if scan is not None else None
             except (FetchError, ValueError, OSError) as exc:
                 log.warning("validation scan %s unavailable: %s", nearest[0], exc)
         if a is None or nearest is None:
@@ -556,11 +785,18 @@ def geostationary() -> dict[str, Any]:
     return {"scans": scans, "validation": validation}
 
 
+def backfill_days() -> int:
+    """BACKFILL_DAYS, or GK2A_BACKFILL_DAYS (1-30) for a one-off longer run, e.g. to rebuild a week
+    of record and validation after ALGORITHM_VERSION changes: about 1,000 scans (2.4 GB) a week."""
+    raw = os.environ.get("GK2A_BACKFILL_DAYS", "").strip()
+    return max(1, min(30, int(raw))) if raw.isdigit() else BACKFILL_DAYS
+
+
 @job("geostationary_backfill", cron="20 4 * * *")
 def geostationary_backfill() -> dict[str, Any]:
     """GK-2A fire pixels and VIIRS/MODIS validation for the last 3 days (fills gaps, idempotent)."""
     now = utcnow()
-    start = (now - timedelta(days=BACKFILL_DAYS)).replace(
+    start = (now - timedelta(days=backfill_days())).replace(
         minute=0, second=0, microsecond=0
     )
     scans = process_range(start, now)

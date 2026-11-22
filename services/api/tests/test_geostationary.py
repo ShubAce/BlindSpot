@@ -20,12 +20,18 @@ import pandas as pd
 import pytest
 import shapely
 from fastapi.testclient import TestClient
-from sqlalchemy import delete
+from sqlalchemy import delete, text
 
 from blindspot.analytics import geofire as gf
 from blindspot.db import init_db, session_scope
 from blindspot.jobs import geostationary as job
-from blindspot.models.geofires import GeoFirePixel, GeoFireSlot, GeoFireValidation
+from blindspot.models.geofires import (
+    GeoFirePixel,
+    GeoFireSlot,
+    GeoFireStatic,
+    GeoFireStaticPixel,
+    GeoFireValidation,
+)
 from blindspot.sources import gk2a
 
 FIX = Path(__file__).parent / "fixtures" / "geostationary"
@@ -152,6 +158,8 @@ def test_excluded_pixels_leave_the_background_and_are_reported_apart() -> None:
     assert not (res.fire & exclude).any()
     assert res.excluded_fire is not None and res.excluded_fire[exclude].all()
     assert res.stats["excluded_fires"] == int(exclude.sum())
+    assert (res.confidence[exclude] >= 1).all()  # kept for audit with the confidence they earned
+    assert res.stats["fires"] == 1
     assert res.bg_btd[20, 20] == pytest.approx(5.0, abs=0.3)  # clear fields, not the plant
 
     # Without the mask the block is one big fire and the pixel is just part of it.
@@ -243,3 +251,132 @@ def test_endpoints_follow_the_contract(stored) -> None:
         assert client.get("/api/geostationary/diurnal", params={"days": 99}).status_code == 422
         missing = client.get("/api/geostationary/latest", params={"slot": "2001-01-01T00:00:00Z"})
         assert missing.status_code == 404
+
+
+# --- persistent heat sources ----------------------------------------------------------------------
+
+HISTORY_ALG = "test-history"  # GK-2A detections of earlier nights, as any algorithm version stored them
+NOW = datetime(2026, 10, 30, 12, 0, tzinfo=UTC)  # night of 30 Oct (IST); history: nights 26-29
+
+
+def _history_pixel(row: int, col: int, t: datetime, lon: float, lat: float) -> GeoFirePixel:
+    return GeoFirePixel(
+        slot_utc=t, t_utc=t, algorithm=HISTORY_ALG, row=row, col=col, lon=lon, lat=lat,
+        confidence=1, absolute=False, geom=f"SRID=4326;POINT({lon} {lat})",
+    )  # fmt: skip
+
+
+@pytest.fixture
+def static_setup(scan: gk2a.Scan, polys: dict):
+    """A FIRMS static site on one of the scan's fire pixels, and GK-2A night history: a pixel hot
+    in the deep night on 2 earlier nights (a plant), one hot only at 19:00 IST on 3 nights (crop
+    fires), one hot in the deep night on 1 night only."""
+    from blindspot.models.fires import FireStaticSite
+
+    init_db()
+    plain = job.analyse(scan, polys)
+    geom, w = plain.geom, scan.window
+    fi, fj = (int(x[0]) for x in np.nonzero(plain.region_fire))
+    site_rc = (w.row0 + fi, w.col0 + fj)
+    quiet = np.argwhere(geom.region & ~plain.result.fire & ~plain.result.cloud)
+    (pi, pj), (ei, ej), (oi, oj) = quiet[100], quiet[400], quiet[700]
+    rc = {
+        "plant": (w.row0 + int(pi), w.col0 + int(pj)),
+        "evening": (w.row0 + int(ei), w.col0 + int(ej)),
+        "once": (w.row0 + int(oi), w.col0 + int(oj)),
+    }
+    lon, lat = float(geom.lon[fi, fj]), float(geom.lat[fi, fj])
+    with session_scope() as session:
+        session.add(FireStaticSite(
+            area=session.execute(text(
+                "SELECT ST_AsEWKT(ST_Multi(ST_Buffer(ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)"
+                "::geography, 400)::geometry))"), {"lon": lon, "lat": lat}).scalar_one(),
+            lat=lat, lon=lon, nights=5, night_detections=9, first_night=datetime(2026, 10, 1).date(),
+            last_night=datetime(2026, 10, 28).date(), computed_at=NOW,
+        ))  # fmt: skip
+        hist = []
+        for name, times in {
+            "plant": [datetime(2026, 10, 27, 20, 0), datetime(2026, 10, 28, 19, 30)],  # 01:30, 01:00 IST
+            "evening": [datetime(2026, 10, d, 13, 30) for d in (26, 27, 28)],  # 19:00 IST
+            "once": [datetime(2026, 10, 28, 20, 0), datetime(2026, 10, 28, 20, 10)],
+        }.items():
+            r, c = rc[name]
+            i, j = r - w.row0, c - w.col0
+            hist += [
+                _history_pixel(r, c, t.replace(tzinfo=UTC), float(geom.lon[i, j]), float(geom.lat[i, j]))
+                for t in times
+            ]
+        session.add_all(hist)
+    yield {"site": site_rc, **rc, "plain": plain}
+    with session_scope() as session:
+        session.execute(delete(FireStaticSite))
+        session.execute(delete(GeoFirePixel).where(GeoFirePixel.algorithm == HISTORY_ALG))
+        for table in (GeoFirePixel, GeoFireStaticPixel, GeoFireSlot):
+            session.execute(delete(table).where(table.slot_utc == SLOT))
+        session.execute(delete(GeoFireStatic))
+
+
+def test_static_mask_flags_plants_not_evening_fires(scan: gk2a.Scan, polys: dict, static_setup) -> None:
+    with session_scope() as session:
+        ev = job.load_static_evidence(session, NOW)
+    assert ev.as_of_night == datetime(2026, 10, 30).date()
+    mask = job.StaticMasks(ev).for_scan(scan, static_setup["plain"].geom)
+    assert set(mask.pixels[static_setup["plant"]]) == {"gk2a_night"}
+    assert mask.pixels[static_setup["plant"]]["gk2a_night"]["nights"] == 2
+    assert "firms" in mask.pixels[static_setup["site"]]
+    assert static_setup["evening"] not in mask.pixels  # crop fires burn in the evening, not at 01:00
+    assert static_setup["once"] not in mask.pixels  # one night is not persistence
+    assert int(mask.exclude.sum()) == len(mask.pixels)
+    # The rule reads earlier nights only: as of the night of 28 Oct the plant has 1 night so far.
+    with session_scope() as session:
+        early = job.load_static_evidence(session, datetime(2026, 10, 29, 6, 0, tzinfo=UTC))
+    assert static_setup["plant"] not in early.night_pixels
+
+
+def test_static_pixels_are_stored_apart_and_left_out_of_counts(
+    scan: gk2a.Scan, polys: dict, static_setup, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from blindspot.api.main import create_app
+    from blindspot.api.routers import geostationary as router
+
+    with session_scope() as session:
+        static = job.StaticMasks(job.load_static_evidence(session, NOW))
+    a = job.analyse(scan, polys, static)
+    plain = static_setup["plain"]
+    sr, sc = static_setup["site"]
+    i, j = sr - scan.window.row0, sc - scan.window.col0
+    assert plain.result.fire[i, j] and not a.result.fire[i, j]
+    assert a.result.excluded_fire is not None and a.result.excluded_fire[i, j]
+    with session_scope() as session:
+        n = job.store_analysis(session, a)
+        assert job.store_static_mask(session, a.static, NOW) == len(a.static.pixels)
+    assert n == int(a.region_fire.sum()) and int(a.region_static_fire.sum()) >= 1
+    with session_scope() as session:
+        kept = session.query(GeoFireStaticPixel).filter_by(slot_utc=SLOT).all()
+        assert {(p.row, p.col) for p in kept} >= {(sr, sc)}
+        assert next(p for p in kept if (p.row, p.col) == (sr, sc)).rules == "firms"
+        assert session.query(GeoFireSlot).filter_by(slot_utc=SLOT).one().count == n
+        assert {r.rule for r in session.query(GeoFireStatic).all()} == {"firms", "gk2a_night"}
+
+    with TestClient(create_app()) as client:
+        body = client.get("/api/geostationary/latest", params={"slot": SLOT.isoformat()}).json()
+        assert len(body["fires"]["features"]) == n
+        assert body["scan"]["count_static"] == len(kept)
+        assert not any(f["properties"]["static"] for f in body["fires"]["features"])
+        both = client.get(
+            "/api/geostationary/latest",
+            params={"slot": SLOT.isoformat(), "include_static": "true"},
+        ).json()
+        assert len(both["fires"]["features"]) == n + len(kept)
+        assert sum(f["properties"]["static"] for f in both["fires"]["features"]) == len(kept)
+
+        monkeypatch.setattr(router, "utcnow", lambda: SLOT + timedelta(hours=12))
+        d = client.get("/api/geostationary/diurnal", params={"days": 1}).json()
+        d2 = client.get(
+            "/api/geostationary/diurnal", params={"days": 1, "include_static": "true"}
+        ).json()
+        assert [s["count"] for s in d["slots"]] == [n] and d["slots"][0]["count_static"] == len(kept)
+        assert d2["slots"][0]["count"] == n + len(kept)
+        assert d["static_sources"]["pixels_flagged"] == len(a.static.pixels)
+        assert d["static_sources"]["included"] is False and d2["static_sources"]["included"]
+        assert d["static_sources"]["pixel_hours"] == round(len(kept) * 10 / 60, 1)
