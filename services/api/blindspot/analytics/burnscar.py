@@ -206,14 +206,17 @@ def confidence(
               darker than tilled soil, which is the main look-alike;
       dark  - how much more SWIR-2 darkened than required (0.06 more = 1);
       size  - 1 at four times the minimum size (single-pixel noise cannot reach it).
-    A smoke-hazy pass multiplies it by 0.7 and a gap over 5 days by 0.85 (doc 3.4 and 3.8)."""
+    A smoke-hazy pass multiplies it by 0.7 and a gap of 6 days or more by 0.85 (doc 3.4 and 3.8).
+    The gap counts whole days: `gap_days` comes from the two sensing times, and same-orbit revisits
+    drift by about a second (23 -> 28 Oct 2026 on 43REQ: 5.000012 d), so an ordinary 5-day pair
+    must not be taken for a missed view (until 2026-11-23 it was, for 59% of 5-day scars)."""
     char = min(max((rule.tbi_max - tbi_post) / 0.08, 0.0), 1.0)
     dark = min(max((d_b12 - rule.d_b12) / 0.06, 0.0), 1.0)
     size = min(max(math.log2(max(n_px, 1) / min_px) / 2, 0.0), 1.0)
     score = (char + dark + size) / 3
     if hazy:
         score *= 0.7
-    if gap_days > 5:
+    if round(gap_days) > 5:
         score *= 0.85
     return round(score, 3)
 

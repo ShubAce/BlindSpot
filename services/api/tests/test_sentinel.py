@@ -203,6 +203,23 @@ def test_confidence_is_monotone_and_penalised() -> None:
     assert 0.0 <= burnscar.confidence(0.40, 0.0, 1, 13, hazy=True, gap_days=9) <= 1.0
 
 
+def test_an_ordinary_five_day_revisit_is_not_a_gap() -> None:
+    """The gap factor is for a missed view (6 days or more), judged in whole days. _finish_tile
+    passes the gap between the two passes' sensing times, and same-orbit revisits drift by about a
+    second: the fixture's 23 -> 28 Oct pair is 5.000012 days apart and must score as a 5-day pair."""
+    after, before = (dt.datetime.fromisoformat(META["passes"][i]["datetime"]) for i in (1, 2))
+    gap = (before - after).total_seconds() / 86400
+    assert 5 < gap < 5.001
+    five = burnscar.confidence(0.30, 0.06, 40, 13, hazy=False, gap_days=5)
+    assert burnscar.confidence(0.30, 0.06, 40, 13, hazy=False, gap_days=gap) == five
+    assert burnscar.confidence(0.30, 0.06, 40, 13, hazy=False, gap_days=4.99) == five
+    # Real 6-day gaps keep the factor, whichever way their seconds drift (6.01 d is stored).
+    six = burnscar.confidence(0.30, 0.06, 40, 13, hazy=False, gap_days=6)
+    assert six == pytest.approx(five * 0.85, abs=1e-3) and six < five
+    for drift in (5.99, 6.01):
+        assert burnscar.confidence(0.30, 0.06, 40, 13, hazy=False, gap_days=drift) == six
+
+
 # --- database: matching, names and routes ---------------------------------------------------------
 
 
