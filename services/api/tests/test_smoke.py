@@ -244,6 +244,45 @@ def test_validation_hindcast_spins_up_before_the_scored_hours():
     assert summary["cities"][0]["city"] == "Delhi" and summary["cities"][0]["hours_observed"] == hours.size
 
 
+def test_allocate_by_mass_gives_particles_of_equal_weight():
+    counts = job.allocate_by_mass(np.array([100.0, 10.0, 1.0, 0.1, 0.0]), budget=50, floor=1)
+    assert counts.tolist() == [43, 4, 1, 1, 1] and counts.sum() == 50
+    # above the floor every particle carries about the same tonnes (100/43 and 10/4)
+    assert 100.0 / counts[0] == pytest.approx(10.0 / counts[1], rel=0.1)
+    assert job.allocate_by_mass(np.array([1.0, 2.0, 3.0]), budget=2, floor=1).tolist() == [1, 1, 1]
+    rng = np.random.default_rng(0)
+    tonnes = rng.lognormal(1.0, 2.0, 2000)
+    many = job.allocate_by_mass(tonnes, budget=24_000, floor=1)
+    assert many.sum() == 24_000 and many.min() == 1
+    big = many >= 10  # whole particles: within half a particle of the exact share
+    weight = tonnes[big] / many[big]
+    assert big.sum() > 100 and np.all(np.abs(weight / np.median(weight) - 1.0) < 0.1)
+
+
+def test_validation_particles_follow_the_tonnes_and_seed_is_fixed_by_window():
+    fires = recorded_fires()
+    lo, hi = float(fires.t.min()), float(fires.t.max())
+    p = job.build_forward_particles(fires, None, lo, hi, np.random.default_rng(1), allocation="mass",
+                                    budget=job.VALIDATION_PARTICLES, floor=job.VALIDATION_MIN_PER_SOURCE)
+    assert p.lat.size == job.VALIDATION_PARTICLES
+    per_source = np.bincount(p.source, weights=p.weight, minlength=len(p.sources))
+    assert per_source == pytest.approx(np.array([s["dm_t"] for s in p.sources]))  # no smoke lost
+    biggest = int(np.argmax(fires.dm))
+    assert np.count_nonzero(p.source == biggest) > np.count_nonzero(p.source == int(np.argmin(fires.dm)))
+    with pytest.raises(ValueError):
+        job.build_forward_particles(fires, None, lo, hi, np.random.default_rng(1), allocation="by_area")
+    # the forward run's trails keep an equal number per source
+    eq = job.build_forward_particles(fires, None, lo, hi, np.random.default_rng(1))
+    assert len(set(np.bincount(eq.source).tolist())) == 1
+    # the validation is deterministic: the seed comes from the window, not the clock
+    inp = recorded_validation_inputs(("Delhi",))
+    a, sa = job.run_validation(inp)
+    b, sb = job.run_validation(inp)
+    assert a["monte_carlo"]["seed"] == job.validation_seed(inp.t0, inp.t_end) == b["monte_carlo"]["seed"]
+    assert sa == sb and a["cities"] == b["cities"]
+    assert job.validation_seed(inp.t0, inp.t_end) != job.validation_seed(inp.t0 + 3600, inp.t_end + 3600)
+
+
 def test_validation_headline_names_its_city():
     """With no measurements near Delhi the headline is another city's result, and says so; the
     method page used to print every headline as Delhi's."""

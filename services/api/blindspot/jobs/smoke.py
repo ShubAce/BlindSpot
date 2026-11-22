@@ -425,11 +425,45 @@ class Particles:
     sources: list[dict[str, Any]]
 
 
+def allocate_by_mass(tonnes: np.ndarray, budget: int, floor: int = 1) -> np.ndarray:
+    """Particles per source: `budget` in all, in proportion to each source's tonnes, and at least
+    `floor` each (more than `budget` in all only when the floors alone exceed it).
+
+    Particles then carry about equal tonnes. For a fixed number of particles that gives the least
+    Monte Carlo variance of a city's smoke total when a particle of any source is about as likely
+    to reach the city (Neyman allocation); an equal number per source instead turns a big scar
+    into a few heavy particles. The floor keeps every source in the run, so no smoke is dropped.
+    Sources whose share is below the floor get the floor and the rest is shared again among the
+    others (water filling); whole particles by largest remainder."""
+    tonnes = np.asarray(tonnes, dtype=np.float64)
+    counts = np.full(tonnes.size, floor, dtype=np.int64)
+    if tonnes.size == 0 or budget <= floor * tonnes.size or tonnes.sum() <= 0:
+        return counts
+    free = tonnes > 0
+    while True:
+        left = budget - floor * int((~free).sum())
+        quota = np.where(free, left * tonnes / tonnes[free].sum(), 0.0)
+        below = free & (quota < floor)
+        if not below.any():
+            break
+        free &= ~below
+    whole = np.floor(quota[free]).astype(np.int64)
+    rest = left - int(whole.sum())
+    whole[np.argsort(-(quota[free] - whole), kind="stable")[:rest]] += 1
+    counts[free] = whole
+    return counts
+
+
 def build_forward_particles(
-    fires: Fires | None, scars: Scars | None, t_lo: float, t_hi: float, rng: np.random.Generator
+    fires: Fires | None, scars: Scars | None, t_lo: float, t_hi: float, rng: np.random.Generator,
+    *, allocation: str = "equal", budget: int = FWD_PARTICLES, floor: int = PER_SOURCE_MIN,
 ) -> Particles:
-    """Particles for every source whose emission falls in [t_lo, t_hi]: an equal number per source
-    (so every plume is drawn with the same detail), each carrying its share of the tonnes."""
+    """Particles for every source whose emission falls in [t_lo, t_hi], each carrying its share of
+    the source's tonnes. allocation "equal": the same number per source (budget / sources, from
+    `floor` to PER_SOURCE_MAX), so every plume is drawn with the same detail (the forward run's
+    trails). "mass": `budget` particles shared in proportion to the tonnes, at least `floor` per
+    source (allocate_by_mass): the least Monte Carlo noise in the cities' smoke for the particles
+    spent (the validation hindcast, which draws no trails)."""
     plans: list[tuple[str, int, float, float, np.ndarray, np.ndarray, float, str | None, str | None]] = []
     if fires is not None:
         for i in range(len(fires)):
@@ -446,9 +480,15 @@ def build_forward_particles(
     if not plans:
         z = np.zeros(0)
         return Particles(z, z, z, z, z.astype(np.int8), z.astype(np.int64), [])
-    n = int(np.clip(FWD_PARTICLES // len(plans), PER_SOURCE_MIN, PER_SOURCE_MAX))
+    if allocation == "mass":
+        counts = allocate_by_mass(np.array([plan[6] for plan in plans]), budget, floor)
+    elif allocation == "equal":
+        counts = np.full(len(plans), int(np.clip(budget // len(plans), floor, PER_SOURCE_MAX)))
+    else:
+        raise ValueError(f"allocation must be 'equal' or 'mass', not {allocation!r}")
     lat, lon, t_rel, weight, kind, source, meta = [], [], [], [], [], [], []
     for k, (typ, sid, la, lo, hours, shares, dm, state, district) in enumerate(plans):
+        n = int(counts[k])
         if typ == "fire":  # burns for ~30 min after the detection
             times = hours[0] + rng.uniform(0.0, tj.FIRE_DURATION_S, n)
         else:  # a burning hour drawn by its share, then a moment within it
@@ -1072,6 +1112,8 @@ def smoke() -> dict[str, Any]:
 
 VALIDATION_SPINUP_H = 48  # the hindcast starts this long before the first scored hour
 VALIDATION_MAX_DAYS = 7  # at most the last week is scored
+VALIDATION_PARTICLES = 24_000  # per member, shared by the sources in proportion to their tonnes
+VALIDATION_MIN_PER_SOURCE = 1
 STATION_RADIUS_KM = tj.RECEPTOR_RADIUS_KM
 
 
@@ -1231,21 +1273,29 @@ def load_validation_inputs(session: Session, run_at: datetime) -> ValidationInpu
     )
 
 
+def validation_seed(t0: float, t_end: float) -> int:
+    """The Monte Carlo seed of a hindcast window, so the same window and inputs give the same
+    numbers on every run (it used to be the clock time of the run)."""
+    return zlib.crc32(f"smoke_validate {int(t0)} {int(t_end)}".encode()) % 1_000_003
+
+
 def validation_hindcast(
     inp: ValidationInputs, seed: int
 ) -> tuple[Particles, list[tuple[str, np.ndarray, np.ndarray, np.ndarray]]]:
     """Forward hindcast from every source in [t0, t_end]: per member, the scored hours and each
-    city's hourly smoke index in them (all sources, and FIRMS fires alone)."""
+    city's hourly smoke index in them (all sources, and FIRMS fires alone). `seed` sets every
+    random draw (release times and the random walk)."""
     rng = np.random.default_rng(seed)
-    p = build_forward_particles(inp.fires, inp.scars, inp.t0, inp.t_end, rng)
+    p = build_forward_particles(inp.fires, inp.scars, inp.t0, inp.t_end, rng, allocation="mass",
+                                budget=VALIDATION_PARTICLES, floor=VALIDATION_MIN_PER_SOURCE)
     n_rec = tj.n_records(inp.t0, inp.t_end)
     rlat = np.array([r.lat for r in inp.cities])
     rlon = np.array([r.lon for r in inp.cities])
     member_series = []
     for k, m in enumerate(inp.members):
         rec = tj.ReceptorSeries(rlat, rlon, p.weight, p.kind, np.zeros(p.lat.size, np.int32), 1, n_rec)
-        integ = tj.integrate(m.wind, p.lat, p.lon, p.t_rel, t_start=inp.t0, t_end=inp.t_end, seed=11 + k,
-                             observers=[rec])
+        integ = tj.integrate(m.wind, p.lat, p.lon, p.t_rel, t_start=inp.t0, t_end=inp.t_end,
+                             seed=seed + 11 + k, observers=[rec])
         hours, total = tj.hourly_from_records(rec.total, integ.record_times)
         _, fires_only = tj.hourly_from_records(rec.by_kind[:, 0], integ.record_times)
         scored = hours >= inp.t_score - 1e-6  # the spin-up hours are not scored
@@ -1334,10 +1384,19 @@ def validation_scores(
     return summary, series_out
 
 
-def run_validation(inp: ValidationInputs, seed: int) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    """Hindcast and scores for loaded inputs, without the database: (summary, per-city series)."""
+def run_validation(
+    inp: ValidationInputs, seed: int | None = None
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Hindcast and scores for loaded inputs, without the database: (summary, per-city series).
+    The seed is the window's own (validation_seed) unless one is given."""
+    seed = validation_seed(inp.t0, inp.t_end) if seed is None else seed
     p, member_series = validation_hindcast(inp, seed)
-    return validation_scores(inp, p, member_series)
+    summary, series = validation_scores(inp, p, member_series)
+    summary["monte_carlo"] = {
+        "seed": seed, "particles_per_member": int(p.lat.size),
+        "allocation": f"in proportion to tonnes, at least {VALIDATION_MIN_PER_SOURCE} per source",
+    }
+    return summary, series
 
 
 @job("smoke_validate", every_minutes=360)
@@ -1349,7 +1408,7 @@ def smoke_validate() -> dict[str, Any]:
         inp = load_validation_inputs(session, run_at)
     if isinstance(inp, dict):
         return inp
-    summary, series_out = run_validation(inp, int(run_at.timestamp()) % 1_000_003)
+    summary, series_out = run_validation(inp)
     results = summary["cities"]
     columns = {"params": {"method": method_params(), "sources": inp.sources}, "summary": summary,
                "receptors": series_out}
