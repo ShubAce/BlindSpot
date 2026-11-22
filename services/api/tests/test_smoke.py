@@ -185,6 +185,65 @@ def test_verdict_rules():
     assert tj.verdict_hint([None], [0.0])[0] == "stubble_unlikely"
 
 
+def test_validation_window_scores_only_spun_up_hours():
+    run_at = datetime(2026, 11, 22, 11, 17, 40, tzinfo=UTC)  # the daily 11:17 UTC slot
+    day = 86400.0
+    # a met run fetched that morning: 9 past days (jobs/met.py PAST_DAYS) from 00:00 UTC, 5 ahead
+    start = datetime(2026, 11, 13, tzinfo=UTC).timestamp()
+    t0, t_score, t_end = job.validation_window(run_at, start, start + 14 * day - 3600)
+    assert t_end == datetime(2026, 11, 22, 11, tzinfo=UTC).timestamp()
+    assert t_score == datetime(2026, 11, 15, 12, tzinfo=UTC).timestamp()  # the whole last week...
+    assert (t_end - t_score) / 3600 + 1 == 168
+    assert t_score - t0 == 48 * 3600 and t0 >= start  # ...with 48 h of hindcast before it
+    # with 7 past days of wind (the old PAST_DAYS) the scored window shrinks, the spin-up does not
+    start = datetime(2026, 11, 15, tzinfo=UTC).timestamp()
+    t0, t_score, t_end = job.validation_window(run_at, start, start + 12 * day - 3600)
+    assert t0 == start and t_score == start + 48 * 3600
+    assert job.validation_window(run_at, run_at.timestamp() - 40 * 3600, run_at.timestamp() + day) is None
+
+
+def recorded_validation_inputs(cities: tuple[str, ...] = ("Delhi", "Ludhiana")) -> job.ValidationInputs:
+    """Validation inputs from the recorded grids (28-31 Oct) and FIRMS file (29-30 Oct): hindcast
+    from the first hour of wind, scored from 48 h later. The PM2.5 'observations' are synthetic (a
+    daily cycle plus noise): these tests check the bookkeeping; the statistics have their own."""
+    members = recorded_members()
+    run_at = datetime(2026, 10, 31, 18, 10, tzinfo=UTC)
+    t0, t_score, t_end = job.validation_window(run_at, max(m.wind.t0 for m in members),
+                                               min(m.wind.t_end for m in members))
+    wind, times, blh = wind_for("best_match")
+    hours = np.arange(t_score, t_end + 1.0, 3600.0).tolist()
+    rng = np.random.default_rng(1)
+    receptors = [r for r in recorded_receptors() if r.name in cities]
+    obs = {}
+    for r in receptors:
+        values = 120.0 + 40.0 * np.sin(2 * np.pi * np.array(hours) / 86400.0) + rng.normal(0, 10.0, len(hours))
+        obs[r.name] = {"obs": dict(zip(hours, values.tolist(), strict=True)),
+                       "n_stations": dict.fromkeys(hours, 2), "stations": 2,
+                       "cams": dict(zip(hours, (0.8 * values).tolist(), strict=True))}
+    return job.ValidationInputs(run_at, members, receptors, obs, recorded_fires(), None, t0, t_score, t_end,
+                                times, blh, times, wind.u, wind.v)
+
+
+def test_validation_hindcast_spins_up_before_the_scored_hours():
+    inp = recorded_validation_inputs()
+    assert inp.t0 == inp.members[0].wind.t0 and inp.t_score - inp.t0 == job.VALIDATION_SPINUP_H * 3600
+    p, member_series = job.validation_hindcast(inp, seed=3)
+    assert p.t_rel.min() >= inp.t0 and len(p.sources) == len(inp.fires)  # 29 Oct fires are released
+    for _, hours, total, _ in member_series:
+        assert hours[0] == inp.t_score and hours[-1] == inp.t_end  # only spun-up hours are scored
+        assert total.shape == (len(inp.cities), hours.size)
+    summary, series = job.validation_scores(inp, p, member_series)
+    period = summary["period"]
+    assert period["hindcast_from"].timestamp() == inp.t0 and period["from"].timestamp() == inp.t_score
+    assert period["to"].timestamp() == inp.t_end and period["spinup_h"] == 48
+    assert {s["city"] for s in series} == {"Delhi", "Ludhiana"}
+    for s in series:
+        assert [pt["t"].timestamp() for pt in s["series"]] == hours.tolist()
+    ludhiana = next(s for s in series if s["city"] == "Ludhiana")
+    assert ludhiana["series"][0]["smoke_index"] > 0  # the smoke of the spin-up fires has arrived
+    assert summary["cities"][0]["city"] == "Delhi" and summary["cities"][0]["hours_observed"] == hours.size
+
+
 def test_partial_r_controls_each_series_at_its_own_hour():
     """Observations driven only by their own hour's ventilation leave a model nothing to explain:
     partial r ~ 0 at every lag. Residualising the observation at t + L on the ventilation of the

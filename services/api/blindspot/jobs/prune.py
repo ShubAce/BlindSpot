@@ -11,7 +11,7 @@ What goes, and why it is safe:
   the air job and the smoke validation read 7 days, the rest the last 24 to 72 hours. At ~20k
   rows a day (every CPCB station's sub-indices, OpenAQ and CAMS) it was the fastest-growing table.
 - met_run, with its met_grid rows (ON DELETE CASCADE): every run except the newest of each model.
-  Each run holds 7 days of past hours plus the forecast, so the newest one covers the 72 h
+  Each run holds 9 days of past hours plus the forecast, so the newest one covers the 72 h
   back-trajectories, the validation hindcast and the weather routes, which all read only the
   newest run of each model (models/met.py latest_runs). A smoke run's met_run_ids are a record of
   what it used; nothing reads the grids back through them.

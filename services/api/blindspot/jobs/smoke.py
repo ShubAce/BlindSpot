@@ -1070,8 +1070,8 @@ def smoke() -> dict[str, Any]:
 
 # --- validation: modelled smoke vs observed PM2.5 ------------------------------------------------------
 
-VALIDATION_SPINUP_H = 48  # fires this long before the first observation feed the first hours
-VALIDATION_MAX_DAYS = 7
+VALIDATION_SPINUP_H = 48  # the hindcast starts this long before the first scored hour
+VALIDATION_MAX_DAYS = 7  # at most the last week is scored
 STATION_RADIUS_KM = tj.RECEPTOR_RADIUS_KM
 
 
@@ -1091,10 +1091,10 @@ def obs_hour(t: float, period_minutes: int, is_model: bool) -> float:
 def load_pm25(
     session: Session, receptors: list[Receptor], t_from: datetime, t_to: datetime
 ) -> dict[str, dict[str, Any]]:
-    """Hourly PM2.5 near each receptor: measured (OpenAQ station hourly means within 30 km,
-    averaged over stations) and the CAMS model (nearest model row within 30 km), each on the
-    model hour its period is centred on (obs_hour). µg/m³ only: the data.gov.in rows are NAQI
-    sub-indices (parameter pm25_subindex) and are never mixed in."""
+    """Hourly PM2.5 near each receptor for the model hours t_from..t_to: measured (OpenAQ station
+    hourly means within 30 km, averaged over stations) and the CAMS model (nearest model row within
+    30 km), each on the model hour its period is centred on (obs_hour). µg/m³ only: the
+    data.gov.in rows are NAQI sub-indices (parameter pm25_subindex) and are never mixed in."""
     if not _table_exists(session, "air_obs"):
         return {}
     rows = session.execute(
@@ -1106,11 +1106,12 @@ def load_pm25(
             WHERE parameter = 'pm25' AND observed_at >= :t0 AND observed_at <= :t1
               AND value >= 0 AND value < 2000
             """
-        ),
-        {"t0": t_from, "t1": t_to},
+        ),  # a period that ends up to an hour outside the hours asked for can be centred inside them
+        {"t0": t_from - timedelta(hours=1), "t1": t_to + timedelta(hours=1)},
     ).mappings().all()
     if not rows:
         return {}
+    lo, hi = t_from.timestamp(), t_to.timestamp()
     lat = np.array([r["lat"] for r in rows])
     lon = np.array([r["lon"] for r in rows])
     out: dict[str, dict[str, Any]] = {}
@@ -1125,7 +1126,8 @@ def load_pm25(
             if r["station_id"] in hourly_stations and r["period_minutes"] != 60:
                 continue  # that station reports hourly means; skip its 15-minute readings
             hour = obs_hour(r["t"], r["period_minutes"], False)
-            station_hour.setdefault((r["station_id"], hour), []).append(float(r["value"]))
+            if lo <= hour <= hi:
+                station_hour.setdefault((r["station_id"], hour), []).append(float(r["value"]))
         by_hour: dict[float, list[float]] = {}
         for (_, hour), values in station_hour.items():
             by_hour.setdefault(hour, []).append(float(np.mean(values)))
@@ -1134,8 +1136,9 @@ def load_pm25(
         if model_rows:
             nearest = min(model_rows, key=lambda r: (r["lat"] - rec.lat) ** 2 + (r["lon"] - rec.lon) ** 2)
             for r in model_rows:
-                if r["station_id"] == nearest["station_id"]:
-                    cams[obs_hour(r["t"], r["period_minutes"], True)] = float(r["value"])
+                hour = obs_hour(r["t"], r["period_minutes"], True)
+                if r["station_id"] == nearest["station_id"] and lo <= hour <= hi:
+                    cams[hour] = float(r["value"])
         if by_hour:
             out[rec.name] = {
                 "obs": {h: float(np.mean(v)) for h, v in by_hour.items()},
@@ -1150,59 +1153,122 @@ def _lag0_r(entry: dict[str, Any], key: str) -> float | None:
     return ((entry.get(key) or {}).get("lag0") or {}).get("r")
 
 
-@job("smoke_validate", every_minutes=360)
-def smoke_validate() -> dict[str, Any]:
-    """Hindcast the smoke index over the hours with PM2.5 observations and correlate it with them."""
-    started = time.perf_counter()
-    run_at = utcnow()
-    with session_scope() as session:
-        members, notes = load_members(session, run_at)
-        if not members:
-            return {"skipped": "no wind grid stored yet"}
-        bbox = members[0].wind.bbox
-        receptors, receptor_note = load_receptors(session, bbox)
-        t_last = math.floor(run_at.timestamp() / 3600.0) * 3600.0
-        t_first = max(run_at.timestamp() - VALIDATION_MAX_DAYS * 86400.0, max(m.wind.t0 for m in members))
-        t_first = math.ceil(t_first / 3600.0) * 3600.0
-        obs = load_pm25(session, receptors, datetime.fromtimestamp(t_first, UTC), run_at)
-        if not obs:
-            return {"skipped": "no measured PM2.5 near any receptor city yet", "notes": [receptor_note]}
-        first_obs = min(min(o["obs"]) for o in obs.values())
-        t0 = max(t_first, math.floor((first_obs - VALIDATION_SPINUP_H * 3600.0) / 3600.0) * 3600.0)
-        t_end = min(t_last, min(math.floor(m.wind.t_end / 3600.0) * 3600.0 for m in members))
-        window = (datetime.fromtimestamp(t0, UTC), datetime.fromtimestamp(t_end, UTC))
-        fires, fire_note = load_fires(session, *window, bbox)
-        scars, scar_note = load_scars(session, *window, bbox)
-        if fires is None and scars is None:
-            return {"skipped": f"no fire data: {fire_note}; {scar_note}"}
-        primary_run = members[0].run
-        blh_times, blh = load_level(session, primary_run, "10m", ("blh",))
-        bl_times, bl = load_level(session, primary_run, "bl", ("u", "v"))
-        sources = run_sources(session, members, fires, scars, None, receptors)
-    cities = [r for r in receptors if r.name in obs]
-    rng = np.random.default_rng(int(run_at.timestamp()) % 1_000_003)
-    p = build_forward_particles(fires, scars, t0, t_end, rng)
-    n_rec = tj.n_records(t0, t_end)
-    rlat = np.array([r.lat for r in cities])
-    rlon = np.array([r.lon for r in cities])
+def _utc(t: float) -> datetime:
+    return datetime.fromtimestamp(t, UTC)
+
+
+def validation_window(run_at: datetime, wind_t0: float, wind_end: float) -> tuple[float, float, float] | None:
+    """(hindcast start, first scored hour, last scored hour), unix s; None when no hour qualifies.
+
+    Scored: the whole hours of the last VALIDATION_MAX_DAYS days up to `run_at`, but only those
+    with VALIDATION_SPINUP_H hours of hindcast before them. Smoke takes one to three days to reach
+    the cities, so in the first hours of a hindcast the smoke of fires that burned before it is
+    missing, and scoring those hours counts the missing smoke as model error. The met job keeps 9
+    past days of wind (jobs/met.py PAST_DAYS) so a full week can be scored; with less wind the
+    scored window shrinks rather than taking in hours that are still spinning up."""
+    spin = VALIDATION_SPINUP_H * 3600.0
+    now = run_at.timestamp()
+    t_end = min(math.floor(now / 3600.0), math.floor(wind_end / 3600.0)) * 3600.0
+    t_score = max(math.ceil((now - VALIDATION_MAX_DAYS * 86400.0) / 3600.0),
+                  math.ceil((wind_t0 + spin) / 3600.0)) * 3600.0
+    if t_score >= t_end:
+        return None
+    return t_score - spin, t_score, t_end
+
+
+@dataclass
+class ValidationInputs:
+    """What one validation hindcast reads from the database (load_validation_inputs)."""
+
+    run_at: datetime
+    members: list[Member]
+    cities: list[Receptor]  # receptor cities with measured PM2.5 in the scored hours
+    obs: dict[str, dict[str, Any]]  # load_pm25, per city
+    fires: Fires | None
+    scars: Scars | None
+    t0: float  # hindcast start (unix s)
+    t_score: float  # first scored hour: t0 + VALIDATION_SPINUP_H
+    t_end: float  # last scored hour
+    blh_times: np.ndarray  # primary member over the scored hours: boundary-layer height (T, ny, nx)
+    blh: np.ndarray
+    bl_times: np.ndarray  # ... and its boundary-layer mean wind
+    bl_u: np.ndarray
+    bl_v: np.ndarray
+    sources: list[dict[str, Any]] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
+
+
+def load_validation_inputs(session: Session, run_at: datetime) -> ValidationInputs | dict[str, Any]:
+    """The newest wind grids, the scored window, the PM2.5 near each city in it and the fires and
+    scars of the whole hindcast; a {"skipped": why} dict when something is missing."""
+    members, notes = load_members(session, run_at)
+    if not members:
+        return {"skipped": "no wind grid stored yet"}
+    window = validation_window(run_at, max(m.wind.t0 for m in members), min(m.wind.t_end for m in members))
+    if window is None:
+        return {"skipped": f"the wind grids hold no hour with {VALIDATION_SPINUP_H} h of hindcast before it",
+                "notes": notes}
+    t0, t_score, t_end = window
+    bbox = members[0].wind.bbox
+    receptors, receptor_note = load_receptors(session, bbox)
+    obs = load_pm25(session, receptors, _utc(t_score), _utc(t_end))
+    if not obs:
+        return {"skipped": "no measured PM2.5 near any receptor city in the scored hours yet",
+                "notes": [receptor_note]}
+    fires, fire_note = load_fires(session, _utc(t0), _utc(t_end), bbox)
+    scars, scar_note = load_scars(session, _utc(t0), _utc(t_end), bbox)
+    if fires is None and scars is None:
+        return {"skipped": f"no fire data: {fire_note}; {scar_note}"}
+    primary_run = members[0].run
+    blh_times, blh = load_level(session, primary_run, "10m", ("blh",), _utc(t_score), _utc(t_end))
+    bl_times, bl = load_level(session, primary_run, "bl", ("u", "v"), _utc(t_score), _utc(t_end))
+    sources = run_sources(session, members, fires, scars, None, receptors)
+    return ValidationInputs(
+        run_at=run_at, members=members, cities=[r for r in receptors if r.name in obs], obs=obs,
+        fires=fires, scars=scars, t0=t0, t_score=t_score, t_end=t_end,
+        blh_times=blh_times, blh=blh["blh"], bl_times=bl_times, bl_u=bl["u"], bl_v=bl["v"],
+        sources=sources, notes=notes + [receptor_note, fire_note, scar_note],
+    )
+
+
+def validation_hindcast(
+    inp: ValidationInputs, seed: int
+) -> tuple[Particles, list[tuple[str, np.ndarray, np.ndarray, np.ndarray]]]:
+    """Forward hindcast from every source in [t0, t_end]: per member, the scored hours and each
+    city's hourly smoke index in them (all sources, and FIRMS fires alone)."""
+    rng = np.random.default_rng(seed)
+    p = build_forward_particles(inp.fires, inp.scars, inp.t0, inp.t_end, rng)
+    n_rec = tj.n_records(inp.t0, inp.t_end)
+    rlat = np.array([r.lat for r in inp.cities])
+    rlon = np.array([r.lon for r in inp.cities])
     member_series = []
-    for k, m in enumerate(members):
+    for k, m in enumerate(inp.members):
         rec = tj.ReceptorSeries(rlat, rlon, p.weight, p.kind, np.zeros(p.lat.size, np.int32), 1, n_rec)
-        integ = tj.integrate(m.wind, p.lat, p.lon, p.t_rel, t_start=t0, t_end=t_end, seed=11 + k,
+        integ = tj.integrate(m.wind, p.lat, p.lon, p.t_rel, t_start=inp.t0, t_end=inp.t_end, seed=11 + k,
                              observers=[rec])
         hours, total = tj.hourly_from_records(rec.total, integ.record_times)
         _, fires_only = tj.hourly_from_records(rec.by_kind[:, 0], integ.record_times)
-        member_series.append((m.model, hours, total, fires_only))
+        scored = hours >= inp.t_score - 1e-6  # the spin-up hours are not scored
+        member_series.append((m.model, hours[scored], total[:, scored], fires_only[:, scored]))
+    return p, member_series
+
+
+def validation_scores(
+    inp: ValidationInputs, p: Particles, member_series: list[tuple[str, np.ndarray, np.ndarray, np.ndarray]]
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Each city's modelled smoke against its measured PM2.5 over the scored hours: (summary, the
+    hourly series per city)."""
+    grid = inp.members[0].run.grid
     results, series_out = [], []
     _, hours, total0, fires0 = member_series[0]
-    for c, city in enumerate(cities):
-        o = obs[city.name]
+    for c, city in enumerate(inp.cities):
+        o = inp.obs[city.name]
         y = np.array([o["obs"].get(h, np.nan) for h in hours])
         cams = np.array([o["cams"].get(h, np.nan) for h in hours])
-        blh_c = np.interp(hours, blh_times, tj.point_series(primary_run.grid, blh["blh"], city.lon, city.lat))
-        u_c = tj.point_series(primary_run.grid, bl["u"], city.lon, city.lat)
-        v_c = tj.point_series(primary_run.grid, bl["v"], city.lon, city.lat)
-        speed = np.interp(hours, bl_times, np.hypot(u_c, v_c))
+        blh_c = np.interp(hours, inp.blh_times, tj.point_series(grid, inp.blh, city.lon, city.lat))
+        u_c = tj.point_series(grid, inp.bl_u, city.lon, city.lat)
+        v_c = tj.point_series(grid, inp.bl_v, city.lon, city.lat)
+        speed = np.interp(hours, inp.bl_times, np.hypot(u_c, v_c))
         ventilation = np.maximum(blh_c, tj.BL_FLOOR_M) * np.maximum(speed, 0.1)
         log_vent = np.log(ventilation)
         smoke = total0[c]
@@ -1226,7 +1292,7 @@ def smoke_validate() -> dict[str, Any]:
         series_out.append({
             "city": city.name,
             "series": [
-                {"t": datetime.fromtimestamp(h, UTC), "smoke_index": round(float(smoke[i]), 3),
+                {"t": _utc(h), "smoke_index": round(float(smoke[i]), 3),
                  "smoke_per_km_mixing_depth": round(float(dilute[i]), 3),
                  "pm25_obs": None if not np.isfinite(y[i]) else round(float(y[i]), 1),
                  "n_stations": o["n_stations"].get(h),
@@ -1240,7 +1306,8 @@ def smoke_validate() -> dict[str, Any]:
     cams_rs = [r for r in (_lag0_r(e, "cams_baseline") for e in results) if r is not None]
     vent_rs = [r for r in (_lag0_r(e, "ventilation_only") for e in results) if r is not None]
     summary = {
-        "period": {"from": window[0], "to": window[1], "spinup_h": VALIDATION_SPINUP_H},
+        "period": {"from": _utc(inp.t_score), "to": _utc(inp.t_end), "spinup_h": VALIDATION_SPINUP_H,
+                   "hindcast_from": _utc(inp.t0)},
         "inputs": {"fires": sum(1 for s_ in p.sources if s_["type"] == "fire"),
                    "scars": sum(1 for s_ in p.sources if s_["type"] == "scar")},
         "headline": results[0]["summary"] if results else None,
@@ -1249,21 +1316,43 @@ def smoke_validate() -> dict[str, Any]:
         "median_r_cams": None if not cams_rs else round(float(np.median(cams_rs)), 3),
         "cities": results,
         "method": (
-            "Forward hindcast from every FIRMS detection (and candidate unseen scar) in the period; "
-            "hourly smoke index within 30 km of each city, also divided by the boundary-layer depth "
-            "(a concentration proxy), against the hourly mean of OpenAQ PM2.5 stations within 30 km. "
+            "Forward hindcast from every FIRMS detection (and candidate unseen scar) in the period, "
+            f"started {VALIDATION_SPINUP_H} h before the first scored hour so the smoke of earlier "
+            "fires has arrived; hourly smoke index within 30 km of each city, also divided by the "
+            "boundary-layer depth (a concentration proxy), against the hourly mean of OpenAQ PM2.5 "
+            "stations within 30 km, each on the model hour its measuring period is centred on. "
             "Pearson r and Spearman rho at model leads of 0-12 h; partial r controls for log "
-            "ventilation (BLH x transport wind), since stagnant air alone raises PM2.5; "
-            "'ventilation_only' and CAMS are the baselines to beat. Correlation is not attribution: "
-            "local sources dominate city PM2.5."
+            "ventilation (BLH x transport wind), each series at its own hour, since stagnant air "
+            "alone raises PM2.5; 'ventilation_only' and CAMS are the baselines to beat. Correlation "
+            "is not attribution: local sources dominate city PM2.5."
         ),
-        "notes": notes + [receptor_note, fire_note, scar_note],
+        "notes": inp.notes,
     }
-    columns = {"params": {"method": method_params(), "sources": sources}, "summary": summary,
+    return summary, series_out
+
+
+def run_validation(inp: ValidationInputs, seed: int) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Hindcast and scores for loaded inputs, without the database: (summary, per-city series)."""
+    p, member_series = validation_hindcast(inp, seed)
+    return validation_scores(inp, p, member_series)
+
+
+@job("smoke_validate", every_minutes=360)
+def smoke_validate() -> dict[str, Any]:
+    """Hindcast the smoke index over the hours with PM2.5 observations and correlate it with them."""
+    started = time.perf_counter()
+    run_at = utcnow()
+    with session_scope() as session:
+        inp = load_validation_inputs(session, run_at)
+    if isinstance(inp, dict):
+        return inp
+    summary, series_out = run_validation(inp, int(run_at.timestamp()) % 1_000_003)
+    results = summary["cities"]
+    columns = {"params": {"method": method_params(), "sources": inp.sources}, "summary": summary,
                "receptors": series_out}
     with session_scope() as session:
-        row = SmokeRun(kind="validation", city=None, run_at=run_at, t0=window[0],
-                       hours=(t_end - t0) / 3600.0, met_run_ids=[m.run.id for m in members],
+        row = SmokeRun(kind="validation", city=None, run_at=run_at, t0=_utc(inp.t0),
+                       hours=(inp.t_end - inp.t0) / 3600.0, met_run_ids=[m.run.id for m in inp.members],
                        trails=None, **columns)
         session.add(row)
         session.flush()
@@ -1278,6 +1367,7 @@ def smoke_validate() -> dict[str, Any]:
         "id": row_id,
         "bodies": bodies,
         "cities": len(results),
+        "scored": summary["period"],
         "delhi": None if delhi is None else {
             "r_smoke_index": _lag0_r(delhi, "smoke_index"),
             "r_per_mixing_depth": _lag0_r(delhi, "smoke_per_km_mixing_depth"),
