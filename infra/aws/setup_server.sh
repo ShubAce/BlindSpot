@@ -2,7 +2,7 @@
 # Setup of BlindSpot's AWS server (Ubuntu 24.04, arm64). Run as root; safe to run again.
 # `infra/aws/deploy.py --setup` uploads and runs it. Installs:
 #   PostgreSQL 18 + PostGIS 3 (PGDG; Neon ran 18.7 + PostGIS 3.6), tuned for a 1 GB machine
-#   Caddy (HTTPS), Node 24 + pnpm (website, relay), uv + Python 3.12 (API)
+#   Caddy (HTTPS), nginx (the API's cache only), Node 24 + pnpm (website, relay), uv + Python 3.12 (API)
 #   a 2 GB swap file, the `blindspot` service user, the nightly backup and the weekly housekeeping.
 # The three services themselves (API, website, relay) are installed by deploy.py with their code.
 set -euo pipefail
@@ -34,6 +34,15 @@ if ! command -v node >/dev/null || ! node -v | grep -q '^v24\.'; then
 fi
 apt_get update -q
 apt_get install -y -q postgresql-18 postgresql-18-postgis-3 caddy nodejs
+# nginx: only the API's cache (nginx-api-cache.conf, installed by deploy.py), never a web server.
+# Its package would start the default site on :80, which Caddy holds, so it installs without
+# starting, and the default site goes.
+if ! dpkg -s nginx >/dev/null 2>&1; then
+  printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d && chmod 755 /usr/sbin/policy-rc.d
+  apt_get install -y -q nginx || { rm -f /usr/sbin/policy-rc.d; exit 1; }
+  rm -f /usr/sbin/policy-rc.d
+fi
+rm -f /etc/nginx/sites-enabled/default
 corepack enable
 corepack prepare pnpm@10.28.0 --activate
 if ! command -v uv >/dev/null; then
@@ -67,6 +76,11 @@ ssl = on
 password_encryption = scram-sha-256
 log_min_duration_statement = 2000
 idle_in_transaction_session_timeout = '10min'
+# TCP keepalives every 60 s: a job's long statement sends nothing for minutes, and the network in
+# front of GitHub's runners drops a silent connection after ~4 min (the risk job's UPDATE, 2026-11-22)
+tcp_keepalives_idle = 60
+tcp_keepalives_interval = 15
+tcp_keepalives_count = 4
 EOF
 if ! grep -q 'blindspot-remote' $PGCONF/pg_hba.conf; then
   cat >> $PGCONF/pg_hba.conf <<'EOF'
@@ -112,8 +126,11 @@ printf '[Journal]\nSystemMaxUse=100M\nMaxRetentionSec=14day\n' > /etc/systemd/jo
 systemctl restart systemd-journald
 install -m 755 "$(dirname "$0")/maintain.sh" /usr/local/sbin/blindspot-maintain
 install -m 644 "$(dirname "$0")/blindspot-maintain.service" "$(dirname "$0")/blindspot-maintain.timer" /etc/systemd/system/
+# ...and every 10 minutes, the website's main pages refresh the API cache (infra/aws/warm.sh)
+install -m 755 "$(dirname "$0")/warm.sh" /usr/local/sbin/blindspot-warm
+install -m 644 "$(dirname "$0")/blindspot-warm.service" "$(dirname "$0")/blindspot-warm.timer" /etc/systemd/system/
 systemctl daemon-reload
-systemctl enable --now --quiet blindspot-maintain.timer
+systemctl enable --now --quiet blindspot-maintain.timer blindspot-warm.timer
 
 # --- snapd and the SSM agent snap ship with Ubuntu's AWS image but are unused here (the server is
 #     managed over SSH): removing them frees ~120 MB of disk and ~40 MB of the 1 GB of memory.

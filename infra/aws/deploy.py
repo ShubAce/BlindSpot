@@ -57,7 +57,7 @@ WEB_PUBLIC_FROM_ENV = ("NEXT_PUBLIC_GA_ID", "NEXT_PUBLIC_GOOGLE_SITE_VERIFICATIO
 INDEXNOW_KEY_FILE = "451e281a7d80a4734d312294ecbc0856.txt"  # apps/web/public/<key>.txt holds the key
 
 WEB_SKIP = frozenset({"node_modules", ".next", ".vercel", "tsconfig.tsbuildinfo"})
-TEXT_SUFFIXES = {".sh", ".service", ".timer", ".js", ""}  # LF on the server, whatever this checkout has (Caddyfile: "")
+TEXT_SUFFIXES = {".sh", ".service", ".timer", ".conf", ".js", ""}  # LF on the server, whatever this checkout has (Caddyfile: "")
 
 UNIT = "bs-deploy"  # the systemd job every deploy runs as, with its log and exit code beside it
 LOG, RC = f"/var/log/{UNIT}.log", f"/var/log/{UNIT}.rc"
@@ -230,7 +230,14 @@ cd /srv/blindspot
 [ -x /srv/blindspot/venv/bin/python ] || sudo -u blindspot -H uv venv --quiet --python 3.12 /srv/blindspot/venv
 sudo -u blindspot -H uv pip install --quiet --python /srv/blindspot/venv/bin/python -r /srv/blindspot/api/requirements.txt
 install -m 644 /tmp/bs/ops/blindspot-api.service /etc/systemd/system/
-systemctl daemon-reload && systemctl enable --quiet blindspot-api && systemctl restart blindspot-api
+install -m 644 /tmp/bs/ops/nginx-api-cache.conf /etc/nginx/conf.d/blindspot-api-cache.conf
+install -d -m 750 -o www-data -g www-data /var/cache/nginx/blindspot
+nginx -t -q
+systemctl daemon-reload && systemctl enable --quiet blindspot-api nginx
+# The API (127.0.0.1:8001) first, so :8000 is free for the cache in front of it. /api/health is
+# never cached, so a 200 through the cache means both are up (502 while uvicorn starts is retried).
+systemctl restart blindspot-api
+systemctl reload-or-restart nginx
 curl -fsS --retry 60 --retry-delay 2 --retry-all-errors --max-time 20 http://127.0.0.1:8000/api/health | head -c 400; echo
 """
 STEP_RELAY = """

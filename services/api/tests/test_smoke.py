@@ -292,6 +292,21 @@ def test_smoke_routes(recorded_runs, monkeypatch):
             assert body["step_minutes"] == 20 and len(body["trails"]) == len(forward["trails"])
             assert body["inputs"]["fires"] == forward["inputs"]["fires"]
             assert r.headers.get("content-encoding") == "gzip"
+            # Behind a proxy that compresses (GZIP_RESPONSES=false: no gzip middleware, as on the AWS
+            # server) the route keeps one plain copy and does not vary on Accept-Encoding, so the
+            # cache in front keeps one copy per address.
+            from blindspot.api.main import create_app
+            from blindspot.config import get_settings
+
+            get_settings().gzip_responses = False
+            try:
+                with TestClient(create_app()) as proxied:
+                    r = proxied.get("/api/smoke/forward")
+                    assert r.status_code == 200 and r.json()["step_minutes"] == 20
+                    assert "content-encoding" not in r.headers
+                    assert "accept-encoding" not in r.headers.get("vary", "").lower()
+            finally:
+                get_settings().gzip_responses = True
 
             r = client.get("/api/smoke/back", params={"city": "delhi", "hours": 24})
             assert r.status_code == 200, r.text

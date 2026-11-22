@@ -64,6 +64,11 @@ log = logging.getLogger(__name__)
 BLOCK_PX = 1024  # 2 x 2 internal COG tiles of the 20 m bands
 MAX_CLOUD_PCT = 70.0  # skip passes whose whole tile is mostly cloud (doc section 4, step 1)
 MAX_NODATA_PCT = 99.0  # a swath-edge sliver with nothing to read
+# A tile whose own 100 km square reaches a stage's area by less than this is left out of that
+# stage. The areas come from two boundary datasets (Survey of India states, LGD districts), whose
+# difference leaves border strips of a few square metres along district edges (2026-11-23: 0.007
+# km2 of tile 43RCP in 'punjab'); re-reading a whole tile for such a strip maps nothing.
+MIN_STAGE_OVERLAP_M2 = 1_000_000.0
 SETTLE_HOURS = 6  # wait this long after sensing, so every granule of the pass is in the catalogue
 SEASON_MONTH, SEASON_DAY = 10, 1  # the paddy-residue season we monitor starts on 1 October
 VILLAGE_MAX_KM = 3.0  # name the nearest village only if it is this close
@@ -85,6 +90,18 @@ HOTSPOT_DISTRICTS: dict[str, tuple[str, ...]] = {
     "Fatehgarh Sahib": ("fatehgarh sahib",),
     "Tarn Taran": ("tarn taran",),
     "Amritsar": ("amritsar",),
+    # Added 2026-11-23: in the 2026 season these burn as much as the districts above (NASA FIRMS
+    # detections 15 Sep-22 Nov: Fazilka 1,267, 5th of all Punjab and Haryana; Sri Muktsar Sahib 892;
+    # Kapurthala 618; Faridkot 567; Gurdaspur 535; Jalandhar 411; Malerkotla 393), and at 40 m a
+    # pixel mixing a burnt field with its unburnt edge often fails the darkening tests, so burns that
+    # are plain on the 10 m pictures went unmapped.
+    "Fazilka": ("fazilka",),
+    "Sri Muktsar Sahib": ("sri muktsar sahib", "muktsar", "shri muktsar sahib"),
+    "Kapurthala": ("kapurthala",),
+    "Faridkot": ("faridkot",),
+    "Gurdaspur": ("gurdaspur",),
+    "Jalandhar": ("jalandhar",),
+    "Malerkotla": ("malerkotla",),
 }
 
 
@@ -98,7 +115,7 @@ class Stage:
 
 
 STAGES = (
-    Stage("hotspots", 20, "11 hotspot districts of Punjab, 20 m (field scale: a 1 ha plot is ~25 px)"),
+    Stage("hotspots", 20, "18 high-burning districts of Punjab, 20 m (field scale: a 1 ha plot is ~25 px)"),
     Stage("punjab", 40, "rest of Punjab, 40 m COG overviews (state-scale area; ~6 px per 1 ha plot)"),
     Stage("haryana", 40, "Haryana, 40 m COG overviews"),
 )
@@ -839,6 +856,21 @@ def label_places(session: Session) -> dict[str, int]:
 # --- the job ---------------------------------------------------------------------------------------
 
 
+def drop_stage_rows(scope: str, tiles: list[str], dead: dict[str, DeadRows]) -> dict[str, int]:
+    """Delete the rows a stage stored on tiles it no longer covers (a district moved to another
+    stage, or a boundary change). A stage only ever replaces rows on tiles it processes, so these
+    would otherwise stay for good, counted beside the rows the tile's new stage writes."""
+    deleted = {}
+    with session_scope() as session:
+        for name in ("burn_cluster", "harvest_cluster"):
+            n = session.execute(text(f"DELETE FROM {name} WHERE scope = :scope AND mgrs_tile = ANY(:tiles)"),
+                                {"scope": scope, "tiles": tiles}).rowcount
+            if n:
+                deleted[name] = n
+                dead[name].add(n)
+    return deleted
+
+
 def run_sentinel(*, budget_min: float | None = None, stages: tuple[str, ...] | None = None,
                  tiles: tuple[str, ...] | None = None) -> dict[str, Any]:
     """The whole run; keyword arguments narrow it (used by tests and manual backfills)."""
@@ -873,15 +905,21 @@ def run_sentinel(*, budget_min: float | None = None, stages: tuple[str, ...] | N
         area = areas.get(stage.name)
         if area is None or area.is_empty:
             continue
-        # Tiles whose own square overlaps this stage's area, largest overlap first.
-        ranked = []
+        # Tiles whose own square overlaps this stage's area, largest overlap first. A tile that
+        # reaches it by less than MIN_STAGE_OVERLAP_M2 is left out, and whatever this stage stored
+        # on it before is removed (drop_stage_rows): no later run of the stage would replace it.
+        ranked, uncovered = [], []
         for tile, tile_scenes in by_tile.items():
             if tiles and tile not in tiles:
                 continue
             grid = stac.TileGrid.from_scene(tile_scenes[0], stage.res)
             overlap = _from_lonlat(area, grid.epsg).intersection(shapely.box(*grid.core)).area
-            if overlap > 0:
+            if overlap >= MIN_STAGE_OVERLAP_M2:
                 ranked.append((overlap, tile))
+            else:
+                uncovered.append(tile)
+        if uncovered and (dropped := drop_stage_rows(stage.name, uncovered, dead)):
+            summary.setdefault("dropped_stage_rows", {})[stage.name] = dropped
         for _overlap, tile in sorted(ranked, reverse=True):
             if time.perf_counter() - started > budget_s:
                 pending.append(f"{stage.name}:{tile}")

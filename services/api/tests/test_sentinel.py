@@ -540,6 +540,36 @@ def test_a_scope_with_nothing_computed_is_emptied() -> None:
     assert out == {"computed": 0, "kept": 0, "deleted": 1, "inserted": 0} and left == 0
 
 
+def test_rows_of_a_stage_that_left_a_tile_are_dropped() -> None:
+    """A district moved between stages (2026-11-23: seven Punjab districts to the 20 m hotspots
+    stage) must not leave the old stage's rows behind: that stage never processes the tile again, so
+    they would be counted beside the new stage's rows."""
+    from blindspot.db import DeadRows
+    from blindspot.jobs import sentinel as job
+    from blindspot.models.sentinel import BurnCluster
+
+    scar = json.loads((FIXTURES / "matched_scar.json").read_text())["scar"]
+    tile = "TEST3"
+    with SessionLocal() as session:
+        for scope in ("punjab", "hotspots"):
+            job._replace_rows(session, BurnCluster, "t.mgrs_tile = :tile AND t.scope = :scope",
+                              {"tile": tile, "scope": scope},
+                              [_scar_row(scar, f"r0_{scope}", mgrs_tile=tile, scope=scope)])
+        session.commit()
+    try:
+        dead = {name: DeadRows(name) for name in ("burn_cluster", "harvest_cluster")}
+        dropped = job.drop_stage_rows("punjab", [tile], dead)
+        with SessionLocal() as session:
+            left = dict(session.execute(text(
+                "SELECT scope, count(*) FROM burn_cluster WHERE mgrs_tile = :t GROUP BY scope"), {"t": tile}).all())
+    finally:
+        with SessionLocal() as session:
+            session.execute(text("DELETE FROM burn_cluster WHERE mgrs_tile = :t"), {"t": tile})
+            session.commit()
+    assert dropped == {"burn_cluster": 1}
+    assert left == {"hotspots": 1}
+
+
 def test_id_ranges_cover_every_id_once() -> None:
     from blindspot.db import MAX_ID, id_ranges
 
