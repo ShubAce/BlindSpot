@@ -15,10 +15,11 @@ import { indexHref, parseDays, parseLang } from '@/components/brief/read';
  */
 
 export const metadata: Metadata = {
-  title: 'Field brief',
+  title: 'District field briefs: villages with unseen stubble burning',
   // a link preview travels without the page's audit sentence, so it says "candidate" and "upper bounds" itself
   description:
-    'Where field teams could go first: the villages of Punjab and Haryana where Sentinel-2 mapped candidate burn scars that no fire alert explains (upper bounds), and the harvested fields ranked highest for the next burn, district by district.',
+    'Punjab and Haryana, district by district: villages with candidate unseen burns (burn scars no fire alert explains, upper bounds) and the harvested fields ranked highest for the next burn.',
+  alternates: { canonical: '/brief' },
 };
 
 type Props = { searchParams: Promise<Record<string, string | string[] | undefined>> };

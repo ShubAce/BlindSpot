@@ -271,8 +271,9 @@ def create_app() -> FastAPI:
     app.add_middleware(_JSONServerErrors)
     app.add_middleware(CDNCacheHeaders)  # s-maxage for Vercel's CDN on 200 GETs (api/cache.py)
     # Level 6, not Starlette's default 9: on the 1.4 MB boundaries GeoJSON it is 5x faster
-    # (52 vs 251 ms) for a body 0.3 % larger.
-    app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
+    # (52 vs 251 ms) for a body 0.3 % larger. Off where a proxy compresses (GZIP_RESPONSES=false).
+    if settings.gzip_responses:
+        app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,

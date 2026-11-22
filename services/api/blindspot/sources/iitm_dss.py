@@ -126,8 +126,10 @@ def _method_notes(page: str) -> str | None:
 
 
 def fetch_dss() -> tuple[DssData, FetchResult]:
-    """GET the DSS page and parse it. The host has intermittent TLS stalls; fetch() retries."""
-    result = fetch(SOURCE_KEY, DSS_URL, expect="text", timeout=60.0)
+    """GET the DSS page and parse it. The host has intermittent TLS stalls; fetch() retries. Since
+    2026-11-21 it also renders the page slowly: 78 kB in 120 s, with pauses of over a minute (every
+    60 s attempt timed out, from India as from GitHub's runners), hence 180 s."""
+    result = fetch(SOURCE_KEY, DSS_URL, expect="text", timeout=180.0)
     data = parse_dss(result.data or "")
     set_fetch_records(result.fetch_id, len(data.daily_pct) + len(data.forecast_pct))
     return data, result

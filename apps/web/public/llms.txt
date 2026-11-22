@@ -1,0 +1,20 @@
+# BlindSpot
+
+> BlindSpot maps stubble (parali) burning in Punjab and Haryana, India, that the fire satellites miss. NASA's polar fire satellites pass over Punjab near 1:30 PM and 1:30 AM, but the burning peaks around 4 to 5 PM. BlindSpot matches every Sentinel-2 burn scar against every NASA FIRMS fire alert (a scar with no alert is a "candidate unseen burn", with a measured audit precision), measures the evening burning from the GK-2A geostationary satellite, follows the smoke to Delhi, and answers questions with cited, number-checked figures.
+
+Every figure on the site is read live from the BlindSpot API, and every API response lists its sources. Unseen burns are always called "candidate unseen burns" and shown with the audit's precision and confidence interval. Model values (CAMS air quality, smoke trajectories) are labelled as models.
+
+## Pages
+
+- [Home](https://www.blindspotin.tech/): the key figure (the share of burnt area no fire alert explains), when the satellites look and when the fields burn, and one place on four Sentinel-2 passes
+- [Live map (mission control)](https://www.blindspotin.tech/live): fire alerts, burn scars, smoke, Delhi's air and the next satellite pass, with a question-answering investigator
+- [Daily bulletin](https://www.blindspotin.tech/bulletin): Punjab and Haryana crop fires and Delhi's air, in English, Hindi and Punjabi
+- [District field briefs](https://www.blindspotin.tech/brief): villages with candidate unseen burns and the harvested fields at highest risk of burning next, per district, with CSV downloads
+- [Method and accuracy](https://www.blindspotin.tech/method): how each part works and how often it is right, read live
+
+## Data
+
+- [Data sources and freshness (JSON)](https://api.blindspotin.tech/api/sources)
+- [Season summary by district (JSON)](https://api.blindspotin.tech/api/scars/summary)
+- [Headline figures (JSON)](https://api.blindspotin.tech/api/stats/headline)
+- [Source code](https://github.com/ShubAce/BlindSpot)

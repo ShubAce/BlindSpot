@@ -1,0 +1,10 @@
+[Unit]
+Description=Run BlindSpot's housekeeping weekly (Sunday 04:00 IST)
+
+[Timer]
+OnCalendar=Sat *-*-* 22:30:00 UTC
+Persistent=true
+RandomizedDelaySec=15min
+
+[Install]
+WantedBy=timers.target

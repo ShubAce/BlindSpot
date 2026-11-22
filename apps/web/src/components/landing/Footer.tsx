@@ -4,6 +4,7 @@ import { Suspense } from 'react';
 import { absoluteApiUrl } from '@/lib/api';
 import { dateIST } from '@/lib/format';
 import { PHOTOS, type PhotoCredit } from '@/lib/photo-credits';
+import { REPO_URL } from '@/lib/site';
 
 import { getFeatured } from './data';
 import { s } from './styles';
@@ -11,8 +12,6 @@ import { Pic } from './Pic';
 
 /** The photographs this page shows, in the order they appear: their credits go in the imprint. */
 const USED: PhotoCredit[] = [PHOTOS.rakingStubble, PHOTOS.seederTractor, PHOTOS.strawBurning, PHOTOS.delhiSmog, PHOTOS.happySeeder];
-
-const REPO = 'https://github.com/ShubAce/BlindSpot';
 
 /**
  * Section 7, footer (direction: "The back of the card"): a sign-off, the addresses, a Sentinel-2
@@ -40,7 +39,7 @@ export function Footer() {
           </Suspense>
           <ul className={s.addressLines}>
             <li>
-              <a href={REPO} rel="noreferrer" target="_blank">
+              <a href={REPO_URL} rel="noreferrer" target="_blank">
                 GitHub repository
               </a>
             </li>

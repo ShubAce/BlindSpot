@@ -33,8 +33,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const st = caseState(c.unseen);
   const what = st === 'unseen' ? 'Candidate unseen burn' : st === 'alerted' ? 'Burn a fire satellite saw' : 'Burn not yet checked against fire alerts';
   return {
-    title: `Case ${c.id}${where ? `, ${where}` : ''}, ${dateIST(c.burn_before, { year: true })}`,
+    title: `Burn scar ${where ? `${where}, ` : ''}${dateIST(c.burn_before, { year: true })} (case ${c.id})`,
     description: `${what}: ${metricText('area_ha', c.area_ha)} ${where ? `${where} ` : ''}between the Sentinel-2 passes of ${dateIST(c.burn_after)} and ${dateIST(c.burn_before, { year: true })}.`,
+    alternates: { canonical: `/case/${c.id}` },
   };
 }
 

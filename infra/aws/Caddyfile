@@ -1,0 +1,43 @@
+# BlindSpot on one AWS server: Caddy terminates HTTPS (Let's Encrypt, renewed by itself) and hands
+# each host to a local process. Installed to /etc/caddy/Caddyfile by infra/aws/deploy.py.
+
+blindspotin.tech {
+	redir https://www.blindspotin.tech{uri} permanent
+}
+
+www.blindspotin.tech {
+	# Pages built on Vercel (still in visitors' offline caches) load Vercel Web Analytics from here.
+	# The site now uses Google Analytics; answer the old script and beacons empty, not with a 404.
+	handle /_vercel/* {
+		header Cache-Control "public, max-age=86400"
+		respond 204
+	}
+	handle {
+		encode zstd gzip
+		reverse_proxy 127.0.0.1:3000
+	}
+}
+
+api.blindspotin.tech {
+	# Search engines may fetch the API (a page's data, when they render it) but should list the
+	# website, not raw JSON. robots.txt would block the fetches too, so a header instead.
+	header X-Robots-Tag "noindex"
+	# Relay for the jobs on GitHub's US runners (infra/relay): data.gov.in and FIRMS answer India.
+	# DATAGOV_RELAY_URL / FIRMS_RELAY_URL = https://api.blindspotin.tech/relay
+	handle_path /relay/* {
+		reverse_proxy 127.0.0.1:8090
+	}
+	handle {
+		# JSON and text only: the investigator's text/event-stream must reach the browser unbuffered.
+		encode zstd gzip {
+			match {
+				header Content-Type application/json*
+				header Content-Type application/geo+json*
+				header Content-Type text/csv*
+				header Content-Type text/plain*
+				header Content-Type text/html*
+			}
+		}
+		reverse_proxy 127.0.0.1:8000
+	}
+}

@@ -54,6 +54,14 @@ class Settings(BaseSettings):
 
     database_url: str = LOCAL_DATABASE_URL  # the Docker PostGIS from infra/docker-compose.yml
     enable_scheduler: bool = False  # run the job scheduler inside the API process
+    # May the API process do job work itself, such as rebuilding the landing page's featured frames
+    # when they are stale? On for local development; off where the scheduled jobs do that work (the
+    # AWS server sets BACKGROUND_REBUILDS=false), and never on Vercel, which freezes a function after
+    # its response.
+    background_rebuilds: bool = True
+    # Compress responses in the API. Off behind a proxy that compresses (Caddy on the AWS server sets
+    # GZIP_RESPONSES=false), so the single uvicorn worker does not spend its time in zlib.
+    gzip_responses: bool = True
     # Create missing tables when the API starts. Serverless deployments (Vercel) set this to false:
     # every cold start would otherwise run create_all, and the tables already exist there.
     init_db_on_startup: bool = True

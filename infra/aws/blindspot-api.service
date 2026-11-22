@@ -1,0 +1,26 @@
+[Unit]
+Description=BlindSpot API (FastAPI on uvicorn)
+After=network-online.target postgresql.service
+Wants=network-online.target postgresql.service
+
+[Service]
+User=blindspot
+Group=blindspot
+WorkingDirectory=/srv/blindspot/api
+EnvironmentFile=/etc/blindspot/db.env
+EnvironmentFile=/etc/blindspot/api.env
+# FastAPI runs sync routes in a thread pool; glibc gives each thread its own malloc arena, which
+# holds freed memory. Two arenas keep the API's footprint small enough for a 1 GB server.
+Environment=MALLOC_ARENA_MAX=2
+# Behind Caddy: take the visitor's address from X-Forwarded-For (Caddy sets it), so per-client
+# limits (models/client_quota.py) count each visitor, not 127.0.0.1.
+ExecStart=/srv/blindspot/venv/bin/uvicorn blindspot.api.main:app --host 127.0.0.1 --port 8000 --workers 1 --proxy-headers --forwarded-allow-ips 127.0.0.1 --timeout-keep-alive 30
+Restart=always
+RestartSec=3
+MemoryHigh=550M
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
