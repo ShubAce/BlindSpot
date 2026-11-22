@@ -872,10 +872,12 @@ def lagged_correlations(
 ) -> dict[str, Any]:
     """How well an hourly model series tracks an hourly observed one, model leading by 0..max_lag h.
 
-    For each lag: Pearson r, Spearman rho, n, and (with `control`) the partial r once both series
-    are regressed on the control (here log ventilation, since stagnant air alone raises PM2.5). At
-    lag 0 also the effective number of independent hours (Bretherton et al. 1999,
-    n_eff = n (1 - r1x r1y) / (1 + r1x r1y)), because neighbouring hours are not independent.
+    For each lag L the model at hour t is paired with the observation at t + L: Pearson r,
+    Spearman rho, n, and (with `control`) the partial r once each series is regressed on the
+    control of its own hour, the model on control(t) and the observation on control(t + L) (here
+    log ventilation, since stagnant air alone raises PM2.5). At lag 0 also the effective number of
+    independent hours (Bretherton et al. 1999, n_eff = n (1 - r1x r1y) / (1 + r1x r1y)), because
+    neighbouring hours are not independent.
     """
     from scipy.stats import pearsonr, spearmanr
 
@@ -883,8 +885,13 @@ def lagged_correlations(
     for lag in range(max_lag + 1):
         x = model[: model.size - lag] if lag else model
         y = obs[lag:]
-        z = None if control is None else (control[: control.size - lag] if lag else control)
-        ok = np.isfinite(x) & np.isfinite(y) & (np.isfinite(z) if z is not None else True)
+        zx = zy = None
+        if control is not None:  # each series against the control at its own hour
+            zx = control[: control.size - lag] if lag else control
+            zy = control[lag:]
+        ok = np.isfinite(x) & np.isfinite(y)
+        if control is not None:
+            ok &= np.isfinite(zx) & np.isfinite(zy)
         n = int(ok.sum())
         if n < min_n or np.std(x[ok]) == 0 or np.std(y[ok]) == 0:
             by_lag.append({"lag_h": lag, "n": n, "r": None, "rho": None, "partial_r": None})
@@ -895,8 +902,8 @@ def lagged_correlations(
             "rho": round(float(spearmanr(x[ok], y[ok])[0]), 3),
             "partial_r": None,
         }
-        if z is not None and np.std(z[ok]) > 0:
-            rx, ry = _residual(x[ok], z[ok]), _residual(y[ok], z[ok])
+        if control is not None and np.std(zx[ok]) > 0 and np.std(zy[ok]) > 0:
+            rx, ry = _residual(x[ok], zx[ok]), _residual(y[ok], zy[ok])
             if np.std(rx) > 0 and np.std(ry) > 0:
                 entry["partial_r"] = round(float(np.corrcoef(rx, ry)[0, 1]), 3)
         if lag == 0:
