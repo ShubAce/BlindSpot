@@ -16,9 +16,13 @@ and how much each of them moves from seed to seed (the Monte Carlo noise). Nothi
 
 To attribute a change, each flag puts one earlier behaviour back:
   --ceil-labels      PM2.5 rows on the hour after their period end (ceil), not on its centre
-  --no-spinup        score from the first hour of the hindcast (no 48 h spin-up)
+  --no-spinup        score from the first hour of the hindcast (no 48 h spin-up), as before;
+                     this also changes which hours are scored
+  --spinup-h N       start the hindcast N h before the same first scored hour (instead of 48):
+                     the spin-up alone, on the same scored hours
   --equal-particles  the same number of particles per source (3 to 40) instead of by tonnes
   --keep-static      release smoke from persistent industrial heat sources too
+and --particles N changes the hindcast's particle budget per member (VALIDATION_PARTICLES).
 """
 
 from __future__ import annotations
@@ -45,8 +49,10 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--seeds", type=int, default=5)
     ap.add_argument("--ceil-labels", action="store_true")
     ap.add_argument("--no-spinup", action="store_true")
+    ap.add_argument("--spinup-h", type=float)
     ap.add_argument("--equal-particles", action="store_true")
     ap.add_argument("--keep-static", action="store_true")
+    ap.add_argument("--particles", type=int)
     ap.add_argument("--out", type=Path)
     return ap.parse_args()
 
@@ -139,12 +145,21 @@ def main() -> int:
             first = math.ceil(max(now - job.VALIDATION_MAX_DAYS * 86400.0, wind_t0) / 3600.0) * 3600.0
             return (first, first, t_end) if first < t_end else None
         job.validation_window = first_hour_window
+    elif args.spinup_h is not None:
+        window = job.validation_window
+
+        def shorter_spinup(run_at, wind_t0, wind_end):  # same scored hours, shorter hindcast
+            w = window(run_at, wind_t0, wind_end)
+            return None if w is None else (w[1] - args.spinup_h * 3600.0, w[1], w[2])
+        job.validation_window = shorter_spinup
     if args.equal_particles:
         build = job.build_forward_particles
         job.build_forward_particles = lambda *a, **k: build(
             *a, **{**k, "allocation": "equal", "budget": job.FWD_PARTICLES, "floor": job.PER_SOURCE_MIN})
     if args.keep_static:
         job.load_fires = functools.partial(job.load_fires, exclude_static=False)
+    if args.particles:
+        job.VALIDATION_PARTICLES = args.particles
 
     run_at = datetime.fromisoformat(args.run_at.replace("Z", "+00:00"))
     started = time.perf_counter()
@@ -162,6 +177,8 @@ def main() -> int:
         summary, series = job.run_validation(inp, base + k)
         m = run_metrics(summary, series)
         m["seed"], m["runtime_s"] = base + k, round(time.perf_counter() - t, 1)
+        if args.equal_particles:
+            m["monte_carlo"]["allocation"] = "equal per source, 3 to 40 (--equal-particles)"
         runs.append(m)
         d = m["cities"].get("Delhi") or {}
         print(f"seed {base + k}: Delhi r {d.get('r')} partial {d.get('partial_r')} n_eff {d.get('n_eff')} "
@@ -169,7 +186,8 @@ def main() -> int:
               f"{m['runtime_s']} s", flush=True)
     result = {
         "run_at": run_at.isoformat(),
-        "flags": {k: getattr(args, k) for k in ("ceil_labels", "no_spinup", "equal_particles", "keep_static")},
+        "flags": {k: getattr(args, k) for k in ("ceil_labels", "no_spinup", "spinup_h", "equal_particles",
+                                                "keep_static", "particles")},
         "window": {"hindcast_from": datetime.fromtimestamp(inp.t0, tz=run_at.tzinfo).isoformat(),
                    "scored_from": datetime.fromtimestamp(inp.t_score, tz=run_at.tzinfo).isoformat(),
                    "scored_to": datetime.fromtimestamp(inp.t_end, tz=run_at.tzinfo).isoformat(),

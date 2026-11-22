@@ -10,6 +10,7 @@ the integrator, not data. Tests delete only the rows they create.
 from __future__ import annotations
 
 import csv
+import dataclasses
 import gzip
 import zlib
 from datetime import UTC, datetime, timedelta
@@ -239,9 +240,13 @@ def test_validation_hindcast_spins_up_before_the_scored_hours():
     assert {s["city"] for s in series} == {"Delhi", "Ludhiana"}
     for s in series:
         assert [pt["t"].timestamp() for pt in s["series"]] == hours.tolist()
-    ludhiana = next(s for s in series if s["city"] == "Ludhiana")
-    assert ludhiana["series"][0]["smoke_index"] > 0  # the smoke of the spin-up fires has arrived
     assert summary["cities"][0]["city"] == "Delhi" and summary["cities"][0]["hours_observed"] == hours.size
+    # what the spin-up is for: fires that burned before the first scored hour (835 of 2,305 here)
+    # still put smoke over the cities in the scored hours
+    early = dataclasses.replace(inp, fires=inp.fires.subset(inp.fires.t < inp.t_score))
+    assert 0 < len(early.fires) < len(inp.fires)
+    _, early_series = job.validation_hindcast(early, seed=3)
+    assert early_series[0][2].sum() > 0
 
 
 def test_allocate_by_mass_gives_particles_of_equal_weight():

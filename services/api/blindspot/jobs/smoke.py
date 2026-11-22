@@ -1112,7 +1112,10 @@ def smoke() -> dict[str, Any]:
 
 VALIDATION_SPINUP_H = 48  # the hindcast starts this long before the first scored hour
 VALIDATION_MAX_DAYS = 7  # at most the last week is scored
-VALIDATION_PARTICLES = 24_000  # per member, shared by the sources in proportion to their tonnes
+# Per member, shared by the sources in proportion to their tonnes. On the 15-22 Nov 2026 hindcast
+# (scripts/smoke_validate_eval.py, 5 seeds) every city's lag-0 r then moves by SD <= 0.032 from
+# seed to seed (24,000: up to 0.079); about 20 s per hindcast on a laptop.
+VALIDATION_PARTICLES = 48_000
 VALIDATION_MIN_PER_SOURCE = 1
 VALIDATION_LAG_H = 12  # leads and lags scanned: the model may be early or late by up to 12 h
 STATION_RADIUS_KM = tj.RECEPTOR_RADIUS_KM
