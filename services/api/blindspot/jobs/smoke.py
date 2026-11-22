@@ -34,6 +34,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from blindspot.analytics import trajectory as tj
+from blindspot.analytics.fires_stats import STATIC_SQL
 from blindspot.db import session_scope
 from blindspot.geo import AOI_BBOX
 from blindspot.http import FetchError
@@ -273,35 +274,44 @@ def load_labels(
 
 
 def load_fires(
-    session: Session, t_from: datetime, t_to: datetime, bbox: tuple[float, float, float, float]
+    session: Session, t_from: datetime, t_to: datetime, bbox: tuple[float, float, float, float],
+    exclude_static: bool = True,
 ) -> tuple[Fires | None, str]:
-    """FIRMS detections in [t_from, t_to] inside the wind grid; low-confidence ones are dropped
-    (FIRMS flags them for sun glint and other false alarms)."""
+    """FIRMS detections in [t_from, t_to] inside the wind grid. Low-confidence ones are dropped
+    (FIRMS flags them for sun glint and other false alarms), and so are detections at persistent
+    industrial heat sources (fire_static_site: kilns, factories, flares), by the rule the crop-fire
+    counts use (analytics/fires_stats.py STATIC_RULE): they are not crop residue, and their share
+    of the detections grows as the crop fires fade."""
     if not _table_exists(session, "fire_detection"):
         return None, "fire_detection table does not exist yet"
     needed = {"id", "acq_utc", "lat", "lon", "frp_mw", "confidence"}
-    missing = needed - _columns(session, "fire_detection")
+    columns = _columns(session, "fire_detection")
+    missing = needed - columns
     if missing:
         return None, f"fire_detection lacks columns {sorted(missing)}"
+    static = exclude_static and "geom" in columns and _table_exists(session, "fire_static_site")
     rows = session.execute(
         text(
-            """
-            SELECT id, extract(epoch FROM acq_utc)::float8 AS t, lat, lon, frp_mw, confidence,
-                   state, district, fetch_id
-            FROM fire_detection
-            WHERE acq_utc >= :t0 AND acq_utc <= :t1
-              AND lon BETWEEN :w AND :e AND lat BETWEEN :s AND :n
-            ORDER BY acq_utc, id
+            f"""
+            SELECT f.id, extract(epoch FROM f.acq_utc)::float8 AS t, f.lat, f.lon, f.frp_mw,
+                   f.confidence, f.state, f.district, f.fetch_id,
+                   {STATIC_SQL if static else "false"} AS static_site
+            FROM fire_detection f
+            WHERE f.acq_utc >= :t0 AND f.acq_utc <= :t1
+              AND f.lon BETWEEN :w AND :e AND f.lat BETWEEN :s AND :n
+            ORDER BY f.acq_utc, f.id
             """
         ),
         {"t0": t_from, "t1": t_to, "w": bbox[0], "s": bbox[1], "e": bbox[2], "n": bbox[3]},
     ).mappings().all()
-    keep = [r for r in rows if r["confidence"] != "low" and (r["frp_mw"] or 0) > 0]
+    crop = [r for r in rows if not r["static_site"]]
+    keep = [r for r in crop if r["confidence"] != "low" and (r["frp_mw"] or 0) > 0]
     stats = {
         "in_window": len(rows),
         "used": len(keep),
-        "low_confidence_skipped": sum(1 for r in rows if r["confidence"] == "low"),
-        "no_frp_skipped": sum(1 for r in rows if r["confidence"] != "low" and not (r["frp_mw"] or 0) > 0),
+        "static_site_skipped": len(rows) - len(crop) if static else None,
+        "low_confidence_skipped": sum(1 for r in crop if r["confidence"] == "low"),
+        "no_frp_skipped": sum(1 for r in crop if r["confidence"] != "low" and not (r["frp_mw"] or 0) > 0),
     }
     fetch_ids = sorted({r["fetch_id"] for r in keep if r["fetch_id"] is not None}, reverse=True)
     frp = np.array([r["frp_mw"] for r in keep], dtype=np.float64)
@@ -317,7 +327,13 @@ def load_fires(
         fetch_ids=fetch_ids,
         stats=stats,
     )
-    return fires, f"{len(keep)} FIRMS detections ({stats['low_confidence_skipped']} low-confidence skipped)"
+    note = f"{len(keep)} FIRMS detections ({stats['low_confidence_skipped']} low-confidence"
+    if static:
+        note += f" and {stats['static_site_skipped']} at persistent industrial heat sources skipped)"
+    else:
+        note += " skipped; persistent industrial heat sources not filtered"
+        note += ", no fire_static_site table)" if exclude_static else ")"
+    return fires, note
 
 
 def load_scars(

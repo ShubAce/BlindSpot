@@ -420,6 +420,53 @@ def test_smoke_routes(recorded_runs, monkeypatch):
         smoke_router._cache.clear()
 
 
+def test_load_fires_leaves_out_persistent_heat_sources():
+    """A detection inside a fire_static_site zone (a kiln or flare seen hot on 3+ nights) is not
+    crop smoke, as in the crop-fire counts; one 5 km away is. Rows live only inside a rolled-back
+    transaction."""
+    from sqlalchemy import text
+    from sqlalchemy.orm import Session
+
+    from blindspot.db import engine
+
+    init_db()
+    lat, lon = 33.52, 71.21
+    t = datetime(2031, 1, 6, 8, 30, tzinfo=UTC)
+    fire = text(
+        """
+        INSERT INTO fire_detection (source, satellite, instrument, acq_utc, lat, lon, geom,
+                                    confidence, frp_mw, daynight)
+        VALUES ('VIIRS_NOAA20_NRT', 'NOAA-20', 'VIIRS', :t, :lat, :lon,
+                ST_SetSRID(ST_MakePoint(:lon, :lat), 4326), :conf, 6.0, 'D')
+        """
+    )
+    site = text(
+        """
+        INSERT INTO fire_static_site (area, lat, lon, nights, night_detections, first_night,
+                                      last_night, computed_at)
+        VALUES (ST_Multi(ST_Buffer(ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography, 400)::geometry),
+                :lat, :lon, 5, 7, '2030-12-01', '2031-01-04', now())
+        """
+    )
+    bbox = (lon - 0.2, lat - 0.2, lon + 0.2, lat + 0.2)
+    with engine.connect() as conn:
+        tx = conn.begin()
+        try:
+            conn.execute(site, {"lat": lat, "lon": lon})
+            for dlat, conf in ((0.001, "nominal"), (0.045, "nominal"), (0.09, "low")):  # 110 m, 5 km, 10 km
+                conn.execute(fire, {"t": t, "lat": lat + dlat, "lon": lon, "conf": conf})
+            session = Session(bind=conn)
+            fires, note = job.load_fires(session, t - timedelta(hours=1), t + timedelta(hours=1), bbox)
+            kept_all, _ = job.load_fires(session, t - timedelta(hours=1), t + timedelta(hours=1), bbox,
+                                         exclude_static=False)
+        finally:
+            tx.rollback()
+    assert len(fires) == 1 and fires.lat[0] == pytest.approx(lat + 0.045)
+    assert fires.stats["static_site_skipped"] == 1 and fires.stats["low_confidence_skipped"] == 1
+    assert "1 at persistent industrial heat sources" in note
+    assert len(kept_all) == 2
+
+
 def test_load_scars_reads_only_candidate_unseen_burn_clusters():
     """Reads the sentinel module's real burn_cluster schema: an unseen scar is loaded (area-weighted
     dry matter, its burn window kept), a FIRMS-matched one and an unmatched (NULL) one are not.
