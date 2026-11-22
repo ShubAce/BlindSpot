@@ -42,6 +42,9 @@ export type ServerError = { kind: ApiErrorKind | 'unknown'; status: number | nul
 export type ApiResult<T> = { ok: true; data: T } | { ok: false; error: ServerError };
 
 const SERVER_BASE = (process.env.API_INTERNAL_URL || API_BASE).replace(/\/+$/, '');
+// Uncompressed: on the server the API is a local hop (API_INTERNAL_URL), where gzipping in Python and
+// gunzipping in Node would only spend CPU.
+const SERVER_INIT = { headers: { 'Accept-Encoding': 'identity' } };
 
 // 10 s: the first read after an API deploy meets an empty CDN and a cold Python function (numpy,
 // skyfield and rasterio load before the route runs). Sections stream behind <Suspense>, so a slow
@@ -49,7 +52,7 @@ const SERVER_BASE = (process.env.API_INTERNAL_URL || API_BASE).replace(/\/+$/, '
 export async function serverGet<T>(path: string, query?: Query, timeoutMs = 10_000): Promise<ApiResult<T>> {
   'use cache';
   try {
-    const data = await apiGet<T>(path, query, { timeoutMs, base: SERVER_BASE });
+    const data = await apiGet<T>(path, query, { timeoutMs, base: SERVER_BASE, init: SERVER_INIT });
     cacheLife({ stale: 30, revalidate: 30, expire: 120 });
     return { ok: true, data };
   } catch (e) {

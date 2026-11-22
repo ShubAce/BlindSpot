@@ -1,9 +1,10 @@
 import type { Metadata, Viewport } from 'next';
 import { Anton, Work_Sans } from 'next/font/google';
 import type { ReactNode } from 'react';
-import { Analytics } from '@vercel/analytics/next';
+import { GoogleAnalytics } from '@/components/GoogleAnalytics';
 import { LoadRecovery } from '@/components/pwa/LoadRecovery';
 import { OfflineSupport } from '@/components/pwa/OfflineSupport';
+import { KEYWORDS, OPEN_GRAPH, SITE_DESCRIPTION, SITE_GRAPH, SITE_NAME, SITE_URL, jsonLd } from '@/lib/site';
 import { ThemeScript } from '@/lib/theme';
 
 import './globals.css';
@@ -27,21 +28,33 @@ const workSans = Work_Sans({
   variable: '--font-work-sans',
 });
 
-// Shared links need an absolute base for the share card. On Vercel Next falls back to the production
-// (or preview) URL by itself; elsewhere set NEXT_PUBLIC_SITE_URL before `next build`.
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, '');
+// Search-engine ownership checks (Google Search Console, Bing Webmaster Tools), set at build time when
+// the site is verified by meta tag rather than by a DNS record.
+const GOOGLE_VERIFICATION = process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION?.trim();
+const BING_VERIFICATION = process.env.NEXT_PUBLIC_BING_SITE_VERIFICATION?.trim();
 
-const DESCRIPTION =
-  'BlindSpot maps the Sentinel-2 burn scars in Punjab and Haryana that no fire alert matched, clocks the evening burning the polar fire satellites do not report, and traces the smoke to Delhi.';
-
+// Absolute URLs (canonical, share card, sitemap) come from SITE_URL (lib/site.ts). Every indexable page
+// sets its own canonical path, so ?days= / ?lang= variants never compete with it in search results.
 export const metadata: Metadata = {
-  ...(SITE_URL ? { metadataBase: new URL(SITE_URL) } : {}),
-  title: { default: 'BlindSpot', template: '%s · BlindSpot' },
-  description: DESCRIPTION,
-  applicationName: 'BlindSpot',
-  openGraph: { type: 'website', siteName: 'BlindSpot', locale: 'en_IN' },
+  metadataBase: new URL(SITE_URL),
+  title: { default: 'BlindSpot: stubble burning in Punjab the satellites miss', template: '%s · BlindSpot' },
+  description: SITE_DESCRIPTION,
+  applicationName: SITE_NAME,
+  keywords: KEYWORDS,
+  authors: [{ name: 'Team Praise' }],
+  creator: 'Team Praise',
+  publisher: SITE_NAME,
+  category: 'environment',
+  // no canonical here: a layout-level one would tell search engines that every page without its own
+  // is a copy of the home page. Each indexable page sets `alternates.canonical` itself.
+  openGraph: OPEN_GRAPH,
   twitter: { card: 'summary_large_image' },
-  robots: { index: true, follow: true },
+  robots: { index: true, follow: true, googleBot: { index: true, follow: true, 'max-image-preview': 'large', 'max-snippet': -1 } },
+  // unset values render no tag
+  verification: {
+    google: GOOGLE_VERIFICATION,
+    other: BING_VERIFICATION ? { 'msvalidate.01': BING_VERIFICATION } : undefined,
+  },
 };
 
 // The dark default, which is also what a visitor without JavaScript gets. The light theme overrides
@@ -61,15 +74,16 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
     <html lang="en" className={`${anton.variable} ${workSans.variable}`} suppressHydrationWarning>
       <head>
         <ThemeScript />
+        {/* who publishes the site, and the site itself (schema.org, lib/site.ts) */}
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(SITE_GRAPH) }} />
       </head>
       <body>
         {children}
         <OfflineSupport />
         {/* a section the server could not fill (a cold API) asks again by itself: LoadRecovery.tsx */}
         <LoadRecovery />
-        {/* Vercel Web Analytics: page views go to this site's own /_vercel/insights, which the
-            service worker never handles; it counts nothing until Analytics is enabled on the project */}
-        <Analytics />
+        {/* Google Analytics 4, only when NEXT_PUBLIC_GA_ID is set (components/GoogleAnalytics.tsx) */}
+        <GoogleAnalytics />
       </body>
     </html>
   );

@@ -85,7 +85,7 @@ const FAILED = 'x-blindspot-failed';
 const TITLE = 'x-blindspot-title';
 const TITLE_TAG = /<title[^>]*>([^<]{1,300})<\/title>/i;
 
-const API_ORIGINS = new Set(['https://blindspot-api-azure.vercel.app']);
+const API_ORIGINS = new Set(['https://api.blindspotin.tech', 'https://blindspot-api-azure.vercel.app']);
 try {
   const fromPage = new URL(self.location.href).searchParams.get('api');
   if (fromPage) API_ORIGINS.add(new URL(fromPage).origin);

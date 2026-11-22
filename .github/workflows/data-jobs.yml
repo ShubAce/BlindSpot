@@ -1,20 +1,19 @@
 # BlindSpot data pipeline on free GitHub Actions runners (public repo).
-# Each schedule runs one group of jobs from `python -m blindspot.jobs`; results land in Neon (PostGIS),
-# which the Vercel API reads. Chained jobs run automatically: met -> smoke, sentinel -> risk + featured,
-# bulletin -> featured_investigations. Secrets: DATABASE_URL (Neon direct endpoint) and the API keys;
-# set them with infra/set_github_secrets.py. Until DATABASE_URL is set, every run skips quietly.
+# Each schedule runs one group of jobs from `python -m blindspot.jobs`; results land in the Postgres +
+# PostGIS on the AWS server (infra/aws), which the API there reads. Chained jobs run automatically:
+# met -> smoke, sentinel -> risk + featured, bulletin -> featured_investigations. Secrets: DATABASE_URL
+# (set by `infra/aws/deploy.py --only none --github-secret`) and the API keys (infra/set_github_secrets.py).
+# Until DATABASE_URL is set, every run skips quietly.
 # GitHub's own cron has been unreliable in 2026 (scheduled runs hours late or never created, manual
 # dispatches fine), so scheduler.yml keeps this timetable and dispatches each slot with `slot` set to
 # the cron string below; a run picks its jobs the same way either way.
 name: data-jobs
 
-# Cadence is sized to Neon's free plan (100 CU-hours and 5 GB egress a month; the database is
-# suspended until the next month if either runs out): docs/neon-budget.md. Every run keeps the
-# compute awake for its own length plus 5 minutes, so the jobs run hourly only while fires burn and
-# data arrive, and every other group starts at :17 together with an hourly-group run, so its work
-# shares that wake-up instead of paying its own 5-minute tail. Only the 07:30 IST bulletin has a
-# wake of its own. The API's CDN expiry clocks (services/api/blindspot/api/cache.py) follow these
-# times; tests/test_deploy_serve.py checks that they still do.
+# Cadence: the jobs run hourly only while fires burn and data arrive, and every other group starts at
+# :17 together with an hourly-group run. It was sized to Neon's free plan (docs/neon-budget.md) before
+# the move to one AWS server on 2026-11-22, and still keeps that small server's database work low.
+# The API's cache expiry clocks (services/api/blindspot/api/cache.py) follow these times;
+# tests/test_deploy_serve.py checks that they still do.
 on:
   schedule:
     - cron: "17 8-18 * * *"        # hourly 13:47-23:47 IST: fires, official counts, air quality, geostationary scans
@@ -59,12 +58,13 @@ jobs:
       INIT_DB_ON_STARTUP: "0"
       SENTINEL_BUDGET_MIN: "40"
       CACHE_DIR: /tmp/blindspot-cache   # the runner context is not available in job-level env
-      PUBLIC_API_URL: https://blindspot-api-azure.vercel.app
+      PUBLIC_API_URL: https://api.blindspotin.tech
       # data.gov.in refuses connections from these (US) runners, and NASA FIRMS stopped answering
-      # them on 2026-10-31; the relay runs in Mumbai and forwards only data.gov.in resource reads
-      # and FIRMS's public active-fire files (infra/relay). FIRMS falls back to its own host.
-      DATAGOV_RELAY_URL: https://blindspot-relay.vercel.app
-      FIRMS_RELAY_URL: https://blindspot-relay.vercel.app
+      # them on 2026-10-31; the relay runs in Mumbai (the AWS server, infra/aws) and forwards only
+      # data.gov.in resource reads and FIRMS's public active-fire files (infra/relay). FIRMS falls
+      # back to its own host.
+      DATAGOV_RELAY_URL: https://api.blindspotin.tech/relay
+      FIRMS_RELAY_URL: https://api.blindspotin.tech/relay
     defaults:
       run:
         working-directory: services/api
@@ -91,7 +91,7 @@ jobs:
           if [ "${{ steps.dedupe.outputs.skip }}" = "true" ]; then
             echo "configured=false" >> "$GITHUB_OUTPUT"
           elif [ -z "$DATABASE_URL" ]; then
-            echo "::notice::DATABASE_URL secret is not set; skipping (run infra/set_github_secrets.py)."
+            echo "::notice::DATABASE_URL secret is not set; skipping (run infra/aws/deploy.py --only none --github-secret)."
             echo "configured=false" >> "$GITHUB_OUTPUT"
           else
             echo "configured=true" >> "$GITHUB_OUTPUT"
@@ -155,11 +155,9 @@ jobs:
           done
           exit $status
 
-      # A check that the API answers, while the database is still awake from the jobs (no extra
-      # wake; /api/health reads a few bytes). Nothing heavier: the CDN keeps one cache per region,
-      # this runner is not in India, and the website's copies expire on the clocks in api/cache.py,
-      # so a warmed headline here would only cost Neon ~190 KB a run for a copy nobody reads.
-      - name: Refresh the API's CDN cache
+      # A check that the API answers after the jobs wrote (/api/health reads a few bytes); its result
+      # is only printed, so a slow API never fails the run.
+      - name: Check that the API answers
         if: always() && steps.guard.outputs.configured == 'true'
         shell: bash
         run: |

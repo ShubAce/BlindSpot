@@ -6,7 +6,7 @@ import { DistrictSkeleton } from '@/components/brief/BriefSkeleton';
 import { getDistrictBrief } from '@/components/brief/data';
 import { BackToIndex, DistrictBrief } from '@/components/brief/DistrictBrief';
 import { BriefError } from '@/components/brief/parts';
-import { count, decodeSegment, districtHref, haText, parseDays, parseWatchAll, windowRange } from '@/components/brief/read';
+import { count, DEFAULT_DAYS, decodeSegment, districtHref, haText, parseDays, parseWatchAll, windowRange } from '@/components/brief/read';
 import { placeName } from '@/lib/format';
 
 /**
@@ -54,8 +54,10 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
         ? '; none of its harvested fields ranks in the top tenth for the next burn.'
         : '.';
   return {
-    title: `${d.district} field brief`,
+    title: `${d.district} stubble burning: field brief`,
     description: `${what} of ${where}${d.window ? ` in the Sentinel-2 passes of ${windowRange(d.window)}` : ''}${watched}`,
+    // one canonical address per district, whatever spelling, ?days= or ?watch= it was reached with
+    alternates: { canonical: districtHref(d.district, DEFAULT_DAYS) },
   };
 }
 

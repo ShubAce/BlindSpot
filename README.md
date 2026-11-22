@@ -13,7 +13,7 @@ explains the past week's air with cited, number-checked answers.
   [/live](https://www.blindspotin.tech/live), district field briefs at
   [/brief](https://www.blindspotin.tech/brief), the daily bulletin at
   [/bulletin](https://www.blindspotin.tech/bulletin))
-- **Live API:** https://blindspot-api-azure.vercel.app/api/stats/headline (every response lists its sources)
+- **Live API:** https://api.blindspotin.tech/api/stats/headline (every response lists its sources)
 - **Method and accuracy:** [/method](https://www.blindspotin.tech/method), with every validation number read
   live
 - **Design and contracts:** [docs/architecture.md](docs/architecture.md), [docs/api-contract-notes.md](docs/api-contract-notes.md)
@@ -97,11 +97,14 @@ flowchart LR
     J3["daily<br/>Sentinel-2 scars, then risk"]
     J4["daily<br/>bulletin, backfills, retention"]
   end
-  R["Relay on Vercel, Mumbai<br/>data.gov.in and FIRMS reads"]
-  DB[("Postgres + PostGIS<br/>Neon")]
-  API["FastAPI on Vercel<br/>sources on every response<br/>CDN copies on the job clock<br/>stored answers"]
+  subgraph AWS["One AWS server, Mumbai (t4g.micro)"]
+    direction TB
+    R["Relay<br/>data.gov.in and FIRMS reads"]
+    DB[("Postgres + PostGIS")]
+    API["FastAPI<br/>sources on every response<br/>stored answers"]
+    WEB["Next.js site<br/>MapLibre + deck.gl"]
+  end
   AG["Investigator<br/>Gemini function calling<br/>number verifier"]
-  WEB["Next.js site on Vercel<br/>MapLibre + deck.gl"]
   S --> J --> DB --> API --> WEB
   S -. "refuse US runners" .-> R -.-> J
   API <--> AG
@@ -111,13 +114,13 @@ flowchart LR
   PostGIS, so a slow upstream never slows the site, and the site keeps serving the last good data with its age.
 - **Provenance on every number.** Every upstream call is logged in `source_fetch` (keys masked). Every API response
   carries `sources`. The investigator cites them.
-- **Free tiers only.** Neon free (PostGIS), Vercel Hobby (site and API, in Singapore beside the database), GitHub
-  Actions on this public repository (jobs), Gemini free tier with an answer cache and a daily budget guard. The job
-  schedule is sized to Neon's monthly compute and transfer allowances, and the API's CDN copies expire on the same
-  clock, so one database wake-up refreshes a whole group of answers ([docs/neon-budget.md](docs/neon-budget.md)).
+- **One small server.** The site, the API, the relay and Postgres + PostGIS share one AWS Graviton server in Mumbai
+  (t4g.micro, 1 GB, about $9 a month), behind Caddy for HTTPS ([infra/aws](infra/aws)). The jobs stay on GitHub
+  Actions on this public repository; Gemini runs on its free tier with an answer cache and a daily budget guard. Until
+  22 November 2026 the site ran on Vercel and Neon free tiers ([docs/neon-budget.md](docs/neon-budget.md)).
 - **A relay for blocked upstreams.** data.gov.in refuses GitHub's US runners, and NASA FIRMS stopped answering them on
-  31 October 2026, so the jobs reach both through one small function in Mumbai (`infra/relay`) that forwards only
-  those reads. FIRMS falls back to its own host if the relay fails.
+  31 October 2026, so the jobs reach both through one small relay on the Mumbai server (`infra/relay`) that
+  forwards only those reads. FIRMS falls back to its own host if the relay fails.
 
 ## Repository
 
@@ -131,7 +134,7 @@ flowchart LR
 | `services/api/tests/`                 | pytest suite; fixtures are recorded real responses                                                    |
 | `apps/web/`                           | The website (Next.js 16)                                                                              |
 | `docs/`                               | Architecture, API contract, research notes with citations, build logs                                 |
-| `infra/`                              | Local PostGIS (Docker Compose), Vercel deploys (API, site, relay), Neon loader, GitHub secrets helper |
+| `infra/`                              | AWS server (`infra/aws`: provision, deploy), local PostGIS (Docker Compose), earlier Vercel deploys and Neon loader, GitHub secrets helper |
 | `infra/relay/`                        | The Mumbai relay for data.gov.in and FIRMS reads                                                      |
 | `.github/workflows/data-jobs.yml`     | The job schedule; `scheduler.yml` dispatches its slots on time                                      |
 
@@ -157,7 +160,8 @@ pnpm install
 pnpm dev                                                # http://localhost:3000
 ```
 
-Deployment (Neon, Vercel, GitHub Actions) is described in [services/api/README.md](services/api/README.md).
+Deployment: `infra/aws/provision.py` creates the server and `infra/aws/deploy.py` deploys to it (see their
+docstrings); the jobs (GitHub Actions) are described in [services/api/README.md](services/api/README.md).
 
 ## Honesty rules
 

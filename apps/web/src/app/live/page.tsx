@@ -8,9 +8,10 @@ import { PATHS } from '@/lib/api';
 import { serverGet } from '@/lib/api-server';
 
 export const metadata: Metadata = {
-  title: 'Mission control',
+  title: 'Live stubble burning map: Punjab and Haryana fires',
   description:
-    'Live map of the Punjab and Haryana crop-fire season: burn scars no fire satellite alerted on, fire detections, where the smoke drifts, the air at Delhi, and when the next fire satellite looks.',
+    'Live map of Punjab and Haryana crop fires: NASA fire alerts, burn scars no alert matched, smoke drifting to Delhi, its air quality, and the next fire satellite pass.',
+  alternates: { canonical: '/live' },
 };
 
 /** The finding line's first read, on the server: it streams in behind a skeleton of its own size,

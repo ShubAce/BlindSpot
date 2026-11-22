@@ -1,0 +1,21 @@
+[Unit]
+Description=BlindSpot website (Next.js)
+After=network-online.target blindspot-api.service
+Wants=network-online.target
+
+[Service]
+User=blindspot
+Group=blindspot
+WorkingDirectory=/srv/blindspot/web
+EnvironmentFile=/etc/blindspot/web.env
+Environment=NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 NODE_OPTIONS=--max-old-space-size=320
+ExecStart=/usr/bin/node /srv/blindspot/web/node_modules/next/dist/bin/next start -p 3000 -H 127.0.0.1
+Restart=always
+RestartSec=3
+MemoryHigh=450M
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

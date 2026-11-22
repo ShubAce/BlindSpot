@@ -21,8 +21,10 @@ import '@/components/bulletin/bulletin.css';
  */
 
 export const metadata: Metadata = {
-  title: 'Daily bulletin',
-  description: "Today's BlindSpot bulletin on Punjab's crop fires and Delhi's air, in English, Hindi and Punjabi, with every number checked against its source.",
+  title: 'Daily stubble burning bulletin: Punjab fires, Delhi air',
+  description:
+    "Today's bulletin on Punjab and Haryana crop fires (पराली, ਪਰਾਲੀ) and Delhi's air, in English, Hindi and Punjabi, every number checked against its source.",
+  alternates: { canonical: '/bulletin' },
 };
 
 const CODES: BulletinLangCode[] = ['en', 'hi', 'pa'];

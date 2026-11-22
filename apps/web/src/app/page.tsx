@@ -14,11 +14,14 @@ import { Proof } from '@/components/landing/Proof';
 import { Reply } from '@/components/landing/Reply';
 import { Showcase } from '@/components/landing/Showcase';
 import { SiteNav } from '@/components/nav/SiteNav';
+import { DATASET, OPEN_GRAPH, jsonLd } from '@/lib/site';
 
 export const metadata: Metadata = {
-  title: { absolute: 'BlindSpot: the burning between the satellite passes' },
+  title: { absolute: 'BlindSpot: stubble burning in Punjab the satellites miss' },
   description:
-    'BlindSpot maps the Sentinel-2 burn scars in Punjab and Haryana that no fire alert matched (candidate unseen burns, with their audit), clocks the evening burning the polar fire satellites do not report, traces the smoke and answers questions with cited, checked figures.',
+    'Stubble (parali) burning in Punjab and Haryana, mapped daily: burn scars no NASA fire alert matched, the evening fires the satellites miss, and smoke to Delhi.',
+  alternates: { canonical: '/' },
+  openGraph: { ...OPEN_GRAPH, url: '/' },
 };
 
 /**
@@ -38,6 +41,8 @@ export default function Home() {
     <ViewTransition default="none" exit={{ 'to-live': 'lp-leave', default: 'none' }}>
       <div className={s.page}>
         <SiteNav current="home" />
+        {/* the published data, for Google Dataset Search (lib/site.ts) */}
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(DATASET) }} />
         <main id="main">
           <Masthead />
           <section className={s.hero} aria-label="The unseen share, the clock of the polar satellites’ fire reports, and one place on four passes">

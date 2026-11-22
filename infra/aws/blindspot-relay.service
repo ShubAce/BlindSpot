@@ -1,0 +1,23 @@
+[Unit]
+Description=BlindSpot relay for data.gov.in and FIRMS (used by the jobs on GitHub's runners)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=blindspot
+Group=blindspot
+WorkingDirectory=/srv/blindspot/relay
+Environment=PORT=8090 HOST=127.0.0.1
+# The server has no IPv6 route, and Node's happy-eyeballs gives IPv4 only 250 ms before trying IPv6:
+# NASA FIRMS is ~300 ms from Mumbai, so every fetch failed with ETIMEDOUT. IPv4 first, 3 s each.
+Environment="NODE_OPTIONS=--dns-result-order=ipv4first --network-family-autoselection-attempt-timeout=3000"
+ExecStart=/usr/bin/node /srv/blindspot/relay/relay_server.js
+Restart=always
+RestartSec=3
+MemoryHigh=80M
+NoNewPrivileges=true
+ProtectSystem=strict
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

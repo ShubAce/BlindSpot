@@ -1082,12 +1082,13 @@ def featured() -> ORJSONResponse:
     Served from a cache rebuilt by the `featured` job. When the cache is older than `stale_after_hours`
     the frames are still served, marked `stale` (with `age_minutes`). A long-lived process then
     rebuilds them in a background thread. A serverless instance (VERCEL set) never starts one:
-    Vercel freezes the function after the response, so the work would be lost; the daily job on
-    GitHub Actions refreshes the stored manifest instead.
+    Vercel freezes the function after the response, so the work would be lost. Neither does a server
+    that leaves job work to the scheduled jobs (BACKGROUND_REBUILDS=false: the 1 GB AWS server). In
+    both, the daily job on GitHub Actions refreshes the stored manifest instead.
     """
-    serverless = on_vercel()
+    job_only = on_vercel() or not get_settings().background_rebuilds  # only the `featured` job builds frames
     payload = load_featured()
-    if payload is None and serverless:
+    if payload is None and job_only:
         # No stored manifest (or the database did not answer): building one here would take 20-60 s
         # of upstream calls in every cold instance, and would store no pictures. The job builds it.
         raise HTTPException(503, "the featured frames are not stored yet (the daily `featured` job builds them); "
@@ -1112,9 +1113,9 @@ def featured() -> ORJSONResponse:
             raise HTTPException(503, "the featured frames are being built; try again in a minute",
                                 headers={"Retry-After": "60"})
     age = _age(payload)
-    stale_after = FEATURED_STALE_AFTER_SERVERLESS if serverless else FEATURED_TTL
+    stale_after = FEATURED_STALE_AFTER_SERVERLESS if job_only else FEATURED_TTL
     stale = age > stale_after
-    if stale and not serverless and not _build_lock.locked():
+    if stale and not job_only and not _build_lock.locked():
         threading.Thread(target=_refresh_quietly, name="featured-refresh", daemon=True).start()
     sources = [SourceRef(**s) for s in payload.get("sources", [])]
     body = {k: v for k, v in payload.items() if k != "sources"}

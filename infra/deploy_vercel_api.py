@@ -21,42 +21,22 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import tomllib
 from pathlib import Path
 
 from dotenv import load_dotenv
+
+# shared with infra/aws/deploy.py (infra/ is this script's own folder, so it is importable)
+from api_common import SECRET_NAMES, WEB_ORIGIN_REGEX, WEB_PACKAGES, locked_versions
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 API_DIR = REPO_ROOT / "services" / "api"
 PROJECT = "blindspot-api"
 
-# Top-level packages the web process may import. Versions are pinned from uv.lock below.
-WEB_PACKAGES = [
-    "fastapi", "starlette", "pydantic", "pydantic-settings", "sqlalchemy", "psycopg", "psycopg-binary",
-    "geoalchemy2", "httpx", "orjson", "apscheduler", "tzdata", "cachetools", "tenacity",
-    "sse-starlette", "python-dotenv", "numpy", "shapely", "skyfield", "sgp4", "jplephem",
-    "google-genai", "pystac-client", "planetary-computer",
-    # Imaging, imported on use only (sources/pcdata.py). Unpacked linux cp312 sizes measured on
-    # 2026-10-31: the packages above 141 MB, pillow 13.0.0 +20 MB, rasterio 1.5.2 (GDAL inside) and
-    # affine +121 MB: about 282 MB of Vercel's 500 MB.
-    "pillow", "rasterio", "affine",
-]
 # The project's production address: the absolute picture URLs the API hands out (PUBLIC_BASE_URL).
 PUBLIC_URL = "https://blindspot-api-azure.vercel.app"
 # Where the function runs: Singapore, beside Neon (aws ap-southeast-1) and near the users in India.
 # Vercel's default (iad1, Washington) puts ~220 ms on every database round trip. Hobby allows one region.
 FUNCTION_REGION = "sin1"
-# The website's own domain (blindspotin.tech redirects to www.blindspotin.tech), its production
-# alias and its own deployments (blindspot-<hash>-<team>, blindspot-web-git-<branch>-<team>).
-# Not every *.vercel.app name that starts with "blindspot": anyone can register one of those.
-WEB_ORIGIN_REGEX = (
-    r"^https://((www\.)?blindspotin\.tech"
-    r"|blindspot(-web-five|(-web)?-[a-z0-9-]+-shubaces-projects)\.vercel\.app)$"
-)
-SECRET_NAMES = (
-    "GEMINI_API_KEY", "FIRMS_MAP_KEY", "DATA_GOV_IN_API_KEY", "OPENAQ_API_KEY",
-    "LSASAF_USERNAME", "LSASAF_PASSWORD",
-)
 FOUNDATION_FILES = [
     "__init__.py", "config.py", "db.py", "http.py", "provenance.py", "geo.py", "api/__init__.py",
     "api/main.py", "api/responses.py", "api/routers/__init__.py", "jobs/__init__.py",
@@ -69,11 +49,6 @@ FOUNDATION_FILES = [
 INDEX_PY = '''"""Vercel entry point: the BlindSpot FastAPI app (ASGI), served at every path."""
 from blindspot.api.main import app  # noqa: F401
 '''
-
-
-def locked_versions() -> dict[str, str]:
-    lock = tomllib.loads((API_DIR / "uv.lock").read_text(encoding="utf-8"))
-    return {pkg["name"]: pkg["version"] for pkg in lock.get("package", []) if "version" in pkg}
 
 
 def direct_neon_url(url: str) -> str:

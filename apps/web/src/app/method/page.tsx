@@ -18,8 +18,10 @@ import '@/components/method/method.css';
  */
 
 export const metadata: Metadata = {
-  title: 'Method and accuracy',
-  description: "How BlindSpot finds candidate unseen burns and the evening burning the polar fire satellites do not report, and how often each part is right: pass-time error, burn-scar precision, the smoke model against measured PM2.5, the risk backtest, how the investigator's answers are checked, and every data source.",
+  title: 'Method and accuracy: finding the burning satellites miss',
+  description:
+    'How BlindSpot finds stubble burning the fire satellites miss, and how often it is right: pass times, burn-scar precision, the smoke model against PM2.5, every data source.',
+  alternates: { canonical: '/method' },
 };
 
 /** `wide`: a title too long for the seven columns beside its lead on a laptop; its head stacks there.
