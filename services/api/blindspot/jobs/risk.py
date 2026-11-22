@@ -644,8 +644,8 @@ def store_scores(scored: list[model.Scored], as_of: datetime) -> tuple[int, int]
 # --- 4. backtest ----------------------------------------------------------------------------------------
 
 BT_COLUMNS = ("k bigserial PRIMARY KEY, pair int, label int, fid bigint, g geography, t0 timestamptz, "
-              "village text, area float8, days float8, fires int NOT NULL DEFAULT 0, unseen int NOT NULL DEFAULT 0, "
-              "ha float8 NOT NULL DEFAULT 0, hist int, r72 float8, r24 float8, ")
+              "village text, subdistrict text, area float8, days float8, fires int NOT NULL DEFAULT 0, "
+              "unseen int NOT NULL DEFAULT 0, ha float8 NOT NULL DEFAULT 0, hist int, r72 float8, r24 float8, ")
 TOP_SHARE = 0.1  # "top 10%": the k = round(n / 10) best-ranked fields of each pass pair
 PAIRS_ARE = (
     "A pass pair is two consecutive clear Sentinel-2 passes (t0, t1) over one tile, a few days apart. "
@@ -755,18 +755,18 @@ def _load_pairs(session: Session, windows: list[Any], scope: str | None, timing_
         return _days_sql(t, "x.harvested_after", "x.harvested_before") if timing_cols else "NULL"
 
     session.execute(text(f"""
-        INSERT INTO bt (pair, label, fid, g, t0, village, area, days)
+        INSERT INTO bt (pair, label, fid, g, t0, village, subdistrict, area, days)
         SELECT w.pair, 1, x.id, coalesce(x.centroid, ST_PointOnSurface(x.geom))::geography, w.t0, x.village,
-               x.area_ha, {days("w.t0")}
+               x.subdistrict, x.area_ha, {days("w.t0")}
         FROM bt_win w JOIN burn_cluster x ON x.mgrs_tile = w.tile {same_scope}
              AND x.burn_after = w.t0 AND x.burn_before = w.t1 AND x.ndvi_pre < :ndvi
         {"WHERE x.harvested_after IS NOT NULL AND x.harvested_before IS NOT NULL" if timing_cols else ""}
     """), {"ndvi": model.HARVESTED_NDVI_MAX})
     tol = timedelta(hours=12)  # passes of one tile are days apart; this only absorbs rounding
     session.execute(text(f"""
-        INSERT INTO bt (pair, label, fid, g, t0, village, area, days)
+        INSERT INTO bt (pair, label, fid, g, t0, village, subdistrict, area, days)
         SELECT w.pair, 0, x.id, coalesce(x.centroid, ST_PointOnSurface(x.geom))::geography, w.t0, x.village,
-               x.area_ha, {days("w.t0")}
+               x.subdistrict, x.area_ha, {days("w.t0")}
         FROM bt_win w JOIN harvest_cluster x ON x.mgrs_tile = w.tile {same_scope}
              AND x.harvested_before <= w.t0 + :tol AND x.last_seen_unburnt >= w.t1 - :tol
     """), {"tol": tol})
@@ -836,8 +836,8 @@ def _headline(session: Session, pair: dict[str, Any], history_ok: bool, timing: 
     """Everything about one pass pair, from its fields (a thousand or so rows): precision and lift at
     k with Wilson intervals, the AUC with a bootstrap interval, the baselines, and the villages."""
     rows = session.execute(text("""
-        SELECT label, s, fires, fires + unseen, ha, coalesce(hist, 0), village, area, coalesce(tv, 0) FROM bt
-        WHERE pair = :pair ORDER BY label DESC, k
+        SELECT label, s, fires, fires + unseen, ha, coalesce(hist, 0), village, area, coalesce(tv, 0), subdistrict
+        FROM bt WHERE pair = :pair ORDER BY label DESC, k
     """), {"pair": pair["pair"]}).all()
     labels = [int(r[0]) for r in rows]
     full = [float(r[1]) for r in rows]
@@ -874,7 +874,8 @@ def _headline(session: Session, pair: dict[str, Any], history_ok: bool, timing: 
                     "truth because neighbouring fields share their neighbourhood"),
         "baselines": baselines,
         "factors_used": (["timing"] if timing else []) + ["neighbourhood"] + (["history"] if history_ok else []),
-        "villages": _village_level([r[6] for r in rows], [float(r[7] or 0) for r in rows], full, labels),
+        "villages": _village_level([r[6] for r in rows], [float(r[7] or 0) for r in rows], full, labels,
+                                   [r[9] for r in rows]),
         "why_this_pair": "the latest pass pair (the cleanest unburnt control group)",
     }
 
@@ -983,15 +984,20 @@ def _tile_spread(all_pairs: dict[str, Any], tile: str) -> str:
 
 
 def _village_level(villages: list[str | None], areas: list[float], scores: list[float],
-                   labels: list[int]) -> dict[str, Any] | None:
+                   labels: list[int], subdistricts: list[str | None] | None = None) -> dict[str, Any] | None:
     """The same test for villages, which is how field teams work: rank each village by its
     risk-weighted hectares at t0 (sum of score/100 x area, the order GET /api/risk uses) and check
     which had at least one field burn by t1. The naive rival ranks villages by harvested area alone
-    (bigger villages have more fields that can burn)."""
-    rows: dict[str, list[float]] = {}
-    for v, a, s, y in zip(villages, areas, scores, labels, strict=True):
+    (bigger villages have more fields that can burn).
+
+    A village is a (name, sub-district) pair, as the district brief groups them: names repeat across
+    a district (two "Kotli"s in different tehsils are two villages), and summing them as one would
+    add their fields together."""
+    rows: dict[tuple[str, str | None], list[float]] = {}
+    subs = subdistricts if subdistricts is not None else [None] * len(villages)
+    for v, sub, a, s, y in zip(villages, subs, areas, scores, labels, strict=True):
         if v:
-            acc = rows.setdefault(v, [0.0, 0.0, 0.0])
+            acc = rows.setdefault((v, sub), [0.0, 0.0, 0.0])
             acc[0] += s / 100 * a
             acc[1] += a
             acc[2] = max(acc[2], y)

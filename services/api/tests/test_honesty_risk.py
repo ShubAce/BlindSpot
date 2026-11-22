@@ -233,6 +233,26 @@ def test_pair_metrics_in_sql_match_the_python_metrics() -> None:
         assert m["bands"] == want
 
 
+def test_village_level_keeps_same_named_villages_apart() -> None:
+    """A village is a (name, sub-district) pair, as in the district brief: two "Kotli"s in different
+    tehsils are two villages. Grouped by name alone they merged, so the unburnt one inherited the
+    other's burn and their hectares were summed."""
+    from blindspot.jobs.risk import _village_level
+
+    villages = ["Kotli", "Kotli"] + [f"V{i}" for i in range(10)]
+    subs = ["Malerkotla", "Dhuri"] + ["Dhuri"] * 10
+    areas = [5.0, 1.0] + [2.0] * 10
+    scores = [90.0, 10.0] + [50.0 - i for i in range(10)]
+    labels = [1, 0] + [int(i < 3) for i in range(10)]
+    v = _village_level(villages, areas, scores, labels, subs)
+    assert v["villages"] == 12 and v["with_a_burn"] == 4  # the Dhuri Kotli did not burn
+    merged = _village_level(villages, areas, scores, labels)  # no sub-districts known: names alone
+    assert merged["villages"] == 11 and merged["with_a_burn"] == 4
+    # the burnt Kotli ranks first by risk-weighted hectares (90/100 x 5 ha), the unburnt one last
+    assert v["precision_at_k"]["5"] == 0.8 and v["auc"] == round(model.roc_auc(
+        [0.9 * 5, 0.1 * 1] + [(50.0 - i) / 100 * 2 for i in range(10)], labels), 3)
+
+
 def test_verdict_and_strength_follow_the_numbers() -> None:
     from blindspot.jobs.risk import ranking_strength, verdict
 
