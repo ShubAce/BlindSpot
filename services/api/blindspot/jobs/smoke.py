@@ -1114,6 +1114,7 @@ VALIDATION_SPINUP_H = 48  # the hindcast starts this long before the first score
 VALIDATION_MAX_DAYS = 7  # at most the last week is scored
 VALIDATION_PARTICLES = 24_000  # per member, shared by the sources in proportion to their tonnes
 VALIDATION_MIN_PER_SOURCE = 1
+VALIDATION_LAG_H = 12  # leads and lags scanned: the model may be early or late by up to 12 h
 STATION_RADIUS_KM = tj.RECEPTOR_RADIUS_KM
 
 
@@ -1323,21 +1324,32 @@ def validation_scores(
         log_vent = np.log(ventilation)
         smoke = total0[c]
         dilute = smoke / np.maximum(blh_c, tj.BL_FLOOR_M) * 1000.0  # tonnes per km of mixing depth
+        lags = {"min_lag": -VALIDATION_LAG_H, "max_lag": VALIDATION_LAG_H}
         entry: dict[str, Any] = {
             "city": city.name, "lat": round(city.lat, 4), "lon": round(city.lon, 4),
             "stations": o["stations"], "hours_observed": int(np.isfinite(y).sum()),
-            "smoke_index": tj.lagged_correlations(smoke, y, log_vent),
-            "smoke_per_km_mixing_depth": tj.lagged_correlations(dilute, y, log_vent),
-            "ventilation_only": tj.lagged_correlations(-log_vent, y),
+            "smoke_index": tj.lagged_correlations(smoke, y, log_vent, **lags),
+            "smoke_per_km_mixing_depth": tj.lagged_correlations(dilute, y, log_vent, **lags),
+            "ventilation_only": tj.lagged_correlations(-log_vent, y, **lags),
             "cams_baseline": tj.lagged_correlations(cams, y, max_lag=0),
+            # Placebos for the proxy: 1/BLH with the smoke held constant, and the modelled smoke
+            # moved by 1-3 days. The proxy beats them only if the timing of its smoke adds skill.
+            "placebos": {
+                "constant_smoke": tj.lagged_correlations(1000.0 / np.maximum(blh_c, tj.BL_FLOOR_M), y,
+                                                         log_vent, **lags),
+                "day_shift": tj.day_shift_placebo(smoke, blh_c, y),
+            },
             "members": {},
         }
         for model, _, total_m, _ in member_series[1:]:
-            entry["members"][model] = tj.lagged_correlations(total_m[c], y, log_vent)["lag0"]
+            entry["members"][model] = tj.lagged_correlations(total_m[c], y, log_vent, max_lag=0)["lag0"]
         if float(np.nansum(total0[c] - fires0[c])) > 0:  # scars contributed: the key experiment
-            entry["firms_only"] = tj.lagged_correlations(fires0[c], y, log_vent)
+            entry["firms_only"] = tj.lagged_correlations(fires0[c], y, log_vent, **lags)
         lag0 = entry["smoke_per_km_mixing_depth"]["lag0"]
         entry["summary"] = tj.describe_r(lag0.get("r"), lag0.get("n_eff"))
+        entry["placebo_summary"] = tj.describe_placebos(
+            lag0.get("r"), entry["placebos"]["constant_smoke"]["lag0"].get("r"),
+            entry["placebos"]["day_shift"]["mean_r"])
         results.append(entry)
         series_out.append({
             "city": city.name,
@@ -1355,6 +1367,12 @@ def validation_scores(
     rs = [r for r in (_lag0_r(e, "smoke_per_km_mixing_depth") for e in results) if r is not None]
     cams_rs = [r for r in (_lag0_r(e, "cams_baseline") for e in results) if r is not None]
     vent_rs = [r for r in (_lag0_r(e, "ventilation_only") for e in results) if r is not None]
+    const_rs = [r for r in (e["placebos"]["constant_smoke"]["lag0"].get("r") for e in results) if r is not None]
+    shift_rs = [r for r in (e["placebos"]["day_shift"]["mean_r"] for e in results) if r is not None]
+
+    def median(values: list[float]) -> float | None:
+        return None if not values else round(float(np.median(values)), 3)
+
     summary = {
         "period": {"from": _utc(inp.t_score), "to": _utc(inp.t_end), "spinup_h": VALIDATION_SPINUP_H,
                    "hindcast_from": _utc(inp.t0)},
@@ -1364,9 +1382,14 @@ def validation_scores(
         # the headline names it, so a page never prints another city's result under Delhi.
         "headline": f"{results[0]['city']}: {results[0]['summary']}" if results else None,
         "headline_city": results[0]["city"] if results else None,
-        "median_r_smoke_per_km_mixing_depth": None if not rs else round(float(np.median(rs)), 3),
-        "median_r_ventilation_only": None if not vent_rs else round(float(np.median(vent_rs)), 3),
-        "median_r_cams": None if not cams_rs else round(float(np.median(cams_rs)), 3),
+        "headline_placebos": results[0]["placebo_summary"] if results else None,
+        "median_r_smoke_per_km_mixing_depth": median(rs),
+        "median_r_ventilation_only": median(vent_rs),
+        "median_r_cams": median(cams_rs),
+        "median_r_placebo_constant_smoke": median(const_rs),
+        "median_r_placebo_day_shift": median(shift_rs),
+        "placebo_comparison": "Median across cities: " + tj.describe_placebos(
+            median(rs), median(const_rs), median(shift_rs)) if rs else None,
         "cities": results,
         "method": (
             "Forward hindcast from every FIRMS detection (and candidate unseen scar) in the period, "
@@ -1374,10 +1397,13 @@ def validation_scores(
             "fires has arrived; hourly smoke index within 30 km of each city, also divided by the "
             "boundary-layer depth (a concentration proxy), against the hourly mean of OpenAQ PM2.5 "
             "stations within 30 km, each on the model hour its measuring period is centred on. "
-            "Pearson r and Spearman rho at model leads of 0-12 h; partial r controls for log "
-            "ventilation (BLH x transport wind), each series at its own hour, since stagnant air "
-            "alone raises PM2.5; 'ventilation_only' and CAMS are the baselines to beat. Correlation "
-            "is not attribution: local sources dominate city PM2.5."
+            "Pearson r and Spearman rho with the model leading or trailing by up to 12 h; partial r "
+            "controls for log ventilation (BLH x transport wind), each series at its own hour, "
+            "since stagnant air alone raises PM2.5; 'ventilation_only' and CAMS are the baselines "
+            "to beat. Two placebos test the proxy itself: 1/BLH with the smoke held constant, and "
+            "the modelled smoke moved by 1 to 3 days (BLH kept at its own hour); the smoke model "
+            "shows skill at timing smoke only where its r is clearly above both. Correlation is not "
+            "attribution: local sources dominate city PM2.5."
         ),
         "notes": inp.notes,
     }
@@ -1438,10 +1464,14 @@ def smoke_validate() -> dict[str, Any]:
             "best_lag": delhi["smoke_per_km_mixing_depth"]["best_lag"],
             "r_ventilation_only": _lag0_r(delhi, "ventilation_only"),
             "r_cams": _lag0_r(delhi, "cams_baseline"),
+            "r_placebo_constant_smoke": delhi["placebos"]["constant_smoke"]["lag0"].get("r"),
+            "r_placebo_day_shift_mean": delhi["placebos"]["day_shift"]["mean_r"],
             "summary": delhi["summary"],
         },
         "median_r": summary["median_r_smoke_per_km_mixing_depth"],
         "median_r_ventilation_only": summary["median_r_ventilation_only"],
         "median_r_cams": summary["median_r_cams"],
+        "median_r_placebo_constant_smoke": summary["median_r_placebo_constant_smoke"],
+        "median_r_placebo_day_shift": summary["median_r_placebo_day_shift"],
         "runtime_s": round(time.perf_counter() - started, 1),
     }

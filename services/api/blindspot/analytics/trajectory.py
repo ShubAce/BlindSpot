@@ -868,27 +868,29 @@ def _residual(y: np.ndarray, z: np.ndarray) -> np.ndarray:
 
 def lagged_correlations(
     model: np.ndarray, obs: np.ndarray, control: np.ndarray | None = None, max_lag: int = 12,
-    min_n: int = 12,
+    min_n: int = 12, min_lag: int = 0,
 ) -> dict[str, Any]:
-    """How well an hourly model series tracks an hourly observed one, model leading by 0..max_lag h.
+    """How well an hourly model series tracks an hourly observed one, at lags min_lag..max_lag h.
 
-    For each lag L the model at hour t is paired with the observation at t + L: Pearson r,
-    Spearman rho, n, and (with `control`) the partial r once each series is regressed on the
-    control of its own hour, the model on control(t) and the observation on control(t + L) (here
-    log ventilation, since stagnant air alone raises PM2.5). At lag 0 also the effective number of
-    independent hours (Bretherton et al. 1999, n_eff = n (1 - r1x r1y) / (1 + r1x r1y)), because
-    neighbouring hours are not independent.
+    For each lag L the model at hour t is paired with the observation at t + L, so a positive lag
+    means the model leads (its peak comes L hours before the measured one) and a negative lag that
+    it trails. Per lag: Pearson r, Spearman rho, n, and (with `control`) the partial r once each
+    series is regressed on the control of its own hour, the model on control(t) and the
+    observation on control(t + L) (here log ventilation, since stagnant air alone raises PM2.5).
+    At lag 0 also the effective number of independent hours (Bretherton et al. 1999,
+    n_eff = n (1 - r1x r1y) / (1 + r1x r1y)), because neighbouring hours are not independent.
+    `best_lag` is the lag of the highest r: picked after seeing the data, so it flatters.
     """
     from scipy.stats import pearsonr, spearmanr
 
+    size = min(model.size, obs.size)
     by_lag = []
-    for lag in range(max_lag + 1):
-        x = model[: model.size - lag] if lag else model
-        y = obs[lag:]
+    for lag in range(min_lag, max_lag + 1):
+        t = np.arange(max(0, -lag), max(0, min(size, size - lag)))  # hours t with t + lag in range
+        x, y = model[t], obs[t + lag]
         zx = zy = None
         if control is not None:  # each series against the control at its own hour
-            zx = control[: control.size - lag] if lag else control
-            zy = control[lag:]
+            zx, zy = control[t], control[t + lag]
         ok = np.isfinite(x) & np.isfinite(y)
         if control is not None:
             ok &= np.isfinite(zx) & np.isfinite(zy)
@@ -912,7 +914,68 @@ def lagged_correlations(
         by_lag.append(entry)
     scored = [e for e in by_lag if e["r"] is not None]
     best = max(scored, key=lambda e: e["r"]) if scored else None
-    return {"lag0": by_lag[0], "best_lag": best, "by_lag": by_lag}
+    lag0 = next((e for e in by_lag if e["lag_h"] == 0), None)
+    return {"lag0": lag0, "best_lag": best, "by_lag": by_lag}
+
+
+DAY_SHIFTS_H = (-72, -48, -24, 24, 48, 72)
+
+
+def day_shift_placebo(
+    smoke: np.ndarray, blh: np.ndarray, obs: np.ndarray, shifts_h: Sequence[int] = DAY_SHIFTS_H,
+    floor_m: float = BL_FLOOR_M, min_n: int = 12,
+) -> dict[str, Any]:
+    """A placebo for smoke divided by the mixing depth: the modelled smoke moved by whole days,
+    divided by the mixing depth of the hour it is moved to.
+
+    It keeps the smoke's level and daily rhythm, and the 1/BLH cycle that the concentration proxy
+    shares with measured PM2.5, but no longer knows which day the smoke came. A model whose r is
+    no higher than these placebos' shows no skill at timing the smoke. On hourly series: at hour t
+    the placebo is smoke(t - s) / max(BLH(t), floor), over the hours where t - s is in the series.
+    Per shift s, its r and the model's own r over the same hours (a paired comparison)."""
+    from scipy.stats import pearsonr
+
+    size = smoke.size
+    model = smoke / np.maximum(blh, floor_m)
+    by_shift = []
+    for s in shifts_h:
+        t = np.arange(max(0, s), max(0, min(size, size + s)))  # hours t with t - s in range
+        x, m, y = smoke[t - s] / np.maximum(blh[t], floor_m), model[t], obs[t]
+        ok = np.isfinite(x) & np.isfinite(m) & np.isfinite(y)
+        n = int(ok.sum())
+        entry: dict[str, Any] = {"shift_h": int(s), "n": n, "r": None, "r_model_same_hours": None}
+        if n >= min_n and np.std(x[ok]) > 0 and np.std(y[ok]) > 0 and np.std(m[ok]) > 0:
+            entry["r"] = round(float(pearsonr(x[ok], y[ok])[0]), 3)
+            entry["r_model_same_hours"] = round(float(pearsonr(m[ok], y[ok])[0]), 3)
+        by_shift.append(entry)
+    scored = [e for e in by_shift if e["r"] is not None]
+    return {
+        "shifts_h": [int(s) for s in shifts_h],
+        "by_shift": by_shift,
+        "mean_r": round(float(np.mean([e["r"] for e in scored])), 3) if scored else None,
+        "max_r": max(e["r"] for e in scored) if scored else None,
+        "model_higher": sum(1 for e in scored if e["r_model_same_hours"] > e["r"]),
+        "compared": len(scored),
+    }
+
+
+def describe_placebos(r_model: float | None, r_constant: float | None, r_shift: float | None) -> str:
+    """Plain words: is the smoke model's r higher than its placebos'? (Point estimates only.)"""
+    if r_model is None:
+        return "not enough overlapping hours"
+    rivals = [(f"1/BLH alone (r = {r_constant:.2f})", r_constant)] if r_constant is not None else []
+    if r_shift is not None:
+        rivals.append((f"the same smoke moved by 1 to 3 days (mean r = {r_shift:.2f})", r_shift))
+    if not rivals:
+        return f"smoke model r = {r_model:.2f}; no placebo could be scored"
+    above = [name for name, r in rivals if r_model > r]
+    below = [name for name, r in rivals if r_model <= r]
+    text = f"smoke model r = {r_model:.2f}"
+    if above:
+        text += "; higher than " + " and ".join(above)
+    if below:
+        text += "; not higher than " + " and ".join(below)
+    return text
 
 
 def describe_r(r: float | None, n_eff: float | None) -> str:

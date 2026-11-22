@@ -317,6 +317,61 @@ def test_partial_r_controls_each_series_at_its_own_hour():
     assert old > 0.8  # what the old alignment reported at lag 3
 
 
+def test_lag_scan_runs_both_ways():
+    """A model that trails the measurements (too slow) shows up at a negative lag."""
+    hours = np.arange(200, dtype=float)
+    model = np.sin(hours / 9.0) + 1.5
+    obs = np.r_[model[5:], np.full(5, np.nan)] * 40.0 + 20.0  # obs(t) = model(t + 5): model 5 h late
+    res = tj.lagged_correlations(model, obs, min_lag=-12, max_lag=12)
+    assert [e["lag_h"] for e in res["by_lag"]] == list(range(-12, 13))
+    assert res["lag0"]["lag_h"] == 0 and res["lag0"]["n_eff"] is not None
+    assert res["best_lag"]["lag_h"] == -5 and res["best_lag"]["r"] == pytest.approx(1.0, abs=1e-6)
+    assert tj.lagged_correlations(model, obs)["best_lag"]["lag_h"] >= 0  # the old one-sided scan
+
+
+def test_day_shift_placebo_is_paired_and_needs_day_to_day_signal():
+    rng = np.random.default_rng(7)
+    n = 168
+    hours = np.arange(n)
+    blh = 600.0 + 500.0 * np.sin(2 * np.pi * (hours - 6) / 24.0)  # a daily cycle, 100..1100 m
+    episodes = np.repeat(rng.lognormal(0.0, 1.0, n // 24), 24)  # smoke that differs day to day
+    smoke = episodes * (1.0 + 0.5 * np.sin(2 * np.pi * hours / 24.0))
+    obs = 30.0 + 50.0 * smoke / np.maximum(blh, 100.0) * 100.0 + rng.normal(0, 5.0, n)
+    res = tj.day_shift_placebo(smoke, blh, obs)
+    assert [e["shift_h"] for e in res["by_shift"]] == [-72, -48, -24, 24, 48, 72]
+    assert [e["n"] for e in res["by_shift"]] == [n - 72, n - 48, n - 24, n - 24, n - 48, n - 72]
+    assert res["model_higher"] == res["compared"] == 6  # the true timing beats every shifted copy
+    assert all(e["r_model_same_hours"] > 0.9 for e in res["by_shift"])
+    # smoke that is the same every day: moving it by whole days changes nothing, so no skill shows
+    same = tj.day_shift_placebo(np.tile(smoke[:24], n // 24), blh, obs)
+    assert same["model_higher"] == 0
+    assert all(e["r"] == e["r_model_same_hours"] for e in same["by_shift"])
+    words = tj.describe_placebos(0.3, 0.4, 0.1)
+    assert "higher than the same smoke moved" in words and "not higher than 1/BLH alone" in words
+
+
+def test_validation_reports_placebos_and_lags_both_ways():
+    inp = recorded_validation_inputs(("Delhi", "Ludhiana"))
+    summary, series = job.run_validation(inp, seed=3)
+    delhi = summary["cities"][0]
+    n_hours = len(series[0]["series"])
+    model = delhi["smoke_per_km_mixing_depth"]
+    assert [e["lag_h"] for e in model["by_lag"]] == list(range(-12, 13)) and model["lag0"]["lag_h"] == 0
+    const = delhi["placebos"]["constant_smoke"]
+    # the constant-smoke placebo is the correlation of 1/max(BLH, 100 m) with the measurements
+    blh = np.interp([p["t"].timestamp() for p in series[0]["series"]], inp.blh_times,
+                    tj.point_series(inp.members[0].run.grid, inp.blh, delhi["lon"], delhi["lat"]))
+    y = np.array([p["pm25_obs"] for p in series[0]["series"]], dtype=float)
+    assert const["lag0"]["r"] == pytest.approx(np.corrcoef(1.0 / np.maximum(blh, 100.0), y)[0, 1], abs=2e-3)
+    shift = delhi["placebos"]["day_shift"]  # 43 scored hours here: only the 1-day shifts fit
+    assert [e["n"] for e in shift["by_shift"]] == [max(0, n_hours - abs(s)) for s in shift["shifts_h"]]
+    ludhiana = summary["cities"][1]["placebos"]["day_shift"]  # Delhi's smoke arrives too late to shift
+    assert ludhiana["compared"] == 2 and ludhiana["mean_r"] is not None
+    assert summary["median_r_placebo_constant_smoke"] is not None
+    assert summary["placebo_comparison"].startswith("Median across cities: smoke model r = ")
+    assert summary["headline_placebos"] == delhi["placebo_summary"]
+
+
 def test_obs_hour_labels_each_period_by_its_centre():
     """A model hour h is the mean of h-30 min..h+30 min. CPCB hourly means arrive stamped at the
     end of their period (:30 UTC, the recorded OpenAQ week), so each belongs to the hour it is
