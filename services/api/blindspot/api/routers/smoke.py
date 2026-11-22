@@ -45,12 +45,13 @@ from blindspot.api.cache import (
     code_version,
     stored_response,
 )
+from blindspot.config import get_settings
 from blindspot.models.smoke import latest_id, load_run
 from blindspot.provenance import SourceRef
 
 router = APIRouter(prefix="/api/smoke", tags=["smoke"])
 
-_cache: LRUCache[tuple[Any, ...], tuple[bytes, bytes, dict[str, str]]] = LRUCache(maxsize=48)
+_cache: LRUCache[tuple[Any, ...], tuple[bytes, bytes | None, dict[str, str]]] = LRUCache(maxsize=48)
 _cache_lock = threading.Lock()
 
 
@@ -59,7 +60,10 @@ def _sources(run: dict[str, Any]) -> list[SourceRef]:
 
 
 def _cached(request: Request, key: tuple[Any, ...], build: Callable[[], Response]) -> Response:
-    """Serve a rendered response from the cache, gzipped when the client accepts it."""
+    """Serve a rendered response from the cache, gzipped when the client accepts it. Behind a proxy
+    that compresses (GZIP_RESPONSES=false: Caddy on the AWS server) only the plain body is kept and
+    sent, without `Vary: Accept-Encoding`, so the cache in front keeps one copy per address."""
+    compress = get_settings().gzip_responses
     with _cache_lock:
         hit = _cache.get(key)
     if hit is None:
@@ -68,11 +72,13 @@ def _cached(request: Request, key: tuple[Any, ...], build: Callable[[], Response
             return response
         body = bytes(response.body)
         headers = {k: v for k, v in response.headers.items() if k.lower() in ("cache-control",)}
-        hit = (body, gzip.compress(body, compresslevel=6), headers)
+        hit = (body, gzip.compress(body, compresslevel=6) if compress else None, headers)
         with _cache_lock:
             _cache[key] = hit
     body, gz, headers = hit
-    if "gzip" in request.headers.get("accept-encoding", "").lower():
+    if not compress:
+        return Response(body, media_type="application/json", headers=headers)
+    if gz is not None and "gzip" in request.headers.get("accept-encoding", "").lower():
         return Response(gz, media_type="application/json",
                         headers={**headers, "Content-Encoding": "gzip", "Vary": "Accept-Encoding"})
     return Response(body, media_type="application/json", headers={**headers, "Vary": "Accept-Encoding"})

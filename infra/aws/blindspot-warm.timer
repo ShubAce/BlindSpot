@@ -1,0 +1,10 @@
+[Unit]
+Description=Refresh the BlindSpot API cache every 10 minutes
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=10min
+RandomizedDelaySec=30s
+
+[Install]
+WantedBy=timers.target

@@ -20,6 +20,7 @@ import type {
   ScarsSummaryResponse,
   SourcesResponse,
 } from './api';
+import { SITE_URL } from './site';
 
 /**
  * Server-side reads for first paint (Server Components). Never throws: a page renders
@@ -43,8 +44,10 @@ export type ApiResult<T> = { ok: true; data: T } | { ok: false; error: ServerErr
 
 const SERVER_BASE = (process.env.API_INTERNAL_URL || API_BASE).replace(/\/+$/, '');
 // Uncompressed: on the server the API is a local hop (API_INTERNAL_URL), where gzipping in Python and
-// gunzipping in Node would only spend CPU.
-const SERVER_INIT = { headers: { 'Accept-Encoding': 'identity' } };
+// gunzipping in Node would only spend CPU. With the site's own Origin, as browsers send it: every API
+// answer varies on Origin (CORS), so the cache in front of the API (infra/aws/nginx-api-cache.conf)
+// then keeps one copy of each answer for page renders and browsers alike.
+const SERVER_INIT = { headers: { 'Accept-Encoding': 'identity', Origin: new URL(SITE_URL).origin } };
 
 // 10 s: the first read after an API deploy meets an empty CDN and a cold Python function (numpy,
 // skyfield and rasterio load before the route runs). Sections stream behind <Suspense>, so a slow
