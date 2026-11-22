@@ -128,6 +128,38 @@ def test_fire_test_agrees_with_aqua_afternoon_pass(
     assert cmp.ref_hits_strong / cmp.ref_pixels_strong > 0.6
 
 
+def _flat_night_scene(size: int = 41) -> tuple[np.ndarray, ...]:
+    """A clear night: BT11 300 K, BT38 ~305 K (BTD ~5 K, 0.1 K noise), 12 km2 pixels."""
+    rng = np.random.default_rng(0)
+    bt11 = np.full((size, size), 300.0)
+    bt38 = 305.0 + rng.normal(0.0, 0.1, (size, size))
+    return bt38, bt11, np.full((size, size), 120.0), np.full((size, size), 12.0)
+
+
+def test_excluded_pixels_leave_the_background_and_are_reported_apart() -> None:
+    """A fire in the middle of a flagged hot block (a plant) must still be found: the flagged
+    pixels are left out of its background, so the window grows to the clear fields beyond."""
+    bt38, bt11, sza, area = _flat_night_scene()
+    block = np.zeros(bt38.shape, dtype=bool)
+    block[17:24, 17:24] = True  # 7 x 7 flagged pixels, BTD ~15 K
+    bt38[block] = 315.0
+    bt38[20, 20] = 310.0  # the fire: BTD 10 K, inside the block's 7 x 7 window
+    exclude = block.copy()
+    exclude[20, 20] = False
+
+    res = gf.detect_fires(bt38, bt11, sza, area, exclude=exclude)
+    assert res.fire[20, 20]
+    assert not (res.fire & exclude).any()
+    assert res.excluded_fire is not None and res.excluded_fire[exclude].all()
+    assert res.stats["excluded_fires"] == int(exclude.sum())
+    assert res.bg_btd[20, 20] == pytest.approx(5.0, abs=0.3)  # clear fields, not the plant
+
+    # Without the mask the block is one big fire and the pixel is just part of it.
+    plain = gf.detect_fires(bt38, bt11, sza, area)
+    assert plain.fire[block].all() and plain.excluded_fire is not None
+    assert not plain.excluded_fire.any()
+
+
 def test_diurnal_helpers() -> None:
     t = datetime(2026, 10, 29, 10, 45, tzinfo=UTC)  # 16:15 IST
     assert gf.ist_minute_of_day(t) == 16 * 60 + 15

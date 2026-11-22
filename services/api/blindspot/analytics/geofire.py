@@ -229,6 +229,9 @@ class FireTestResult:
     frp_mw: np.ndarray  # top-of-atmosphere FRP estimate (MW), NaN where not computed
     absolute: np.ndarray  # bool: passed the absolute test
     day_weight: np.ndarray  # 1 day ... 0 night (by solar zenith)
+    # Excluded pixels (persistent heat sources) that passed every test: never fire, but kept
+    # so the job can store them apart and see that a flagged source is still burning.
+    excluded_fire: np.ndarray | None = None
     stats: dict[str, Any] = field(default_factory=dict)
 
 
@@ -306,7 +309,9 @@ def detect_fires(
 
     `sza` is the solar zenith angle per pixel (degrees), `area_km2` each pixel's footprint area,
     `backscatter_deg` the angle between the sun and the satellite seen from each pixel, and
-    `exclude` marks pixels never to call fire (persistent industrial hot spots).
+    `exclude` marks pixels never to call fire (persistent industrial heat sources). An excluded
+    pixel is also never part of a neighbour's background (a hot plant would raise it and hide a
+    fire next door); it is still tested, and `excluded_fire` says where it passed.
 
     A pixel is a fire when it is clear and either
       - absolute: BT38 > abs_bt38 and BTD > abs_btd, or
@@ -331,12 +336,13 @@ def detect_fires(
     filled = np.where(clear, btd, clear_median if np.isfinite(clear_median) else 0.0)
     local_median = _ndimage().median_filter(filled, size=p.bg_sizes[1])
     candidate = (clear & (btd - local_median > p.candidate_margin)) | absolute
-    if exclude is not None:
-        candidate &= ~exclude
 
     # Background of each candidate from clear, non-candidate neighbours, growing the window until
-    # it holds enough of them (MODIS C6 grows 3x3 -> 21x21 the same way).
+    # it holds enough of them (MODIS C6 grows 3x3 -> 21x21 the same way). Excluded pixels never
+    # count as background, whether or not they are candidates now.
     usable = clear & ~candidate
+    if exclude is not None:
+        usable &= ~exclude
     nan = np.full(shape, np.nan)
     bg_btd, bg_btd_s, bg_38, bg_38_s, bg_11 = (nan.copy() for _ in range(5))
     bg_count = np.zeros(shape, dtype=np.int32)
@@ -373,7 +379,9 @@ def detect_fires(
     if backscatter_deg is not None:
         backscatter = (sza < 90.0) & (backscatter_deg < p.backscatter_min_deg)
         fire &= ~(backscatter & ~absolute)
+    excluded_fire = np.zeros(shape, dtype=bool)
     if exclude is not None:
+        excluded_fire = fire & exclude
         fire &= ~exclude
 
     with np.errstate(invalid="ignore"):
@@ -387,6 +395,7 @@ def detect_fires(
         "backscatter": int(backscatter.sum()),
         "fires": int(fire.sum()),
         "high": int(high.sum()),
+        "excluded_fires": int(excluded_fire.sum()),
         "clear_btd_median": None if np.isnan(clear_median) else round(clear_median, 3),
     }
     return FireTestResult(
@@ -406,6 +415,7 @@ def detect_fires(
         frp_mw=np.where(np.isfinite(bg_38), frp, np.nan),
         absolute=absolute,
         day_weight=w,
+        excluded_fire=excluded_fire,
         stats=stats,
     )
 
