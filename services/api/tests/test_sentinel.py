@@ -491,56 +491,138 @@ def test_scar_labels_say_candidate(client, stored_scar) -> None:
 KEEP_TILE = "TEST2"  # the stored-row tests' own tile: other tests' fixtures use TEST_TILE
 
 
-def _scar_row(scar: dict, block: str, **changes) -> dict:
-    """One burn_cluster row as _finish_tile builds it (the recorded Tarn Taran/Amritsar scar)."""
-    from shapely import wkt
+def _scar_row(scar: dict, block: str, shift_km: float = 0.0, **changes) -> dict:
+    """One burn_cluster row as _finish_tile builds it (the recorded Tarn Taran/Amritsar scar), its
+    outline moved `shift_km` east (another field, so another scar)."""
+    from shapely import affinity, wkt
 
-    poly = wkt.loads(scar["wkt"])
+    poly = affinity.translate(wkt.loads(scar["wkt"]), xoff=shift_km / 96.0)  # ~96 km per degree at 31 N
     return {
         "geom": f"SRID=4326;{poly.wkt}", "centroid": f"SRID=4326;{poly.representative_point().wkt}",
         "area_ha": scar["area"], "n_px": scar["n"], "res_m": 20, "mgrs_tile": KEEP_TILE, "scope": "hotspots",
         "block": block, "burn_after": dt.datetime.fromisoformat(scar["after"]),
         "burn_before": dt.datetime.fromisoformat(scar["before"]), "gap_days": 5.0, "scene_pre": scar["pre"],
         "scene_post": scar["post"], "collection": scar["col"], "hazy": False, "dnbr": 0.31, "nbr_post": -0.12,
-        "confidence": 0.5, "model_version": RULE.version, "fetch_id": None, **changes,
+        "d_b12": 0.05, "confidence": 0.5, "model_version": RULE.version, "fetch_id": None, **changes,
     }
 
 
 TILE_SCOPE = ("t.mgrs_tile = :tile AND t.scope = :scope", {"tile": KEEP_TILE, "scope": "hotspots"})
+_STORED = ("SELECT block, id, unseen, fire_matches, district, village, confidence, d_b12, model_version "
+           "FROM burn_cluster WHERE mgrs_tile = :t")
 
 
 def test_a_rebuilt_tile_keeps_the_rows_that_came_out_the_same() -> None:
-    """GitHub's runner rebuilds every tile from all its passes each day. Rows that come out the same
-    must stay as they are (id, verdict, names): only changed rows are rewritten, vanished rows go and
-    new rows arrive named. Rewriting all ~277k scars daily filled Neon's 1 GB in November 2026."""
+    """GitHub's runner rebuilds every tile from all its passes each day. A scar that comes out with
+    the same outline and window must keep its id (case links), fire verdict and names: untouched if
+    nothing changed, its computed columns updated in place if they did (a new confidence formula or
+    rule version). Vanished scars go and new ones arrive named. Rewriting all ~277k scars daily
+    filled Neon's 1 GB in November 2026."""
     from blindspot.jobs import sentinel as job
     from blindspot.models.sentinel import BurnCluster
 
     scar = json.loads((FIXTURES / "matched_scar.json").read_text())["scar"]
     scope, params = TILE_SCOPE
-    same, changed, gone = _scar_row(scar, "r0_a"), _scar_row(scar, "r0_b"), _scar_row(scar, "r0_c")
-    new = _scar_row(scar, "r0_d")
+    same, changed, gone = _scar_row(scar, "r0_a"), _scar_row(scar, "r0_b", 2), _scar_row(scar, "r0_c", 4)
+    new = _scar_row(scar, "r0_d", 6)
     with SessionLocal() as session:
         first = job._replace_rows(session, BurnCluster, scope, params, [same, changed, gone])
         ids = dict(session.execute(text(
             "SELECT block, id FROM burn_cluster WHERE mgrs_tile = :t"), {"t": KEEP_TILE}).all())
-        # a verdict set after the first run (fire matching) must survive the rebuild of its row
-        session.execute(text("UPDATE burn_cluster SET unseen = true, fire_matches = 0 WHERE id = :i"),
-                        {"i": ids["r0_a"]})
-        rebuilt = [dict(same), {**changed, "confidence": 0.61}, new]
+        # verdicts and names set after the first run (fire matching, labels) must survive the rebuild
+        session.execute(text("UPDATE burn_cluster SET unseen = true, fire_matches = 0, district = 'D', "
+                             "village = 'V' WHERE id = ANY(:i)"), {"i": [ids["r0_a"], ids["r0_b"]]})
+        rebuilt = [dict(same), {**changed, "confidence": 0.61, "d_b12": 0.09, "model_version": "test-rules"}, new]
         again = job._replace_rows(session, BurnCluster, scope, params, rebuilt)
-        rows = {r.block: r for r in session.execute(text(
-            "SELECT block, id, unseen, fire_matches, confidence FROM burn_cluster WHERE mgrs_tile = :t"),
-            {"t": KEEP_TILE})}
+        rows = {r.block: r for r in session.execute(text(_STORED), {"t": KEEP_TILE})}
         idle = job._replace_rows(session, BurnCluster, scope, params, [dict(r) for r in rebuilt])
         session.rollback()
-    assert first == {"computed": 3, "kept": 0, "deleted": 0, "inserted": 3}
-    assert again == {"computed": 3, "kept": 1, "deleted": 2, "inserted": 2}
+    assert first == {"computed": 3, "kept": 0, "updated": 0, "deleted": 0, "inserted": 3}
+    assert again == {"computed": 3, "kept": 1, "updated": 1, "deleted": 1, "inserted": 1}
     assert set(rows) == {"r0_a", "r0_b", "r0_d"}
     assert rows["r0_a"].id == ids["r0_a"] and rows["r0_a"].unseen is True and rows["r0_a"].fire_matches == 0
-    assert rows["r0_b"].id != ids["r0_b"] and rows["r0_b"].confidence == pytest.approx(0.61)
-    assert rows["r0_b"].unseen is None  # a changed row is a new row: it waits for its own verdict
-    assert idle == {"computed": 3, "kept": 3, "deleted": 0, "inserted": 0}  # the same run again writes nothing
+    # The same scar with new numbers: same id, verdict and names, the new numbers in place.
+    b = rows["r0_b"]
+    assert b.id == ids["r0_b"] and b.unseen is True and b.fire_matches == 0 and (b.district, b.village) == ("D", "V")
+    assert b.confidence == pytest.approx(0.61) and b.d_b12 == pytest.approx(0.09) and b.model_version == "test-rules"
+    assert rows["r0_d"].id not in ids.values() and rows["r0_d"].unseen is None  # new: waits for its verdict
+    assert idle == {"computed": 3, "kept": 3, "updated": 0, "deleted": 0, "inserted": 0}  # nothing to write
+
+
+def test_a_scar_with_another_outline_or_window_is_another_scar() -> None:
+    """The verdict and the names belong to an outline and a burn window. If either changes, the old
+    row goes and the new one starts without a verdict (fire matching gives it its own)."""
+    from blindspot.jobs import sentinel as job
+    from blindspot.models.sentinel import BurnCluster
+
+    scar = json.loads((FIXTURES / "matched_scar.json").read_text())["scar"]
+    scope, params = TILE_SCOPE
+    outline, window = _scar_row(scar, "r0_o"), _scar_row(scar, "r0_w", 2)
+    later = window["burn_after"] + dt.timedelta(days=1)
+    with SessionLocal() as session:
+        job._replace_rows(session, BurnCluster, scope, params, [outline, window])
+        before = dict(session.execute(text("SELECT block, id FROM burn_cluster WHERE mgrs_tile = :t"),
+                                      {"t": KEEP_TILE}).all())
+        session.execute(text("UPDATE burn_cluster SET unseen = true WHERE mgrs_tile = :t"), {"t": KEEP_TILE})
+        out = job._replace_rows(session, BurnCluster, scope, params, [
+            _scar_row(scar, "r0_o", 0.02), {**window, "burn_after": later}])
+        rows = {r.block: r for r in session.execute(text(_STORED), {"t": KEEP_TILE})}
+        session.rollback()
+    assert out == {"computed": 2, "kept": 0, "updated": 0, "deleted": 2, "inserted": 2}
+    assert all(rows[b].id != before[b] and rows[b].unseen is None for b in ("r0_o", "r0_w"))
+
+
+def test_updating_a_scar_in_place_writes_one_row_version() -> None:
+    """A changed confidence (as after the whole-day gap fix) costs one UPDATE per scar: no delete,
+    no insert, no renaming, so a rule change does not reset the table's verdicts or links."""
+    from blindspot.jobs import sentinel as job
+    from blindspot.models.sentinel import BurnCluster
+
+    scar = json.loads((FIXTURES / "matched_scar.json").read_text())["scar"]
+    scope, params = TILE_SCOPE
+    rows = [_scar_row(scar, f"r0_u{i}", 2 * i) for i in range(3)]
+    writes = text("SELECT n_tup_ins, n_tup_upd, n_tup_del FROM pg_stat_xact_user_tables WHERE relname = 'burn_cluster'")
+    with SessionLocal() as session:
+        job._replace_rows(session, BurnCluster, scope, params, rows)
+        start = session.execute(writes).one()
+        out = job._replace_rows(session, BurnCluster, scope, params, [{**r, "confidence": 0.7} for r in rows])
+        end = session.execute(writes).one()
+        session.rollback()
+    assert out == {"computed": 3, "kept": 0, "updated": 3, "deleted": 0, "inserted": 0}
+    assert tuple(e - s for e, s in zip(end, start, strict=True)) == (0, 3, 0)
+
+
+def test_harvested_fields_still_match_on_their_whole_content() -> None:
+    """harvest_cluster has no IDENTITY entry: a field whose computed columns changed (a newer clear
+    view) is a new row, as before, and an unchanged one is kept."""
+    from shapely import wkt
+
+    from blindspot.jobs import sentinel as job
+    from blindspot.models.sentinel import HarvestCluster
+
+    scar = json.loads((FIXTURES / "matched_scar.json").read_text())["scar"]
+    poly = wkt.loads(scar["wkt"])
+    seen = dt.datetime.fromisoformat(scar["before"])
+
+    def field(block: str, last: dt.datetime) -> dict:
+        return {"geom": f"SRID=4326;{poly.wkt}", "centroid": f"SRID=4326;{poly.representative_point().wkt}",
+                "area_ha": scar["area"], "n_px": scar["n"], "res_m": 20, "mgrs_tile": KEEP_TILE,
+                "scope": block, "harvested_after": seen - dt.timedelta(days=5), "harvested_before": seen,
+                "last_seen_unburnt": last, "scene_last": scar["post"], "collection": scar["col"],
+                "ndvi_last": 0.2, "model_version": RULE.version, "fetch_id": None}
+
+    scope = ("t.mgrs_tile = :tile AND t.scope = ANY(:scopes)", {"tile": KEEP_TILE, "scopes": ["ha", "hb"]})
+    with SessionLocal() as session:
+        job._replace_rows(session, HarvestCluster, *scope, [field("ha", seen), field("hb", seen)])
+        ids = dict(session.execute(text("SELECT scope, id FROM harvest_cluster WHERE mgrs_tile = :t"),
+                                   {"t": KEEP_TILE}).all())
+        out = job._replace_rows(session, HarvestCluster, *scope,
+                                [field("ha", seen), field("hb", seen + dt.timedelta(days=5))])
+        after = dict(session.execute(text("SELECT scope, id FROM harvest_cluster WHERE mgrs_tile = :t"),
+                                     {"t": KEEP_TILE}).all())
+        session.rollback()
+    assert out == {"computed": 2, "kept": 1, "updated": 0, "deleted": 1, "inserted": 1}
+    assert after["ha"] == ids["ha"] and after["hb"] != ids["hb"]
 
 
 def test_a_scope_with_nothing_computed_is_emptied() -> None:
@@ -554,7 +636,7 @@ def test_a_scope_with_nothing_computed_is_emptied() -> None:
         out = job._replace_rows(session, BurnCluster, scope, params, [])
         left = session.execute(text("SELECT count(*) FROM burn_cluster WHERE mgrs_tile = :t"), {"t": KEEP_TILE}).scalar()
         session.rollback()
-    assert out == {"computed": 0, "kept": 0, "deleted": 1, "inserted": 0} and left == 0
+    assert out == {"computed": 0, "kept": 0, "updated": 0, "deleted": 1, "inserted": 0} and left == 0
 
 
 def test_rows_of_a_stage_that_left_a_tile_are_dropped() -> None:
