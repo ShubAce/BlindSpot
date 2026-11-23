@@ -101,36 +101,84 @@ def load_fields(session: Session) -> list[Field]:
 # --- 2a. burning nearby (database) ---------------------------------------------------------------------
 
 
-def fill_neighbourhood(session: Session, table: str, t_end: datetime, where: str = "TRUE",
+def fill_neighbourhood(session: Session, table: str, t_end: datetime | None, where: str = "TRUE",
                        params: dict[str, Any] | None = None, days: int = model.NEIGHBOUR_DAYS,
                        radius_km: float = model.NEIGHBOUR_RADIUS_KM) -> None:
     """Set `fires`, `unseen` and `ha` on the rows of a temporary table (columns k, g geography) that
     match `where`: FIRMS detections (nominal/high confidence), candidate unseen burn scars, and burnt
-    hectares within `radius_km` during (t_end - days, t_end]. Set-based, in a few statements
-    whatever the number of rows, and nothing comes back to the client.
+    hectares within `radius_km` during (t_end - days, t_end]. With t_end None, each row's window ends
+    at its own `t0` column instead (the backtest: every pass pair's fields as of its first pass, a
+    few days of first passes per statement). Set-based, and nothing comes back to the client.
 
-    Distances are true metres on the ellipsoid (geography). The window's fires and scars are first
-    copied into temporary tables as geography, each with its own spatial index, so the search for
-    a field only meets this week's rows (not the whole season's), no polygon is converted again for
-    every field it is compared with, and one pass over the scars gives both the unseen count and
-    the burnt hectares. (Three correlated subqueries per field over the season's tables took 13 min
-    for 172k fields on the dev box.)"""
+    Distances are planar metres in UTM zone 43N (model.UTM_EPSG), whose central meridian (75 E) runs
+    through the area we watch (73.8-77.7 E): there a planar distance is within 0.05% of the true one,
+    about 2 m in 5 km. Scars stay polygons, so a scar counts when its nearest edge is within 5 km, as
+    before. The fires and scars are first copied into temporary tables, projected once and indexed,
+    so the search for a field only meets nearby rows and no polygon is converted again for every
+    field it is compared with; one pass over the scars gives both the unseen count and the hectares.
+
+    Until 2026-11-23 the distances were metres on the ellipsoid (geography). On the 22 Nov snapshot
+    (243,450 fields, 147,993 scars in the week) that statement took 384 s on a desktop's Postgres 18,
+    and on the 1 GB server the job's run of 22 Nov lost its database connection inside it, 19.9
+    minutes into the run. This one took 52-62 s on the same desktop (three runs) and changes no field's score by
+    more than 0.66 points (Spearman 0.999999, the same top 1%; scripts/risk_neighbourhood_bench.py).
+    The week's scars are found by burn_before through ix_burn_cluster_window (B-tree skip scan on
+    Postgres 18: 0.12 s for 147,993 scars), so no index was added. Scar centroids instead of
+    polygons would save only a sixth more and undercount nearby hectares by 7.5% on average (a
+    scar's edge lies up to 3.7 km from its centroid), so the polygons stay."""
     has_fires, has_burns = _exists(session, "fire_detection"), _exists(session, "burn_cluster")
-    window = {"t0": t_end - timedelta(days=days), "t1": t_end}
-    session.execute(text("DROP TABLE IF EXISTS nb_fire, nb_burn"))
+    utm = model.UTM_EPSG
+    span = timedelta(days=days)
     # The fires module flags spots hot on 3+ nights (kilns, industry) as static_source: not crop fires.
     static = "AND NOT static_source" if has_fires and "static_source" in _columns(session, "fire_detection") else ""
-    session.execute(text(f"""
-        CREATE TEMP TABLE nb_fire ON COMMIT DROP AS
-        SELECT geom::geography AS g FROM fire_detection
-        WHERE acq_utc > :t0 AND acq_utc <= :t1 AND confidence <> 'low' {static}
-    """ if has_fires else "CREATE TEMP TABLE nb_fire (g geography) ON COMMIT DROP"), window)
-    session.execute(text("""
-        CREATE TEMP TABLE nb_burn ON COMMIT DROP AS
-        SELECT geom::geography AS g, area_ha, unseen FROM burn_cluster
-        WHERE burn_before > :t0 AND burn_before <= :t1
-    """ if has_burns else "CREATE TEMP TABLE nb_burn (g geography, area_ha float8, unseen boolean) ON COMMIT DROP"),
-        window)
+    fires_sql = (f"SELECT ST_Transform(geom, {utm}) AS g, acq_utc AS t FROM fire_detection "
+                 f"WHERE acq_utc > :a AND acq_utc <= :b AND confidence <> 'low' {static}"
+                 if has_fires else "SELECT CAST(NULL AS geometry) AS g, CAST(NULL AS timestamptz) AS t WHERE FALSE")
+    burns_sql = (f"SELECT ST_Transform(geom, {utm}) AS g, burn_before AS t, area_ha, unseen FROM burn_cluster "
+                 "WHERE burn_before > :a AND burn_before <= :b" if has_burns else
+                 "SELECT CAST(NULL AS geometry) AS g, CAST(NULL AS timestamptz) AS t, CAST(NULL AS float8) AS area_ha, "
+                 "CAST(NULL AS boolean) AS unseen WHERE FALSE")
+    if t_end is not None:  # one window for every row
+        _fill_window(session, table, fires_sql, burns_sql, {"a": t_end - span, "b": t_end}, where, params,
+                     "", radius_km)
+        return
+    # Each row's own window (t0 - days, t0]: the rows go in slabs of first passes up to SLAB_DAYS apart,
+    # and a slab copies the fires and scars of its widest window (first t0 - days, last t0] from the
+    # season's, projected once; each candidate's time is then tested against the row's own t0. So a row
+    # meets at most days + SLAB_DAYS days of scars, not the whole season's.
+    t0s = [r[0] for r in session.execute(text(f"SELECT DISTINCT t0 FROM {table} p WHERE {where} ORDER BY 1"),
+                                         params or {}).all()]
+    if not t0s:
+        return
+    season = {"a": t0s[0] - span, "b": t0s[-1]}
+    session.execute(text("DROP TABLE IF EXISTS nb_sfire, nb_sburn"))
+    session.execute(text(f"CREATE TEMP TABLE nb_sfire ON COMMIT DROP AS {fires_sql}"), season)
+    session.execute(text(f"CREATE TEMP TABLE nb_sburn ON COMMIT DROP AS {burns_sql}"), season)
+    slabs: list[list[datetime]] = []
+    for t0 in t0s:
+        if slabs and t0 - slabs[-1][0] <= timedelta(days=SLAB_DAYS):
+            slabs[-1][1] = t0
+        else:
+            slabs.append([t0, t0])
+    for lo, hi in slabs:
+        _fill_window(session, table, "SELECT g, t FROM nb_sfire WHERE t > :a AND t <= :b",
+                     "SELECT g, t, area_ha, unseen FROM nb_sburn WHERE t > :a AND t <= :b", {"a": lo - span, "b": hi},
+                     f"({where}) AND p.t0 >= :lo AND p.t0 <= :hi", {**(params or {}), "lo": lo, "hi": hi, "span": span},
+                     "AND {x}.t > p.t0 - :span AND {x}.t <= p.t0", radius_km)
+    session.execute(text("DROP TABLE nb_sfire, nb_sburn"))
+
+
+SLAB_DAYS = 3  # the backtest fills its rows in slabs of first passes at most this many days apart
+
+
+def _fill_window(session: Session, table: str, fires_sql: str, burns_sql: str, window: dict[str, Any], where: str,
+                 params: dict[str, Any] | None, row_time: str, radius_km: float) -> None:
+    """One step of fill_neighbourhood: copy the fires and scars of `window` (a, b] into indexed
+    temporary tables and count them around every row that matches `where` (and, with `row_time`,
+    whose own window holds them)."""
+    session.execute(text("DROP TABLE IF EXISTS nb_fire, nb_burn"))
+    session.execute(text(f"CREATE TEMP TABLE nb_fire ON COMMIT DROP AS {fires_sql}"), window)
+    session.execute(text(f"CREATE TEMP TABLE nb_burn ON COMMIT DROP AS {burns_sql}"), window)
     for name in ("nb_fire", "nb_burn"):
         session.execute(text(f"CREATE INDEX ON {name} USING gist (g)"))
         session.execute(text(f"ANALYZE {name}"))
@@ -139,10 +187,12 @@ def fill_neighbourhood(session: Session, table: str, t_end: datetime, where: str
         FROM (
             SELECT p.k, f.n, b.unseen, b.ha
             FROM {table} p
-            CROSS JOIN LATERAL (SELECT count(*) AS n FROM nb_fire f WHERE ST_DWithin(f.g, p.g, :m)) f
+            CROSS JOIN LATERAL (SELECT ST_Transform(CAST(p.g AS geometry), {model.UTM_EPSG}) AS q) q
+            CROSS JOIN LATERAL (SELECT count(*) AS n FROM nb_fire f
+                                WHERE ST_DWithin(f.g, q.q, :m) {row_time.format(x="f")}) f
             CROSS JOIN LATERAL (
                 SELECT count(*) FILTER (WHERE b.unseen IS TRUE) AS unseen, coalesce(sum(b.area_ha), 0) AS ha
-                FROM nb_burn b WHERE ST_DWithin(b.g, p.g, :m)
+                FROM nb_burn b WHERE ST_DWithin(b.g, q.q, :m) {row_time.format(x="b")}
             ) b
             WHERE {where}
         ) AS x
@@ -269,7 +319,11 @@ def load_history(session: Session, history: History) -> History:
 def fill_history(session: Session, table: str, history: History,
                  radius_km: float = model.NEIGHBOUR_RADIUS_KM) -> None:
     """Set `hist` (last season's fires within radius_km, from rk_hist) on every row of `table`; left
-    NULL when last season could not be fetched, so the factor is reported missing, not zero."""
+    NULL when last season could not be fetched, so the factor is reported missing, not zero.
+
+    Still metres on the ellipsoid (geography): last season's ~6,600 points are a few per field, so
+    this is cheap (5 s for 243,450 fields on the 22 Nov snapshot), and projecting every field to
+    UTM first cost more than it saved (scripts/risk_neighbourhood_bench.py)."""
     if history.reason is not None:
         return
     session.execute(text(f"""
@@ -706,8 +760,7 @@ def backtest(session: Session, history: History, as_of: datetime) -> dict[str, A
         report["windows"] = [_window(w, counts.get(i, (0, 0))) for i, w in enumerate(windows)]
         report["reason"] = "no pass pair has enough burnt and unburnt fields yet"
         return report
-    for (t0,) in session.execute(text("SELECT DISTINCT t0 FROM bt ORDER BY 1")).all():
-        fill_neighbourhood(session, "bt", t0, "p.t0 = :t0", {"t0": t0})
+    fill_neighbourhood(session, "bt", None)  # every pair's fields as of its own t0 (in slabs of first passes)
     loaded = load_history(session, history)
     fill_history(session, "bt", loaded)
     for stmt in model.score_sql("bt", "pair"):

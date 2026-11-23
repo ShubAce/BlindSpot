@@ -71,6 +71,9 @@ WINDOW_FULL_DAYS = 10.0  # all sources agree the field is still before sowing
 WINDOW_CLOSED_DAYS = 30.0  # the longest quoted gap; after this the field is usually sown
 NEIGHBOUR_RADIUS_KM = 5.0
 NEIGHBOUR_DAYS = 7
+# Distances are measured in WGS 84 / UTM zone 43N metres: its central meridian (75 E) runs through the
+# area we watch (73.8-77.7 E), where a planar distance is within 0.05% of the true one (2 m in 5 km).
+UTM_EPSG = 32643
 HEAVY_RAIN_MM = 10.0  # ETCCDI R10mm heavy precipitation day
 WET_DAY_MM = 1.0  # ETCCDI R1mm wet day
 # NDVI below this means bare soil or residue, not a green crop: the sentinel module's harvest rule

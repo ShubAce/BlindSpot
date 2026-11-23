@@ -378,6 +378,49 @@ def test_last_season_keeps_vegetation_fires_and_caches(monkeypatch, tmp_path):
     assert len(again.points) == len(keep) and len(calls) == 1  # served from disk, no second fetch
 
 
+def test_backtest_fill_by_slabs_equals_one_window_per_first_pass():
+    """The backtest fills every row's neighbourhood as of its own t0 in slabs of first passes
+    (fill_neighbourhood with t_end None): exactly what one fill per t0 gives. Scars, fires and fields
+    sit in the Indian Ocean and are rolled back."""
+    from sqlalchemy.orm import Session
+
+    from blindspot.db import engine
+    from blindspot.jobs import risk as job
+
+    base = datetime(2026, 10, 20, 5, 50, tzinfo=UTC)
+    with engine.connect() as conn, Session(bind=conn) as s:
+        for i, (dx, back, ha, unseen) in enumerate(((0.00, 12, 3.0, True), (0.01, 9, 5.5, False), (0.02, 6, 1.25, True),
+                                                     (0.03, 4, 8.0, None), (0.04, 2, 2.0, True), (0.05, -1, 4.0, True),
+                                                     (0.09, 3, 9.0, True))):  # the last one is ~10 km away
+            lon, t = 61.0 + dx, base - timedelta(days=back)
+            s.execute(text("""
+                INSERT INTO burn_cluster (geom, centroid, area_ha, n_px, res_m, mgrs_tile, scope, block, burn_after,
+                    burn_before, gap_days, scene_pre, scene_post, collection, hazy, confidence, unseen, model_version)
+                VALUES (ST_GeomFromText(:poly, 4326), ST_SetSRID(ST_MakePoint(:lon + 0.001, -6.001), 4326), :ha, 10, 20,
+                    'TESTSLAB', 'test', 'r0_c0', :a, :t, 3, 'x', 'y', 'test', false, 0.9, :u, 'test-slab')
+            """), {"poly": f"POLYGON(({lon} -6,{lon + 0.002} -6,{lon + 0.002} -6.002,{lon} -6.002,{lon} -6))",
+                   "lon": lon, "ha": ha, "a": t - timedelta(days=3), "t": t, "u": unseen})
+        for i, back in enumerate((10, 5, 1)):
+            s.execute(text("""
+                INSERT INTO fire_detection (source, satellite, instrument, acq_utc, lat, lon, geom, confidence, daynight)
+                VALUES ('TEST_SLAB', 'N', 'VIIRS', :t, -6.0, :lon, ST_SetSRID(ST_MakePoint(:lon, -6.0), 4326), 'nominal', 'D')
+            """), {"t": base - timedelta(days=back, hours=-1), "lon": 61.005 + i / 100})
+        s.execute(text("DROP TABLE IF EXISTS bt, bt_ref"))
+        s.execute(text(f"CREATE TEMP TABLE bt ({job.BT_COLUMNS}{model.SCORE_COLUMNS}) ON COMMIT DROP"))
+        rows = [{"lon": 61.0 + f / 50, "t0": base - timedelta(days=d)} for f in range(4) for d in (14, 9, 6, 3, 1, 0)]
+        s.execute(text("INSERT INTO bt (pair, label, fid, g, t0) VALUES "
+                       "(0, 0, 0, ST_SetSRID(ST_MakePoint(:lon, -6.003), 4326)::geography, :t0)"), rows)
+        s.execute(text("CREATE TEMP TABLE bt_ref ON COMMIT DROP AS SELECT * FROM bt"))
+        job.fill_neighbourhood(s, "bt", None)
+        for (t0,) in s.execute(text("SELECT DISTINCT t0 FROM bt_ref")).all():
+            job.fill_neighbourhood(s, "bt_ref", t0, "p.t0 = :t0", {"t0": t0})
+        got = s.execute(text("SELECT k, fires, unseen, ha FROM bt ORDER BY k")).all()
+        want = s.execute(text("SELECT k, fires, unseen, ha FROM bt_ref ORDER BY k")).all()
+        s.rollback()
+    assert got == want
+    assert len({(r[1], r[2], r[3]) for r in got}) > 3 and max(r[3] for r in got) > 0  # windows do differ
+
+
 def test_backtest_uses_harvest_dates_when_the_scar_table_has_them(client):
     """The timing branch (on once burn_cluster records harvest dates): timing enters the score and a
     timing-only baseline is reported. The pass pair's fields go straight into the backtest's table
