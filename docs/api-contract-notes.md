@@ -136,7 +136,7 @@ Cached for 60 s.
   "clusters": 67854, "area_ha": 104476.3, "unseen_clusters": 59465, "unseen_area_ha": 86303.0,
   "checked_area_ha": 104476.3, "unseen_share": 0.8261, "districts": 38,
   "first_pass": "2026-10-02T05:40:36.219000Z", "last_pass": "2026-10-30T05:40:52.298000Z",
-  "model_version": "s2burn-rules-4",
+  "model_version": "s2burn-rules-2",
   "precision": 0.833, "precision_ci95": [0.608, 0.942], "precision_n": 18,
   "note": "Scars from Sentinel-2 passes processed so far ...; treat the share as an upper bound ..."
  },
@@ -363,7 +363,7 @@ There is no `hours` parameter. A pass counts when the site lies inside the instr
  "by_district": [{"district": "Amritsar", "state": "Punjab", "area_ha": 14318.36, "clusters": 9269, "unseen_area_ha": 10715.28,
    "unseen_share": 0.748, "fire_detections": 658, "scope": ["hotspots", "punjab"], "res_m": 20}],
  "coverage": {"processed": 142, "skipped": 32, "failed": 0, "catalogued": 251, "latest_processed_pass": "2026-10-30T05:40:52.298000Z", "tiles": ["43RCP", "... 12 tiles"]},
- "method": {"model_version": "s2burn-rules-4", "summary": "...", "label": "candidate unseen burn",
+ "method": {"model_version": "s2burn-rules-2", "summary": "...", "label": "candidate unseen burn",
    "audit": {"candidate_unseen": {"precision": 0.833, "precision_ci95": [0.608, 0.942], "audited": 18, "...": "..."},
              "firms_confirmed": {"precision": 0.833, "...": "..."}, "recall_vs_firms": {"recall_same_window": 0.353, "...": "..."}, "current": true},
    "unseen_rule": "unseen = no FIRMS detection within max(1 km, pixel half-diagonal + 200 m) ..."}}

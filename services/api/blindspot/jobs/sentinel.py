@@ -534,8 +534,8 @@ def _finish_tile(
             hazy = bool(part.mode("hazy"))
             means = {k: part.mean(k) for k in ("d_b8a", "d_b11", "d_b12", "dnbr", "nbr_post",
                                                 "bais2_post", "tbi_post", "ndvi_pre", "ndvi_post")}
-            if not RULE.keeps(burnscar.seed_nbr_post(part)):
-                result.filtered_clusters += 1  # water / cloud-shadow look-alike (BurnRule.keeps, on the seeds)
+            if not RULE.keeps(means["nbr_post"]):
+                result.filtered_clusters += 1  # water / cloud-shadow look-alike (BurnRule.keeps)
                 continue
             ll = _to_lonlat(poly, grid.epsg)
             anchor_utm = _anchor(poly)

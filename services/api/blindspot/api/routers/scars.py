@@ -316,10 +316,7 @@ def _method() -> dict[str, Any]:
             "Sentinel-2 L2A, cropland only: NIR and SWIR darkened since the previous clear pass "
             f"(dB8A>{RULE.d_b8a}, dB11>{RULE.d_b11}, dB12>{RULE.d_b12}) and the field now looks "
             f"charred (BAIS2>={RULE.bais2_min}, brightness<={RULE.tbi_max}); passes at most "
-            f"{RULE.max_gap_days} days apart; next to such pixels, the burn takes in connected pixels "
-            f"that pass looser tests (dB8A>{RULE.grow_d_b8a}, dB11>{RULE.grow_d_b11}, dB12>{RULE.grow_d_b12}, "
-            f"BAIS2>={RULE.grow_bais2_min}, brightness<={RULE.grow_tbi_max}, NBR<{RULE.grow_nbr_post_max}); "
-            f"clusters of at least {RULE.min_area_ha} ha whose strict pixels' mean "
+            f"{RULE.max_gap_days} days apart; clusters of at least {RULE.min_area_ha} ha whose mean "
             f"post-burn NBR is below {RULE.nbr_post_max} (drops flooded fields and cloud shadows). "
             "Candidates: tillage can look similar."
         ),
