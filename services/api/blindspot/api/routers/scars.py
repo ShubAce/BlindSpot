@@ -5,7 +5,9 @@ GET /api/scars              scars as GeoJSON polygons, with totals (filters: sin
 GET /api/scars/summary      season totals and a per-district table, with FIRMS counts beside them
 GET /api/scars/{id}         one scar: its properties and outline, before/after imagery links, the
                             other scars inside its pictures, the fire detections around it and the
-                            weather while it burnt
+                            weather while it burnt. An id the sentinel job replaced (a rebuild or a
+                            stage change gave the scar a new outline and id) answers with its
+                            successor's case and `forwarded_from`
 
 Every number is read from PostGIS (burn_cluster, fire_detection, met_grid), which the sentinel,
 fires and met jobs fill. Scars are *candidates*: a field that darkened and now looks charred
@@ -60,6 +62,7 @@ CHIP_PX = 512
 NEARBY_KM = 5.0  # fire detections listed around a scar
 NEARBY_DAYS = 2  # ...from this many days before the clear pass to this many after the burnt one
 KM_PER_DEG = 111.32  # length of one degree of latitude, km
+MAX_FORWARD_HOPS = 8  # a replaced scar's id is followed through at most this many replacements
 
 _FEATURE_COLUMNS = """
     id, area_ha, burn_after, burn_before, gap_days, district, subdistrict, village, village_km,
@@ -721,15 +724,38 @@ def _round(value: float | None, ndigits: int) -> float | None:
     return None if value is None else round(value, ndigits)
 
 
+def _forwarded(session: Session, scar_id: int) -> int | None:
+    """The stored scar that replaced a deleted one (burn_cluster_forward, written by the sentinel
+    job), following replacements of replacements up to MAX_FORWARD_HOPS; None if there is none."""
+    if not _table_exists(session, "burn_cluster_forward"):
+        return None
+    return session.execute(text("""
+        WITH RECURSIVE chain(id, depth) AS (
+            SELECT new_id, 1 FROM burn_cluster_forward WHERE old_id = :id
+            UNION ALL
+            SELECT f.new_id, c.depth + 1 FROM chain c JOIN burn_cluster_forward f ON f.old_id = c.id
+             WHERE c.depth < :hops AND NOT EXISTS (SELECT 1 FROM burn_cluster b WHERE b.id = c.id))
+        SELECT c.id FROM chain c JOIN burn_cluster b ON b.id = c.id ORDER BY c.depth LIMIT 1"""),
+        {"id": scar_id, "hops": MAX_FORWARD_HOPS}).scalar()
+
+
 @router.get("/{scar_id}")
 def scar(scar_id: int, session: SessionDep) -> ORJSONResponse:
     """One scar's case file: properties and outline, before/after imagery (true colour, SWIR, NBR),
     the other stored scars inside those pictures, fire detections within 5 km around its window,
-    and the weather while it could have burnt."""
-    row = session.execute(text(f"""
+    and the weather while it could have burnt.
+
+    An id the sentinel job deleted and forwarded (the same burn now stored under a new id) answers
+    with the successor's case and `forwarded_from` = the id asked for, so old links keep working
+    (the website redirects them permanently to the new id)."""
+    query = text(f"""
         SELECT {_FEATURE_COLUMNS}, ST_AsGeoJSON(geom, 6)::json AS geometry, n_px, d_b8a, d_b11, d_b12,
                bais2_post, tbi_post, ndvi_pre, ndvi_post, matched_at, fetch_id, created_at
-        FROM burn_cluster WHERE id = :id"""), {"id": scar_id}).mappings().first()
+        FROM burn_cluster WHERE id = :id""")
+    row = session.execute(query, {"id": scar_id}).mappings().first()
+    forwarded_from = None
+    if row is None and (successor := _forwarded(session, scar_id)) is not None:
+        row, forwarded_from = session.execute(query, {"id": successor}).mappings().first(), scar_id
     if row is None:
         raise HTTPException(404, "no such scar")
     row = dict(row)
@@ -752,8 +778,10 @@ def scar(scar_id: int, session: SessionDep) -> ORJSONResponse:
         "case": case,
         "imagery": _imagery(session, row, bbox),
         "other_scars": _other_scars(session, row, bbox),
-        "fires_nearby": _fires_nearby(session, scar_id),
+        "fires_nearby": _fires_nearby(session, row["id"]),
         "weather_at_burn": weather,
         "method": _method(),
     }
+    if forwarded_from is not None:
+        payload["forwarded_from"] = forwarded_from
     return respond(payload, sources, max_age=60)
