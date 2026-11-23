@@ -4,7 +4,8 @@ GET /api/scars              scars as GeoJSON polygons, with totals (filters: sin
                             unseen, bbox, limit)
 GET /api/scars/summary      season totals and a per-district table, with FIRMS counts beside them
 GET /api/scars/{id}         one scar: its properties and outline, before/after imagery links, the
-                            fire detections around it and the weather while it burnt
+                            other scars inside its pictures, the fire detections around it and the
+                            weather while it burnt
 
 Every number is read from PostGIS (burn_cluster, fire_detection, met_grid), which the sentinel,
 fires and met jobs fill. Scars are *candidates*: a field that darkened and now looks charred
@@ -498,6 +499,96 @@ def _fires_nearby(session: Session, scar_id: int) -> list[dict[str, Any]]:
     ]
 
 
+# The case's pictures show every field around it, and most dark ones are other stored scars (in the
+# 4 km box of case 4936479, 126 of them on 22 Nov), so the case file lists them for the pictures to
+# outline. The same cut as the live map's list, so every outline is a scar the map shows.
+OTHERS_MIN_CONFIDENCE = WEBSITE_LIST["min_confidence"]
+# On 22 Nov the 1.2 km box of a sample of 400 scars held at most 47 others; the boxes of the 40
+# largest scars held 74 (median) to 760 (a 10 km box). When this cuts, the largest are kept.
+OTHERS_LIMIT = 300
+# Passes over one field are days apart, but the tiles of one pass are stamped seconds apart, so a
+# scar first seen within this of a picture's pass was seen on that same pass.
+SAME_PASS = dt.timedelta(hours=1)
+RELATIONS = ("same", "earlier", "later")
+
+
+def _other_scars(session: Session, row: dict[str, Any], bbox: tuple[float, float, float, float]) -> dict[str, Any]:
+    """The other stored scars (current model, the live map's confidence cut) that reach into the
+    case's picture box, each with how it stands to the case's two pictures:
+
+    - "same": first seen burnt after the before picture and at the latest on the after picture
+      (the case's own window, or a pass between its two): new in the after picture;
+    - "earlier": already seen burnt on the before picture's pass or before: dark in both;
+    - "later": first seen burnt after the after picture: not burnt yet in either, so counted in
+      `totals` but not listed (the pictures have nothing to outline).
+
+    Outlines are simplified to one picture pixel (the box's shorter side / CHIP_PX, in degrees;
+    ST_SimplifyPreserveTopology never drops a small scar) with 5 decimals (about 1 m). One query on
+    the geometry index; `totals` count every match even when OTHERS_LIMIT cuts the list (the largest
+    first, same and earlier alike). `area_ha` is a scar's whole area, also the part outside the box;
+    `area_in_box_ha` the part inside it: area_ha times the share of the outline inside the box,
+    worked out only for the scars that cross the box's edge."""
+    x0, y0, x1, y1 = bbox
+    params = {
+        "x0": x0, "y0": y0, "x1": x1, "y1": y1, "id": row["id"], "version": RULE.version,
+        "min_conf": OTHERS_MIN_CONFIDENCE, "limit": OTHERS_LIMIT,
+        "earlier_by": row["burn_after"] + SAME_PASS, "same_by": row["burn_before"] + SAME_PASS,
+        "tol": min(x1 - x0, y1 - y0) / CHIP_PX,
+    }
+    # LEFT JOIN: the totals come back even when nothing is listed (a box of later scars only)
+    rows = session.execute(text("""
+        WITH box AS (SELECT ST_MakeEnvelope(:x0, :y0, :x1, :y1, 4326) AS b),
+        hit AS (
+            SELECT c.id, c.burn_after, c.burn_before, c.unseen, c.confidence, c.area_ha, c.geom,
+                   CASE WHEN c.burn_before < :earlier_by THEN 'earlier'
+                        WHEN c.burn_before < :same_by THEN 'same' ELSE 'later' END AS relation,
+                   CASE WHEN c.geom @ box.b THEN c.area_ha
+                        ELSE c.area_ha * ST_Area(ST_Intersection(c.geom, box.b)) / NULLIF(ST_Area(c.geom), 0)
+                   END AS in_box_ha
+            FROM burn_cluster c, box
+            WHERE c.geom && box.b AND ST_Intersects(c.geom, box.b)
+              AND c.id <> :id AND c.model_version = :version AND c.confidence >= :min_conf
+        ), totals AS (
+            SELECT jsonb_object_agg(relation, jsonb_build_object('scars', n, 'area_ha', ha,
+                                                                 'area_in_box_ha', in_box)) AS t
+            FROM (SELECT relation, count(*) AS n, round(sum(area_ha)::numeric, 2) AS ha,
+                         round(coalesce(sum(in_box_ha), 0)::numeric, 2) AS in_box
+                  FROM hit GROUP BY relation) g
+        )
+        SELECT h.id, h.relation, h.burn_after, h.burn_before, h.unseen, h.confidence, h.area_ha,
+               totals.t AS totals, ST_AsGeoJSON(ST_SimplifyPreserveTopology(h.geom, :tol), 5)::json AS outline
+        FROM totals
+        LEFT JOIN LATERAL (SELECT * FROM hit WHERE relation <> 'later'
+                           ORDER BY area_ha DESC, id LIMIT :limit) h ON true
+        ORDER BY h.area_ha DESC, h.id"""),
+        params).mappings().all()
+    totals = {r: {"scars": 0, "area_ha": 0.0, "area_in_box_ha": 0.0} for r in RELATIONS}
+    for relation, t in ((rows[0]["totals"] if rows else None) or {}).items():
+        totals[relation] = {"scars": int(t["scars"]), "area_ha": float(t["area_ha"]),
+                            "area_in_box_ha": float(t["area_in_box_ha"])}
+    scars = [
+        {
+            "id": r["id"], "relation": r["relation"], "burn_after": r["burn_after"],
+            "burn_before": r["burn_before"], "unseen": r["unseen"], "confidence": r["confidence"],
+            "area_ha": round(float(r["area_ha"]), 2),
+            "outline": orjson.loads(r["outline"]) if isinstance(r["outline"], str) else r["outline"],
+        }
+        for r in rows
+        if r["id"] is not None
+    ]
+    return {
+        "bbox": list(bbox),
+        "model_version": RULE.version,
+        "min_confidence": OTHERS_MIN_CONFIDENCE,
+        "totals": totals,
+        "total": sum(t["scars"] for t in totals.values()),
+        "returned": len(scars),
+        "truncated": len(scars) < totals["same"]["scars"] + totals["earlier"]["scars"],
+        "limit": OTHERS_LIMIT,
+        "scars": scars,
+    }
+
+
 def _bilinear(values: list[float] | None, nx: int, fx: float, fy: float) -> float | None:
     """Value at fractional grid position (fx, fy) of a row-major (j * nx + i) grid."""
     if not values:
@@ -633,7 +724,8 @@ def _round(value: float | None, ndigits: int) -> float | None:
 @router.get("/{scar_id}")
 def scar(scar_id: int, session: SessionDep) -> ORJSONResponse:
     """One scar's case file: properties and outline, before/after imagery (true colour, SWIR, NBR),
-    fire detections within 5 km around its window, and the weather while it could have burnt."""
+    the other stored scars inside those pictures, fire detections within 5 km around its window,
+    and the weather while it could have burnt."""
     row = session.execute(text(f"""
         SELECT {_FEATURE_COLUMNS}, ST_AsGeoJSON(geom, 6)::json AS geometry, n_px, d_b8a, d_b11, d_b12,
                bais2_post, tbi_post, ndvi_pre, ndvi_post, matched_at, fetch_id, created_at
@@ -659,6 +751,7 @@ def scar(scar_id: int, session: SessionDep) -> ORJSONResponse:
     payload = {
         "case": case,
         "imagery": _imagery(session, row, bbox),
+        "other_scars": _other_scars(session, row, bbox),
         "fires_nearby": _fires_nearby(session, scar_id),
         "weather_at_burn": weather,
         "method": _method(),

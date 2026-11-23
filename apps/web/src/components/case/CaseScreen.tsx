@@ -13,6 +13,7 @@ import { DailyFreshness } from './DailyFreshness';
 import { EvidenceChips } from './EvidenceChips';
 import { Locator } from './Locator';
 import { Kpi, ProvItem } from './parts';
+import { otherMarks, othersLabels, othersSentence } from './picture-marks';
 import type { CaseFile, CaseFire, HeadlineAudit } from './types';
 import { WeatherChart } from './WeatherChart';
 
@@ -121,6 +122,10 @@ export function CaseScreen({ data }: { data: CaseFile }) {
   const pre = data.imagery?.pre ?? null;
   const post = data.imagery?.post ?? null;
   const fires = data.fires_nearby ?? [];
+  // every other scar in the pictures, drawn here on the server into short paths (picture-marks.ts)
+  const marks = otherMarks(data.other_scars, data.imagery?.bbox ?? null);
+  const passes = { after: c.burn_after, before: c.burn_before };
+  const othersNote = data.imagery?.bbox ? othersSentence(data.other_scars, marks.length, passes) : null;
   const radius = fires[0]?.match_radius_m ?? null;
   const w = data.weather_at_burn;
   const ev = c.evidence ?? null;
@@ -174,7 +179,7 @@ export function CaseScreen({ data }: { data: CaseFile }) {
         </div>
         <div className="case-col case-col--main">
         <Card title="The pictures" id="pictures" className="o-1" aside={<span>Copernicus Sentinel-2, rendered by the API</span>}>
-          <EvidenceChips bbox={data.imagery?.bbox ?? null} pre={pre} post={post} geometry={c.geometry ?? null} fires={fires} state={st} place={place ? place : 'in this case'} />
+          <EvidenceChips bbox={data.imagery?.bbox ?? null} pre={pre} post={post} geometry={c.geometry ?? null} fires={fires} state={st} place={place ? place : 'in this case'} otherMarks={marks} othersNote={othersNote} othersLabels={othersLabels(passes)} />
         </Card>
 
         <Card title="Why the rule calls it a burn" id="rule" className="o-5" aside={c.model_version ? <span>{`Rule ${c.model_version}`}</span> : undefined}>
