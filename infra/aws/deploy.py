@@ -70,10 +70,40 @@ def allow_ssh(group_id: str) -> None:
     provision.allow(group_id, 22, provision.my_ip().rsplit(".", 1)[0] + ".0/24", "ssh from the deployer")
 
 
-class Server:
-    """SSH to the server as `ubuntu`; every script runs as root."""
+# The server found by the last deploy that reached AWS, kept beside the SSH key. `aws login` sessions
+# are short; without one the deploy still reaches the server over SSH, which the private key guards.
+# Only opening the firewall to a new network needs AWS.
+LAST_SERVER = provision.KEY_PATH.with_name(provision.KEY_PATH.name + ".server.json")
 
-    def __init__(self, ip: str, group_id: str) -> None:
+
+def locate_server() -> tuple[str, str | None]:
+    """(ip, security group id) from AWS, saved for next time; the saved ip and no group (the
+    firewall is left as it is) when AWS cannot be asked and a saved one exists."""
+    try:
+        inst = provision.find_instance()
+    except (RuntimeError, OSError) as exc:
+        if not LAST_SERVER.exists():
+            raise
+        saved = json.loads(LAST_SERVER.read_text())
+        reason = (str(exc).strip().splitlines() or ["?"])[-1][:200]
+        print(f"AWS unavailable ({reason}); using the server saved {saved['saved_at']}: {saved['ip']}. "
+              "SSH must already be open to this network; if it is refused, run `aws login` and deploy again.",
+              file=sys.stderr)
+        return saved["ip"], None
+    if not inst or not inst.get("PublicIpAddress"):
+        sys.exit("no running server: create or start it with infra/aws/provision.py")
+    ip, group_id = inst["PublicIpAddress"], inst["SecurityGroups"][0]["GroupId"]
+    # Only ip and saved_at are read back; group_id and instance_id are kept for diagnostics.
+    LAST_SERVER.write_text(json.dumps({"ip": ip, "group_id": group_id, "instance_id": inst.get("InstanceId"),
+                                       "saved_at": time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime())}))
+    return ip, group_id
+
+
+class Server:
+    """SSH to the server as `ubuntu`; every script runs as root. Without a security group (AWS
+    unavailable, see locate_server) a lost connection is retried without opening the firewall."""
+
+    def __init__(self, ip: str, group_id: str | None) -> None:
         self.group_id = group_id
         self.base = [shutil.which("ssh") or "ssh", "-i", str(provision.KEY_PATH), "-o", "StrictHostKeyChecking=accept-new",
                      "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=8",
@@ -83,9 +113,12 @@ class Server:
         return self.base + ["sudo bash -c " + shlex.quote(script)]
 
     def _reconnect(self, what: str) -> None:
-        print(f"ssh {what}; allowing this IP's /24 and retrying", file=sys.stderr)
+        how = ("retrying (AWS unavailable: the firewall is left as it is)" if self.group_id is None
+               else "allowing this IP's /24 and retrying")
+        print(f"ssh {what}; {how}", file=sys.stderr)
         time.sleep(5)
-        allow_ssh(self.group_id)
+        if self.group_id is not None:
+            allow_ssh(self.group_id)
 
     def run(self, script: str, stdin: bytes = b"", quiet: bool = False) -> str:
         """Run a short bash script; stream its output unless quiet (then return it)."""
@@ -96,6 +129,8 @@ class Server:
             self._reconnect("failed")
         if proc.returncode != 0:
             detail = (proc.stderr or b"").decode(errors="replace")[-1500:] if quiet else ""
+            if proc.returncode == 255 and self.group_id is None:
+                detail = "ssh refused, and AWS was unavailable to open the firewall: run `aws login`, then deploy again. " + detail
             raise RuntimeError(f"remote step failed ({proc.returncode}) {detail}")
         return (proc.stdout or b"").decode(errors="replace") if quiet else ""
 
@@ -308,11 +343,9 @@ def main() -> int:
     load_dotenv(REPO_ROOT / ".env")
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # build logs carry ▲ ✓; Windows' console is cp1252
 
-    inst = provision.find_instance()
-    if not inst or not inst.get("PublicIpAddress"):
-        sys.exit("no running server: create or start it with infra/aws/provision.py")
-    ip, group_id = inst["PublicIpAddress"], inst["SecurityGroups"][0]["GroupId"]
-    allow_ssh(group_id)
+    ip, group_id = locate_server()
+    if group_id:
+        allow_ssh(group_id)
     srv = Server(ip, group_id)
     parts = set(args.only or ["api", "relay", "web", "caddy"]) - {"none"}
     print(f"server {ip}: {', '.join(sorted(parts)) or 'no parts'}{' + setup' if args.setup else ''}")
