@@ -30,11 +30,14 @@ from __future__ import annotations
 import warnings
 from collections.abc import Iterable, Sequence
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
+from itertools import pairwise
 from typing import Any
 
 import numpy as np
 from numpy.lib.stride_tricks import sliding_window_view
+
+from blindspot.analytics.fires_stats import STATIC_MIN_NIGHTS, STATIC_RADIUS_KM
 
 
 def _ndimage() -> Any:
@@ -46,7 +49,10 @@ def _ndimage() -> Any:
     return ndimage
 
 
-ALGORITHM_VERSION = "gk2a-ctx-2"
+# Stored with every slot, pixel and validation row; the API reads only the current version.
+# gk2a-ctx-3: pixels flagged as persistent heat sources (STATIC_RULE below) are
+# left out of fire and of every background.
+ALGORITHM_VERSION = "gk2a-ctx-3"
 
 # --- sun geometry ------------------------------------------------------------------------------------
 
@@ -229,6 +235,9 @@ class FireTestResult:
     frp_mw: np.ndarray  # top-of-atmosphere FRP estimate (MW), NaN where not computed
     absolute: np.ndarray  # bool: passed the absolute test
     day_weight: np.ndarray  # 1 day ... 0 night (by solar zenith)
+    # Excluded pixels (persistent heat sources) that passed every test: never fire, but kept
+    # so the job can store them apart and see that a flagged source is still burning.
+    excluded_fire: np.ndarray | None = None
     stats: dict[str, Any] = field(default_factory=dict)
 
 
@@ -306,7 +315,9 @@ def detect_fires(
 
     `sza` is the solar zenith angle per pixel (degrees), `area_km2` each pixel's footprint area,
     `backscatter_deg` the angle between the sun and the satellite seen from each pixel, and
-    `exclude` marks pixels never to call fire (persistent industrial hot spots).
+    `exclude` marks pixels never to call fire (persistent industrial heat sources). An excluded
+    pixel is also never part of a neighbour's background (a hot plant would raise it and hide a
+    fire next door); it is still tested, and `excluded_fire` says where it passed.
 
     A pixel is a fire when it is clear and either
       - absolute: BT38 > abs_bt38 and BTD > abs_btd, or
@@ -331,12 +342,13 @@ def detect_fires(
     filled = np.where(clear, btd, clear_median if np.isfinite(clear_median) else 0.0)
     local_median = _ndimage().median_filter(filled, size=p.bg_sizes[1])
     candidate = (clear & (btd - local_median > p.candidate_margin)) | absolute
-    if exclude is not None:
-        candidate &= ~exclude
 
     # Background of each candidate from clear, non-candidate neighbours, growing the window until
-    # it holds enough of them (MODIS C6 grows 3x3 -> 21x21 the same way).
+    # it holds enough of them (MODIS C6 grows 3x3 -> 21x21 the same way). Excluded pixels never
+    # count as background, whether or not they are candidates now.
     usable = clear & ~candidate
+    if exclude is not None:
+        usable &= ~exclude
     nan = np.full(shape, np.nan)
     bg_btd, bg_btd_s, bg_38, bg_38_s, bg_11 = (nan.copy() for _ in range(5))
     bg_count = np.zeros(shape, dtype=np.int32)
@@ -373,12 +385,16 @@ def detect_fires(
     if backscatter_deg is not None:
         backscatter = (sza < 90.0) & (backscatter_deg < p.backscatter_min_deg)
         fire &= ~(backscatter & ~absolute)
+    excluded_fire = np.zeros(shape, dtype=bool)
     if exclude is not None:
+        excluded_fire = fire & exclude
         fire &= ~exclude
 
+    passed = fire | excluded_fire  # excluded pixels that passed keep their confidence, for audit
     with np.errstate(invalid="ignore"):
-        high = fire & (absolute | (frp >= p.high_frp_mw))
-    confidence = np.where(high, 2, np.where(fire, 1, 0)).astype(np.int8)
+        strong = passed & (absolute | (frp >= p.high_frp_mw))
+    confidence = np.where(strong, 2, np.where(passed, 1, 0)).astype(np.int8)
+    high = strong & fire
     stats = {
         "valid": int(valid.sum()),
         "cloud": int(cloud.sum()),
@@ -387,6 +403,7 @@ def detect_fires(
         "backscatter": int(backscatter.sum()),
         "fires": int(fire.sum()),
         "high": int(high.sum()),
+        "excluded_fires": int(excluded_fire.sum()),
         "clear_btd_median": None if np.isnan(clear_median) else round(clear_median, 3),
     }
     return FireTestResult(
@@ -406,8 +423,30 @@ def detect_fires(
         frp_mw=np.where(np.isfinite(bg_38), frp, np.nan),
         absolute=absolute,
         day_weight=w,
+        excluded_fire=excluded_fire,
         stats=stats,
     )
+
+
+# --- persistent heat sources --------------------------------------------------------------------------
+
+# A pixel GK-2A sees burning in the deep night on several nights is a plant, kiln or flare, not a
+# field: crop residue is burnt by day and in the evening. jobs/geostationary.py flags such pixels,
+# and pixels FIRMS's own static rule covers, before each run, and passes them as `exclude`.
+# scripts/gk2a_eval_static.py measured the rule on the 27 Oct - 22 Nov 2026 record with no
+# look-ahead: it removed 0.08% of 16:00-18:30 IST detections and 25% of 23:00-05:00 IST ones.
+STATIC_LOOKBACK_NIGHTS = 14
+STATIC_MIN_DEEP_NIGHTS = 2
+DEEP_NIGHT_IST = ("23:00", "05:00")
+STATIC_RULE = (
+    "GK-2A pixels that are persistent heat sources, not fields, are left out of the counts unless "
+    "include_static=true: pixels whose footprint meets a spot where FIRMS saw heat on "
+    f"{STATIC_MIN_NIGHTS} or more nights (within {STATIC_RADIUS_KM * 1000:.0f} m), and pixels "
+    f"where GK-2A itself saw heat between {DEEP_NIGHT_IST[0]} and {DEEP_NIGHT_IST[1]} IST on "
+    f"{STATIC_MIN_DEEP_NIGHTS} or more of the previous {STATIC_LOOKBACK_NIGHTS} nights. The rules "
+    "aim at plants, kilns and flares; some flagged spots may be straw-bale depots, which burn crop "
+    "residue but are not field burning."
+)
 
 
 # --- footprints ------------------------------------------------------------------------------------
@@ -503,7 +542,33 @@ class PassComparison:
         return (self.geo_pixels - self.geo_hits) / self.geo_pixels if self.geo_pixels else None
 
 
-def compare_pass(
+@dataclass(frozen=True)
+class PassMatch:
+    """Pixel masks of one GK-2A vs polar comparison, on the GK-2A window grid."""
+
+    geo: np.ndarray  # GK-2A fire pixels inside the region
+    geo_hit: np.ndarray  # ...with a polar detection in the same or a neighbouring pixel
+    ref: np.ndarray  # region pixels holding at least one polar detection
+    ref_hit: np.ndarray  # ...with a GK-2A fire pixel in the same or a neighbouring pixel
+    strong: np.ndarray  # ref pixels whose summed polar FRP >= the strong threshold
+    clear: np.ndarray
+
+    def counts(self, where: np.ndarray | None = None) -> dict[str, int]:
+        """The comparison counted only on the pixels of `where` (all when None). Matches still
+        use every region pixel, so a pixel at the edge of `where` can be confirmed from outside."""
+        m = np.ones(self.geo.shape, dtype=bool) if where is None else where
+        return {
+            "ref_pixels": int((self.ref & m).sum()),
+            "ref_hits": int((self.ref_hit & m).sum()),
+            "ref_pixels_strong": int((self.strong & m).sum()),
+            "ref_hits_strong": int((self.strong & self.ref_hit & m).sum()),
+            "ref_pixels_clear": int((self.ref & self.clear & m).sum()),
+            "geo_pixels": int((self.geo & m).sum()),
+            "geo_hits": int((self.geo_hit & m).sum()),
+        }
+
+
+def match_pass(
     geo_fire: np.ndarray,
     clear: np.ndarray,
     region: np.ndarray,
@@ -512,8 +577,8 @@ def compare_pass(
     ref_frp: np.ndarray,
     strong_frp_mw: float = 30.0,
     tolerance_px: int = 1,
-) -> PassComparison:
-    """Compare a GK-2A fire mask with polar detections mapped to window (row, col) indices.
+) -> PassMatch:
+    """Match a GK-2A fire mask with polar detections mapped to window (row, col) indices.
 
     Matching allows one pixel of slack (a 3 x 3 neighbourhood): a VIIRS point and a GK-2A pixel
     centre can sit a pixel apart through geolocation error and terrain parallax.
@@ -531,17 +596,58 @@ def compare_pass(
     size = 2 * tolerance_px + 1
     geo_near = _ndimage().maximum_filter(geo.astype(np.uint8), size=size) > 0
     ref_near = _ndimage().maximum_filter(ref.astype(np.uint8), size=size) > 0
-    strong = ref & (frp_sum >= strong_frp_mw)
-    return PassComparison(
-        ref_pixels=int(ref.sum()),
-        ref_hits=int((ref & geo_near).sum()),
-        ref_pixels_strong=int(strong.sum()),
-        ref_hits_strong=int((strong & geo_near).sum()),
-        ref_pixels_clear=int((ref & clear).sum()),
-        geo_pixels=int(geo.sum()),
-        geo_hits=int((geo & ref_near).sum()),
-        strong_frp_mw=strong_frp_mw,
+    return PassMatch(
+        geo=geo,
+        geo_hit=geo & ref_near,
+        ref=ref,
+        ref_hit=ref & geo_near,
+        strong=ref & (frp_sum >= strong_frp_mw),
+        clear=clear & region,
     )
+
+
+def compare_pass(
+    geo_fire: np.ndarray,
+    clear: np.ndarray,
+    region: np.ndarray,
+    ref_rows: np.ndarray,
+    ref_cols: np.ndarray,
+    ref_frp: np.ndarray,
+    strong_frp_mw: float = 30.0,
+    tolerance_px: int = 1,
+) -> PassComparison:
+    """Compare a GK-2A fire mask with polar detections mapped to window (row, col) indices,
+    over the whole region (match_pass)."""
+    m = match_pass(
+        geo_fire, clear, region, ref_rows, ref_cols, ref_frp, strong_frp_mw, tolerance_px
+    )
+    return PassComparison(**m.counts(), strong_frp_mw=strong_frp_mw)
+
+
+# --- evaluation only: validation where the polar sensor "could see" ---------------------------------
+# COVERED_MAX_SCAN_DEG, SCAN_ANGLE_BINS, scan_angle_counts and bootstrap_rates serve the evaluation
+# scripts (scripts/gk2a_eval_coverage.py, gk2a_eval_background.py); the job and the API do not use
+# them. A "covered" rate counts only region pixels the polar sensor viewed at most this far off nadir
+# (scan angle at the satellite), where its pixels are small (MODIS: 1.9 km along the scan at 40 deg,
+# 4.8 km at 55 deg). It failed its pre-registered bar, so the site does not publish it: the MODIS
+# unconfirmed share is not flat inside 0-40 deg. Season replay, 27 Oct-22 Nov 2026 (189 passes,
+# `uv run python scripts/gk2a_eval_coverage.py --scans ...`): 3.6% (27/755) at 0-20 deg, 1.3%
+# (5/378) at 20-30, 10.0% (58/579) at 30-40, 37.8% at 40-45, 43.6% at 45-50, 93.0% at 50-55.
+COVERED_MAX_SCAN_DEG = {"MODIS": 40.0, "VIIRS": 50.0}
+SCAN_ANGLE_BINS = (0.0, 20.0, 30.0, 40.0, 45.0, 50.0, 55.0, 90.0)  # the last: the swath edge on
+
+
+def scan_angle_counts(
+    match: PassMatch, scan_deg: np.ndarray, bins: Sequence[float] = SCAN_ANGLE_BINS
+) -> list[dict[str, Any]]:
+    """The comparison's counts in bins of the polar sensor's scan angle at each pixel."""
+    out = []
+    with np.errstate(invalid="ignore"):
+        for lo, hi in pairwise(bins):
+            c = match.counts((scan_deg >= lo) & (scan_deg < hi))
+            out.append({"lo": lo, "hi": hi, **{k: c[k] for k in (
+                "geo_pixels", "geo_hits", "ref_pixels", "ref_hits")}})  # fmt: skip
+    return out
 
 
 def pooled_rates(rows: Iterable[dict[str, Any]]) -> dict[str, Any]:
@@ -568,6 +674,42 @@ def pooled_rates(rows: Iterable[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+BOOTSTRAP_DRAWS = 2000
+BOOTSTRAP_SEED = 20261123  # fixed, so the same rows always give the same interval
+
+
+def bootstrap_rates(
+    rows: Sequence[dict[str, Any]], draws: int = BOOTSTRAP_DRAWS, seed: int = BOOTSTRAP_SEED
+) -> dict[str, list[float] | None]:
+    """95% intervals of the pooled hit, strong-hit and false-alarm rates, resampling whole passes
+    with replacement. Pixels of one pass are not independent (one swath-edge pass once gave 316 of
+    355 unconfirmed pixels), so an interval over pixels (Wilson) would be far too narrow."""
+    keys = {
+        "hit_rate": ("ref_hits", "ref_pixels"),
+        "hit_rate_strong": ("ref_hits_strong", "ref_pixels_strong"),
+        "false_alarm_rate": ("geo_unconfirmed", "geo_pixels"),
+    }
+    out: dict[str, list[float] | None] = dict.fromkeys(keys)
+    if len(rows) < 2:
+        return out
+    idx = np.random.default_rng(seed).integers(0, len(rows), size=(draws, len(rows)))
+
+    def column(key: str) -> np.ndarray:
+        if key == "geo_unconfirmed":
+            return np.array([r["geo_pixels"] - r["geo_hits"] for r in rows], dtype=float)
+        return np.array([r[key] for r in rows], dtype=float)
+
+    for name, (num, den) in keys.items():
+        n, d = column(num)[idx].sum(axis=1), column(den)[idx].sum(axis=1)
+        ok = d > 0
+        if ok.sum() < draws / 2:  # most resamples hold no pixel of this kind
+            continue
+        ratio = n[ok] / d[ok]
+        out[name] = [round(float(np.percentile(ratio, 2.5)), 4),
+                     round(float(np.percentile(ratio, 97.5)), 4)]  # fmt: skip
+    return out
+
+
 # --- diurnal record ------------------------------------------------------------------------------------
 
 IST_OFFSET = timedelta(hours=5, minutes=30)  # India has one time zone and no daylight saving
@@ -576,6 +718,17 @@ IST_OFFSET = timedelta(hours=5, minutes=30)  # India has one time zone and no da
 def ist_minute_of_day(t: datetime) -> int:
     local = t.astimezone(UTC) + IST_OFFSET
     return local.hour * 60 + local.minute
+
+
+def ist_minutes(t: datetime) -> float:
+    """Minute of the IST day with its fraction (seconds count)."""
+    local = t.astimezone(UTC) + IST_OFFSET
+    return local.hour * 60 + local.minute + local.second / 60
+
+
+def ist_date(t: datetime) -> date:
+    """The IST calendar day of a moment, whatever time zone the datetime carries."""
+    return (t.astimezone(UTC) + IST_OFFSET).date()
 
 
 def merge_intervals(intervals: Iterable[tuple[int, int]]) -> list[tuple[int, int]]:
@@ -623,8 +776,67 @@ def polar_windows(passes: Iterable[PolarPass], pad_minutes: float) -> list[dict[
     return windows
 
 
-def inside_windows(minute_of_day: int, windows: Sequence[dict[str, Any]]) -> bool:
-    return any(w["start_min"] <= minute_of_day <= w["end_min"] for w in windows)
+def inside_windows(minute_of_day: float, windows: Sequence[dict[str, Any]]) -> bool:
+    """Whether a moment falls in a window, each window [start, end) so that a moment on a
+    boundary belongs to exactly one of a window and the gap after it."""
+    return any(w["start_min"] <= minute_of_day < w["end_min"] for w in windows)
+
+
+SCAN_MINUTES = 10  # GK-2A full-disk repeat cycle: each scan stands for 10 minutes
+
+
+def scan_overlap(
+    minute_of_day: float,
+    spans: Iterable[tuple[float, float]],
+    scan_minutes: float = SCAN_MINUTES,
+) -> float:
+    """Share (0-1) of the 10 minutes a scan stands for, [t - 5, t + 5), that falls inside the
+    given minute-of-day spans [start, end) (a span may run past 1440 when it wraps midnight).
+
+    Counting a scan by its overlap, instead of by whether its moment is inside, removes the knife
+    edge at window boundaries: with 15-minute pads Aqua's window used to end exactly on the
+    17:02 IST peak scan, which then counted fully on one side or the other (and on both sides,
+    before windows were made half-open)."""
+    lo, hi = minute_of_day - scan_minutes / 2, minute_of_day + scan_minutes / 2
+    total = 0.0
+    for start, end in spans:
+        for shift in (-1440.0, 0.0, 1440.0):
+            total += max(0.0, min(hi, end + shift) - max(lo, start + shift))
+    return min(1.0, total / scan_minutes)
+
+
+def window_spans(windows: Sequence[dict[str, Any]]) -> list[tuple[float, float]]:
+    return [(float(w["start_min"]), float(w["end_min"])) for w in windows]
+
+
+def outside_shares(
+    slots: Sequence[tuple[datetime, int]],
+    passes: Sequence[PolarPass],
+    pads: Sequence[float] = (0, 5, 10, 15),
+) -> list[dict[str, Any]]:
+    """Share of GK-2A fire pixels outside the polar windows, for several pads, two ways:
+    `union` puts every day's windows on one IST clock (a time of day counts as seen if a polar
+    satellite looked then on any day: what the diurnal headline uses), `per_day` compares each scan
+    only with the passes of its own IST day."""
+    total = sum(count for _, count in slots)
+    by_day: dict[Any, list[PolarPass]] = {}
+    for p in passes:
+        by_day.setdefault(ist_date(p.start), []).append(p)
+    out = []
+    for pad in pads:
+        union = window_spans(polar_windows(passes, pad))
+        day_spans = {d: window_spans(polar_windows(dp, pad)) for d, dp in by_day.items()}
+        outside_union = outside_day = 0.0
+        for t, count in slots:
+            m = ist_minutes(t)
+            outside_union += count * (1 - scan_overlap(m, union))
+            outside_day += count * (1 - scan_overlap(m, day_spans.get(ist_date(t), [])))
+        out.append({
+            "pad_min": pad,
+            "union": round(outside_union / total, 4) if total else None,
+            "per_day": round(outside_day / total, 4) if total else None,
+        })  # fmt: skip
+    return out
 
 
 def hourly_means(slots: Sequence[tuple[datetime, int]]) -> list[dict[str, Any]]:
