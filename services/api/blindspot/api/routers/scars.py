@@ -27,7 +27,7 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from blindspot.analytics.burnscar import RULE, audit_summary
+from blindspot.analytics.burnscar import RULE, SERVED_VERSIONS, audit_summary
 from blindspot.api import BBoxDep, SessionDep, respond
 from blindspot.api.cache import (
     cached_route,
@@ -84,8 +84,8 @@ def _filters(
     since: dt.date | None, until: dt.date | None, district: str | None, unseen: bool | None,
     bbox: tuple[float, float, float, float] | None, min_confidence: float | None = None,
 ) -> tuple[str, dict[str, Any]]:
-    where = ["model_version = :version"]
-    params: dict[str, Any] = {"version": RULE.version}
+    where = ["model_version = ANY(:versions)"]
+    params: dict[str, Any] = {"versions": list(SERVED_VERSIONS)}
     if min_confidence is not None:
         where.append("confidence >= :min_conf")
         params["min_conf"] = min_confidence
@@ -349,19 +349,19 @@ def summary(
     """Season totals and a per-district table: scarred area, how much of it no fire detection
     explains, and how many FIRMS detections the same district had (Indian polygons only)."""
     start = since or _season_start(dt.datetime.now(dt.UTC).date())
-    params = {"version": RULE.version, "since": _iso_day(start)}
+    params = {"versions": list(SERVED_VERSIONS), "since": _iso_day(start)}
     season = session.execute(text("""
         SELECT count(*) AS clusters, coalesce(sum(area_ha), 0) AS area_ha,
                coalesce(sum(area_ha) FILTER (WHERE unseen), 0) AS unseen_area_ha,
                coalesce(sum(area_ha) FILTER (WHERE unseen IS NOT NULL), 0) AS checked_area_ha,
                max(burn_before) AS last_pass
-        FROM burn_cluster WHERE model_version = :version AND burn_before >= :since"""), params).mappings().one()
+        FROM burn_cluster WHERE model_version = ANY(:versions) AND burn_before >= :since"""), params).mappings().one()
     districts = session.execute(text("""
         SELECT district, max(state) AS state, count(*) AS clusters, sum(area_ha) AS area_ha,
                coalesce(sum(area_ha) FILTER (WHERE unseen), 0) AS unseen_area_ha,
                coalesce(sum(area_ha) FILTER (WHERE unseen IS NOT NULL), 0) AS checked_area_ha,
                array_agg(DISTINCT scope) AS scopes, max(res_m) AS res_m
-        FROM burn_cluster WHERE model_version = :version AND burn_before >= :since
+        FROM burn_cluster WHERE model_version = ANY(:versions) AND burn_before >= :since
         GROUP BY district ORDER BY sum(area_ha) DESC"""), params).mappings().all()
     fires_total: int | None = None
     fires_by_district: dict[str, int] = {}
@@ -536,7 +536,7 @@ def _other_scars(session: Session, row: dict[str, Any], bbox: tuple[float, float
     worked out only for the scars that cross the box's edge."""
     x0, y0, x1, y1 = bbox
     params = {
-        "x0": x0, "y0": y0, "x1": x1, "y1": y1, "id": row["id"], "version": RULE.version,
+        "x0": x0, "y0": y0, "x1": x1, "y1": y1, "id": row["id"], "versions": list(SERVED_VERSIONS),
         "min_conf": OTHERS_MIN_CONFIDENCE, "limit": OTHERS_LIMIT,
         "earlier_by": row["burn_after"] + SAME_PASS, "same_by": row["burn_before"] + SAME_PASS,
         "tol": min(x1 - x0, y1 - y0) / CHIP_PX,
@@ -553,7 +553,7 @@ def _other_scars(session: Session, row: dict[str, Any], bbox: tuple[float, float
                    END AS in_box_ha
             FROM burn_cluster c, box
             WHERE c.geom && box.b AND ST_Intersects(c.geom, box.b)
-              AND c.id <> :id AND c.model_version = :version AND c.confidence >= :min_conf
+              AND c.id <> :id AND c.model_version = ANY(:versions) AND c.confidence >= :min_conf
         ), totals AS (
             SELECT jsonb_object_agg(relation, jsonb_build_object('scars', n, 'area_ha', ha,
                                                                  'area_in_box_ha', in_box)) AS t

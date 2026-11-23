@@ -10,20 +10,36 @@
  *   lines, so the case and method routes do not import that module and with it deck.gl.
  */
 
-import { percent } from '@/lib/format';
+import { dateIST, percent } from '@/lib/format';
 
 import type { UnseenBurnsBlock } from './types';
 
 export type CaseState = 'unseen' | 'alerted' | 'unchecked';
 export const caseState = (unseen: boolean | null | undefined): CaseState => (unseen === true ? 'unseen' : unseen === false ? 'alerted' : 'unchecked');
 
+/** The audit's own rule and day, as /api/stats/headline states them beside the precision. */
+export type AuditOf = { audit_date?: string | null; audit_model_version?: string | null; audit_current?: boolean | null };
+
+/** True when the audit judged an earlier rule than the one that mapped the scars (audit_current false). */
+export const auditIsOlder = (u: AuditOf | null | undefined): boolean => u?.audit_current === false;
+
+/** "an audit of 31 Oct 2026 of the earlier rule s2burn-rules-2, not of the current rule" when the
+ *  audit judged an earlier rule (the field brief says the same, brief/read.ts); null otherwise. */
+export function auditOlderText(u: AuditOf | null | undefined): string | null {
+  if (!auditIsOlder(u)) return null;
+  const day = u?.audit_date ? ` of ${dateIST(`${u.audit_date}T12:00:00+05:30`, { year: true })}` : '';
+  const rule = u?.audit_model_version ? ` ${u.audit_model_version}` : '';
+  return `an audit${day} of the earlier rule${rule}, not of the current rule`;
+}
+
 /** "audit precision 83% (95% CI 61%–94%, n = 18)" (with `verb`: "audit precision was 83% (…)", for a
- *  sentence), or null when the API has no audit to state. */
-export function auditPhrase(u: UnseenBurnsBlock | null | undefined, verb?: string): string | null {
+ *  sentence), or null when the API has no audit to state. An audit of an earlier rule says so inside
+ *  the brackets: "(95% CI 61%–94%, n = 18; an audit of 31 Oct 2026 of the earlier rule …)". */
+export function auditPhrase(u: (UnseenBurnsBlock & AuditOf) | null | undefined, verb?: string): string | null {
   if (!u || u.precision == null) return null;
   const ci = u.precision_ci95 && u.precision_ci95.length === 2 ? `95% CI ${percent(u.precision_ci95[0])}–${percent(u.precision_ci95[1])}` : null;
   const n = u.precision_n != null ? `n = ${u.precision_n}` : null;
-  const inner = [ci, n].filter(Boolean).join(', ');
+  const inner = [[ci, n].filter(Boolean).join(', '), auditOlderText(u)].filter(Boolean).join('; ');
   return `audit precision ${verb ? `${verb} ` : ''}${percent(u.precision)}${inner ? ` (${inner})` : ''}`;
 }
 

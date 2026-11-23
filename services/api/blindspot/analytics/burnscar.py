@@ -117,6 +117,14 @@ class BurnRule:
 
 RULE = BurnRule()
 
+# The rule versions whose rows the API counts and draws (scars, brief, headline). After a rule
+# change the sentinel job rewrites the rows tile by tile: a rebuilt tile's whole scope (tile and
+# stage) is replaced in one transaction (jobs/sentinel.py store_tile), so a tile holds one version at
+# a time. Serving the previous version too keeps the tiles not rewritten yet on the map, instead of
+# blank, and counts nothing twice, whichever of the API deploy and the sentinel run comes first.
+# The previous version can go once no row of it is left.
+SERVED_VERSIONS: tuple[str, ...] = (RULE.version, "s2burn-rules-2")
+
 # Visual audit of the stored clusters (validation record, not input data). On 2026-10-31 the sentinel
 # module rendered pre/post true-colour and SWIR (B12-B8A-B4) chips straight from the Sentinel-2 COGs
 # for clusters drawn at random (seeded md5 order) from burn_cluster and judged each by eye:

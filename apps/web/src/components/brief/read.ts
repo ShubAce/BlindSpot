@@ -5,6 +5,7 @@
  * No server imports, so client and server components can both use it.
  */
 
+import { auditOlderText } from '@/components/case/audit';
 import { absoluteApiUrl, apiUrl } from '@/lib/api';
 import { dateIST, MISSING, NBSP, number, percent } from '@/lib/format';
 
@@ -144,7 +145,9 @@ export function auditPhrase(a: BriefAudit | null | undefined): string | null {
 export function auditSentence(a: BriefAudit | null | undefined): string {
   const phrase = auditPhrase(a);
   if (!phrase) return 'Candidate unseen burns are not confirmed fires, and the API states no audit of them yet: treat every count and area here as unchecked.';
-  const dated = a?.current === false && a.date ? ` (an audit of ${passDate(a.date, { year: true })}, not of the current rule)` : '';
+  // the same words as the rest of the site (components/case/audit.ts)
+  const older = auditOlderText({ audit_current: a?.current, audit_date: a?.date, audit_model_version: a?.model_version });
+  const dated = older ? ` (${older})` : '';
   return `Candidate unseen burns are not confirmed fires: their ${phrase}${dated}, so every count and area of them here is an upper bound.`;
 }
 

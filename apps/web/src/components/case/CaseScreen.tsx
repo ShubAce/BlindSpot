@@ -8,7 +8,7 @@ import { serverGet } from '@/lib/api-server';
 import { dateIST, dateTimeIST, metric, metricText, MISSING, number, placeName, timeIST } from '@/lib/format';
 import { weatherModelName } from '@/lib/models';
 
-import { auditPhrase, caseState, platformName, shortUrl, uniqueSources, type CaseState } from './audit';
+import { auditIsOlder, auditPhrase, caseState, platformName, shortUrl, uniqueSources, type CaseState } from './audit';
 import { DailyFreshness } from './DailyFreshness';
 import { EvidenceChips } from './EvidenceChips';
 import { Locator } from './Locator';
@@ -86,7 +86,7 @@ async function AuditLine() {
   if (!phrase) return <p className="card__note">The API states no audit for candidate unseen burns yet{r.data.unseen_burns?.reason ? `: ${r.data.unseen_burns.reason}` : '.'}</p>;
   return (
     <p className="audit-line">
-      How often this rule is right: when people checked a random sample of candidate unseen burns by eye, the {phrase}.
+      {auditIsOlder(r.data.unseen_burns) ? 'How often the earlier rule was right' : 'How often this rule is right'}: when people checked a random sample of candidate unseen burns by eye, the {phrase}.
     </p>
   );
 }
@@ -96,7 +96,7 @@ async function AuditFinding() {
   const r = await serverGet<HeadlineAudit>(PATHS.headline);
   const phrase = r.ok ? auditPhrase(r.data.unseen_burns) : null;
   if (!phrase) return <p className="finding-audit" {...loadFailed(!r.ok)}>{r.ok ? 'The API states no audit of candidate unseen burns yet.' : 'The audit of candidate unseen burns could not be loaded.'}</p>;
-  return <p className="finding-audit">{`Candidate unseen burns as a whole: ${phrase}, checked by eye.`}</p>;
+  return <p className="finding-audit">{`Candidate unseen burns as a whole, checked by eye: ${phrase}.`}</p>;
 }
 
 export function caseQuestion(c: CaseFile['case']): string {

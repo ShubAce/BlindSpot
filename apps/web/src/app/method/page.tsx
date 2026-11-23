@@ -55,7 +55,7 @@ const SECTIONS: { id: string; title: string; short: string; lead: string; body: 
     id: 'accuracy',
     title: 'How often it is right',
     short: 'Accuracy',
-    lead: 'Every candidate unseen burn rests on that rule, so the rule was audited: scars drawn at random, each judged by eye from its pictures before and after.',
+    lead: 'Every candidate unseen burn rests on that rule, so the rule is audited: scars drawn at random, each judged by eye from its pictures before and after. When an audit judged an earlier version of the rule, the figures below say so.',
     body: () => <Accuracy />,
     tall: 620,
   },

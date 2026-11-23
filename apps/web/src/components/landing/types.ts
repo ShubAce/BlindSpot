@@ -53,6 +53,9 @@ export type Headline = Envelope & {
     precision?: number | null;
     precision_ci95?: [number, number] | null;
     precision_n?: number | null;
+    audit_date?: string | null;
+    audit_model_version?: string | null;
+    audit_current?: boolean | null;
   };
   delhi?: Block & {
     city?: string;

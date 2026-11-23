@@ -29,6 +29,8 @@ export type BriefAudit = {
   method?: string | null;
   date?: string | null;
   current?: boolean | null;
+  /** the rule the audit judged (an earlier one when `current` is false) */
+  model_version?: string | null;
   reading?: string | null;
 };
 

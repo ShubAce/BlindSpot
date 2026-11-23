@@ -63,6 +63,8 @@ export type Headline = Envelope & {
     first_pass?: IsoTime;
     last_pass?: IsoTime;
     model_version?: string;
+    /** the rules of the rows counted: two while the sentinel job rewrites the tiles after a rule change */
+    model_versions?: string[];
   };
 };
 

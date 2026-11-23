@@ -466,8 +466,10 @@ def test_lookalike_filter_and_audit_interval() -> None:
     assert hi == 1.0 and lo == pytest.approx(11 / (11 + 1.96**2), abs=1e-3)
     assert burnscar.wilson_interval(0, 0) is None
     audit = burnscar.audit_summary()
-    # The audit judged rules-2 clusters; the site says so while the rule is newer (brief/read.ts).
-    assert audit["current"] is (burnscar.AUDIT["model_version"] == RULE.version)
+    # The audit judged rules-2 clusters and the rule is now rules-4h: every statement of its precision
+    # must say so (headline audit_current, the agent's audit block, brief/read.ts, case/audit.ts).
+    assert burnscar.AUDIT["model_version"] == "s2burn-rules-2" and audit["current"] is False
+    assert audit["model_version"] == "s2burn-rules-2" and audit["date"] == "2026-10-31"
     assert 0 < audit["candidate_unseen"]["precision_ci95"][0] <= audit["candidate_unseen"]["precision"] <= 1
 
 
