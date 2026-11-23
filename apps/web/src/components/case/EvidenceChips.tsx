@@ -22,7 +22,8 @@ import type { CaseFire, CaseImageryPass, CaseProps } from './types';
  * Every other scar the API stores inside the same square is outlined too, thinner and under the
  * case's own (picture-marks.ts): yellow those first seen burnt between the case's two passes, cyan
  * those that had burnt by the first, so the dark fields the model mapped are outlined and not only
- * this one. Each is a link to its own case file, for a pointer or a finger: inside the overlay,
+ * this one. The larger are drawn first, whatever their kind, so a small field on a large one stays
+ * on top. Each is a link to its own case file, for a pointer or a finger: inside the overlay,
  * hidden from screen readers, so out of the tab order too (a hundred links in each of four
  * pictures would bury the page's own); the sentence under the pictures gives their numbers.
  *
@@ -31,25 +32,21 @@ import type { CaseFire, CaseImageryPass, CaseProps } from './types';
  */
 
 const STROKE: Record<CaseState, string> = { unseen: 'var(--photo-unseen)', alerted: 'var(--photo-seen)', unchecked: 'var(--photo-seen)' };
-const RELATIONS = ['earlier', 'same'] as const; // drawing order: the same passes' scars on top
-
-type Others = { casing: string; earlier: OtherMark[]; same: OtherMark[] };
+type Others = { casing: string; marks: OtherMark[]; same: boolean; earlier: boolean };
 
 function OtherScars({ others }: { others: Others }) {
   return (
     <>
       {/* one dark casing under all of them, so a thin line holds on pale ground too */}
       <path d={others.casing} className="chip__casing" />
-      {RELATIONS.map((rel) => (
-        <g key={rel} className={`chip__others chip__others--${rel}`}>
-          {others[rel].map((m) => (
-            <a key={m.id} href={`/case/${m.id}`} tabIndex={-1}>
-              <title>{m.title}</title>
-              <path d={m.d} />
-            </a>
-          ))}
-        </g>
-      ))}
+      <g className="chip__others">
+        {others.marks.map((m) => (
+          <a key={m.id} href={`/case/${m.id}`} tabIndex={-1} className={`is-${m.rel}`}>
+            <title>{m.title}</title>
+            <path d={m.d} />
+          </a>
+        ))}
+      </g>
     </>
   );
 }
@@ -152,7 +149,12 @@ export function EvidenceChips({
   const others = useMemo<Others | null>(
     () =>
       bbox && otherMarks.length
-        ? { casing: otherMarks.map((m) => m.d).join(''), earlier: otherMarks.filter((m) => m.rel === 'earlier'), same: otherMarks.filter((m) => m.rel === 'same') }
+        ? {
+            casing: otherMarks.map((m) => m.d).join(''),
+            marks: otherMarks,
+            same: otherMarks.some((m) => m.rel === 'same'),
+            earlier: otherMarks.some((m) => m.rel === 'earlier'),
+          }
         : null,
     [bbox, otherMarks],
   );
@@ -170,6 +172,7 @@ export function EvidenceChips({
     p ? `${when}: ${platformName(p.item_id) ?? 'Sentinel-2'}, ${dateIST(p.datetime, { weekday: true })} ${timeIST(p.datetime, { suffix: true })}` : `${when}: no pass`;
   const altFor = (p: CaseImageryPass | null, kind: string, when: string) =>
     p ? `Sentinel-2 ${kind} picture of the fields ${place}, ${dateIST(p.datetime, { year: true })}, ${when} the burn${showOutline ? `, with the scar${n ? ` and ${n} other${n === 1 ? '' : 's'}` : ''} outlined` : ''}.` : '';
+  const caseW = n ? (state === 'unchecked' ? 3 : 4) : 2;
   const keyLine = (stroke: string) => (
     <svg className="evidence__swatch" width="22" height="12" aria-hidden="true">
       <rect x="1" y="1" width="20" height="10" fill="none" stroke={stroke} strokeWidth="1.5" />
@@ -196,18 +199,19 @@ export function EvidenceChips({
         {/* one item per mark, each wrapping as a whole */}
         <span className="evidence__key">
           <span className="evidence__keyitem">
+            {/* as wide as on the pictures beside the others' thin lines (4 or 3 against 1.5) */}
             <svg className="evidence__swatch" width="22" height="12" aria-hidden="true">
-              <rect x="1" y="1" width="20" height="10" fill="none" stroke={STROKE[state]} strokeWidth={n ? 3 : 2} strokeDasharray={state === 'unchecked' ? '4 3' : undefined} />
+              <rect x={caseW / 2} y={caseW / 2} width={22 - caseW} height={12 - caseW} fill="none" stroke={STROKE[state]} strokeWidth={caseW} strokeDasharray={state === 'unchecked' ? '4 3' : undefined} />
             </svg>
             {n ? 'This scar' : 'The scar as mapped'}
           </span>
-          {others?.same.length ? (
+          {others?.same ? (
             <span className="evidence__keyitem">
               {keyLine('var(--photo-same)')}
               {othersLabels.same}
             </span>
           ) : null}
-          {others?.earlier.length ? (
+          {others?.earlier ? (
             <span className="evidence__keyitem">
               {keyLine('var(--photo-earlier)')}
               {othersLabels.earlier}

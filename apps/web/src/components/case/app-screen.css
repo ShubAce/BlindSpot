@@ -345,19 +345,19 @@
   pointer-events: visiblePainted;
   cursor: pointer;
 }
-.chip__others--same path {
+.chip__others .is-same path {
   stroke: var(--photo-same);
 }
-.chip__others--earlier path {
+.chip__others .is-earlier path {
   stroke: var(--photo-earlier);
 }
 .chip__others a:hover path {
   stroke-width: 3px;
 }
-.chip__others--same a:hover path {
+.chip__others .is-same:hover path {
   fill: rgb(255 210 63 / 0.25);
 }
-.chip__others--earlier a:hover path {
+.chip__others .is-earlier:hover path {
   fill: rgb(94 230 255 / 0.25);
 }
 .evidence__others {
