@@ -132,7 +132,7 @@ export type ScarMethod = {
 /** How another scar in the case's pictures stands to them: `same` = first seen burnt after the
  *  before picture and at the latest on the after picture (new in the after picture); `earlier` =
  *  seen burnt by the before picture's pass (dark in both); `later` = first seen after the after
- *  picture (burnt in neither, so never drawn). */
+ *  picture (burnt in neither: counted in the totals, not listed, never drawn). */
 export type OtherScarRelation = 'same' | 'earlier' | 'later';
 
 export type OtherScar = {
@@ -147,11 +147,14 @@ export type OtherScar = {
   outline: PolygonGeometry | MultiPolygonGeometry | null;
 };
 
-export type OtherScarTotals = { scars: number; area_ha: number };
+/** `area_ha` sums the scars' whole areas, also beyond the box's edge; `area_in_box_ha` only the part
+ *  inside the box, the pictures' own area. */
+export type OtherScarTotals = { scars: number; area_ha: number; area_in_box_ha?: number };
 
 /** The other stored scars inside imagery.bbox, with the live map's confidence cut. `totals` and
- *  `total` count every match; `scars` holds at most `limit` (the largest first, same and earlier
- *  alike, the later ones last). Added to the API on 2026-11-23: an older answer has no such key. */
+ *  `total` count every match; `scars` holds the same and earlier ones, at most `limit`, the largest
+ *  first (`truncated` when the cap left some out). Added to the API on 2026-11-23: an older answer
+ *  has no such key. */
 export type OtherScars = {
   bbox?: [number, number, number, number] | null;
   model_version?: string;

@@ -92,30 +92,38 @@ async function main(): Promise<number> {
     scars: [other(1, 'same', 0.72), other(2, 'same', 2.78), other(3, 'earlier', 1.4, '2026-11-12T05:50:48Z', T0), other(4, 'earlier', 11), other(5, 'later', 2)],
   };
   const marks = m.otherMarks(o, box);
-  check('earlier drawn first, then same; larger first; later never', marks.map((k) => k.id).join() === '4,3,2,1', marks.map((k) => k.id).join());
+  check('larger drawn first, whatever the kind; later never', marks.map((k) => k.id).join() === '4,2,3,1', marks.map((k) => k.id).join());
   check('title names the case, area and window', marks[3].title === 'Case 1: 0.72 ha, burnt 17–22 Nov', marks[3].title);
   check('older API answer: nothing drawn, no sentence', m.otherMarks(undefined, box).length === 0 && m.othersSentence(undefined, 0, { after: T0, before: T1 }) === null);
 
   const passes = { after: T0, before: T1 };
   const sentence = (totals: OtherScars['totals'], drawn: number) => m.othersSentence({ min_confidence: 0.5, totals }, drawn, passes);
   const labels = m.othersLabels(passes);
-  check('key words carry the case dates', labels.same === 'Other scars, burnt 17–22 Nov' && labels.earlier === 'Other scars, burnt by 17 Nov', JSON.stringify(labels));
+  check('key words carry the case dates', labels.same === 'Other scars, first seen burnt 17–22 Nov' && labels.earlier === 'Other scars, burnt by 17 Nov', JSON.stringify(labels));
   const nov = (d: number) => `${d} Nov`;
   const ha = (v: string) => `${v} ha`;
   const tail = 'all with confidence 0.5 or more, as on the live map.';
+  // the areas are the part inside the picture (area_in_box_ha), never the scars' whole area
   const cases: [string, string | null, string][] = [
-    ['both kinds', sentence({ same: { scars: 54, area_ha: 383.68 }, earlier: { scars: 72, area_ha: 303.84 }, later: { scars: 0, area_ha: 0 } }, 126),
-      `Also mapped in this picture: 54 other burn scars first seen burnt between ${nov(17)} and ${nov(22)} (${ha('384')}) and 72 that had burnt by ${nov(17)} (${ha('304')}), ${tail}`],
-    ['one', sentence({ same: { scars: 1, area_ha: 0.72 } }, 1),
-      `Also mapped in this picture: 1 other burn scar first seen burnt between ${nov(17)} and ${nov(22)} (${ha('0.72')}), with confidence 0.5 or more, as on the live map.`],
-    ['earlier only', sentence({ same: { scars: 0, area_ha: 0 }, earlier: { scars: 12, area_ha: 49.76 } }, 12),
-      `Also mapped in this picture: 12 other burn scars that had burnt by ${nov(17)} (${ha('49.8')}), ${tail}`],
+    ['both kinds', sentence({ same: { scars: 54, area_ha: 383.68, area_in_box_ha: 290.21 }, earlier: { scars: 72, area_ha: 303.84, area_in_box_ha: 244.31 }, later: { scars: 0, area_ha: 0, area_in_box_ha: 0 } }, 126),
+      `Also mapped in this picture: 54 other burn scars first seen burnt between ${nov(17)} and ${nov(22)} (${ha('290')} inside the picture) and 72 that had burnt by ${nov(17)} (${ha('244')} inside it), ${tail}`],
+    ['one', sentence({ same: { scars: 1, area_ha: 0.72, area_in_box_ha: 0.72 } }, 1),
+      `Also mapped in this picture: 1 other burn scar first seen burnt between ${nov(17)} and ${nov(22)} (${ha('0.72')} inside the picture), with confidence 0.5 or more, as on the live map.`],
+    ['earlier only', sentence({ same: { scars: 0, area_ha: 0, area_in_box_ha: 0 }, earlier: { scars: 12, area_ha: 49.76, area_in_box_ha: 41.77 } }, 12),
+      `Also mapped in this picture: 12 other burn scars that had burnt by ${nov(17)} (${ha('41.8')} inside the picture), ${tail}`],
     ['none', sentence({ same: { scars: 0, area_ha: 0 }, earlier: { scars: 0, area_ha: 0 }, later: { scars: 0, area_ha: 0 } }, 0),
       'No other burn scar with confidence 0.5 or more is mapped in this picture.'],
-    ['cut and later', sentence({ same: { scars: 500, area_ha: 2000 }, earlier: { scars: 260, area_ha: 900 }, later: { scars: 3, area_ha: 5 } }, 300),
-      `Also mapped in this picture: 500 other burn scars first seen burnt between ${nov(17)} and ${nov(22)} (${ha('2,000')}) and 260 that had burnt by ${nov(17)} (${ha('900')}), ${tail} Only the 300 largest are outlined. 3 more, first seen burnt after ${nov(22)}, are not drawn.`],
-    ['one later', sentence({ same: { scars: 2, area_ha: 3 }, later: { scars: 1, area_ha: 1 } }, 2),
-      `Also mapped in this picture: 2 other burn scars first seen burnt between ${nov(17)} and ${nov(22)} (${ha('3.00')}), ${tail} 1 more, first seen burnt after ${nov(22)}, is not drawn.`],
+    // case 1917811 on the 22 Nov data: three scars in its box, all first seen after its pictures
+    ['later only', sentence({ same: { scars: 0, area_ha: 0, area_in_box_ha: 0 }, earlier: { scars: 0, area_ha: 0, area_in_box_ha: 0 }, later: { scars: 3, area_ha: 2.76, area_in_box_ha: 2.22 } }, 0),
+      `No other burn scar with confidence 0.5 or more had been seen burnt in this picture by ${nov(22)}. 3 others, first seen burnt here after that day, are not drawn.`],
+    ['one later only', sentence({ later: { scars: 1, area_ha: 1, area_in_box_ha: 1 } }, 0),
+      `No other burn scar with confidence 0.5 or more had been seen burnt in this picture by ${nov(22)}. 1 other, first seen burnt here after that day, is not drawn.`],
+    ['cut and later', sentence({ same: { scars: 500, area_ha: 2000, area_in_box_ha: 1800 }, earlier: { scars: 260, area_ha: 900, area_in_box_ha: 850 }, later: { scars: 3, area_ha: 5, area_in_box_ha: 5 } }, 300),
+      `Also mapped in this picture: 500 other burn scars first seen burnt between ${nov(17)} and ${nov(22)} (${ha('1,800')} inside the picture) and 260 that had burnt by ${nov(17)} (${ha('850')} inside it), ${tail} Only the 300 largest are outlined. 3 more, first seen burnt after ${nov(22)}, are not drawn.`],
+    ['one later', sentence({ same: { scars: 2, area_ha: 3, area_in_box_ha: 3 }, later: { scars: 1, area_ha: 1, area_in_box_ha: 1 } }, 2),
+      `Also mapped in this picture: 2 other burn scars first seen burnt between ${nov(17)} and ${nov(22)} (${ha('3.00')} inside the picture), ${tail} 1 more, first seen burnt after ${nov(22)}, is not drawn.`],
+    ['no area inside the picture given: no area at all', sentence({ same: { scars: 54, area_ha: 383.68 } }, 54),
+      `Also mapped in this picture: 54 other burn scars first seen burnt between ${nov(17)} and ${nov(22)}, ${tail}`],
   ];
   for (const [what, got, want] of cases) check(`sentence, ${what}`, got === want, got ?? 'null');
 
@@ -131,9 +139,13 @@ async function main(): Promise<number> {
     check(`case ${data.case.id}: every same and earlier scar drawn`, os?.truncated ? drawn.length < want : drawn.length === want, `${drawn.length} of ${want}`);
     // a scar that reaches in from outside the picture starts off it: a negative first corner
     check(`case ${data.case.id}: no path empty`, drawn.every((k) => /^M-?\d+ -?\d+[hvlz]/.test(k.d) && k.d.endsWith('z')));
+    const said = m.othersSentence(os, drawn.length, { after: data.case.burn_after, before: data.case.burn_before }) ?? '';
+    // never "no other scar is mapped" while the box holds some; the areas are the in-picture ones
+    check(`case ${data.case.id}: the sentence agrees with the totals`, !os?.total || !said.includes('is mapped in this picture'), said);
+    check(`case ${data.case.id}: areas inside the picture`, !want || t.same?.area_in_box_ha == null || said.includes('inside the picture'), said);
     const chars = drawn.reduce((s, k) => s + k.d.length, 0);
     const vertices = (os?.scars ?? []).reduce((s, k) => s + (k.outline ? m.ringsOf(k.outline).reduce((a, r) => a + r.length, 0) : 0), 0);
-    console.log(`     ${drawn.length} paths, ${chars} characters for ${vertices} corners; ${m.othersSentence(os, drawn.length, { after: data.case.burn_after, before: data.case.burn_before })}`);
+    console.log(`     ${drawn.length} paths, ${chars} characters for ${vertices} corners; ${said}`);
   }
   return failed ? 1 : 0;
 }

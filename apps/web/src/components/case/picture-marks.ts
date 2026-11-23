@@ -10,7 +10,7 @@
 
 import { dateIST, dateRangeIST, metricText, NBSP, number, plural } from '@/lib/format';
 
-import type { CaseProps, OtherScar, OtherScars } from './types';
+import type { CaseProps, OtherScar, OtherScars, OtherScarTotals } from './types';
 
 export type BBox = [number, number, number, number];
 export const VIEW = 1000;
@@ -66,19 +66,17 @@ const areaText = (ha: number) => (ha < 10 ? `${number(ha, { decimals: 2 })}${NBS
 
 export type OtherMark = { id: number; rel: 'same' | 'earlier'; d: string; title: string };
 
-const DRAWN = { earlier: 0, same: 1 } as const;
 const drawn = (s: OtherScar): s is OtherScar & { relation: 'same' | 'earlier' } => s.relation === 'same' || s.relation === 'earlier';
 
-/** The other scars the pictures outline, in drawing order: the earlier burns first, then those
- *  first seen between the two pictures over them; within each the larger first, so a small field
- *  lying on a large one stays clickable. Scars first seen after the pictures are not drawn: they
- *  burnt in neither. */
+/** The other scars the pictures outline, in drawing order: the larger first, whatever their kind,
+ *  so a small field lying on a large one stays on top and clickable. Scars first seen after the
+ *  pictures are not drawn (the API counts them without listing them): they burnt in neither. */
 export function otherMarks(o: OtherScars | null | undefined, bbox: BBox | null): OtherMark[] {
   if (!o?.scars || !bbox) return [];
   return o.scars
     .filter(drawn)
     .filter((s) => s.outline)
-    .sort((a, b) => DRAWN[a.relation] - DRAWN[b.relation] || b.area_ha - a.area_ha || a.id - b.id)
+    .sort((a, b) => b.area_ha - a.area_ha || a.id - b.id)
     .map((s) => ({
       id: s.id,
       rel: s.relation,
@@ -91,34 +89,45 @@ export function otherMarks(o: OtherScars | null | undefined, bbox: BBox | null):
 /** The case's two passes: the before picture's and the after picture's. */
 export type PictureWindow = { after: string; before: string };
 
-/** The key's words for the two kinds, with the case's own dates. */
+/** The key's words for the two kinds, with the case's own dates: what the rule knows of a scar is
+ *  when it was first seen burnt. */
 export const othersLabels = (w: PictureWindow) => ({
-  same: `Other scars, burnt ${dateRangeIST(w.after, w.before)}`,
+  same: `Other scars, first seen burnt ${dateRangeIST(w.after, w.before)}`,
   earlier: `Other scars, burnt by ${dateIST(w.after)}`,
 });
 
+const NONE: OtherScarTotals = { scars: 0, area_ha: 0 };
+
 /** One plain sentence under the pictures, every number from the API's totals and the dates from
  *  the case's two passes. "First seen burnt between" and "had burnt by" say what the rule knows: a
- *  scar's window runs from the last clear pass that saw it unburnt to the first that saw it burnt. */
+ *  scar's window runs from the last clear pass that saw it unburnt to the first that saw it burnt.
+ *  The areas are the part of the scars inside the picture (`area_in_box_ha`): many reach past its
+ *  edge, so their whole area would overstate what the picture shows. */
 export function othersSentence(o: OtherScars | null | undefined, marks: number, w: PictureWindow): string | null {
   if (!o?.totals) return null;
-  const same = o.totals.same ?? { scars: 0, area_ha: 0 };
-  const earlier = o.totals.earlier ?? { scars: 0, area_ha: 0 };
+  const same = o.totals.same ?? NONE;
+  const earlier = o.totals.earlier ?? NONE;
   const later = o.totals.later?.scars ?? 0;
   const shown = same.scars + earlier.scars;
-  const cut = o.min_confidence != null ? `with confidence ${number(o.min_confidence, { decimals: 1 })} or more` : null;
+  const cut = o.min_confidence != null ? ` with confidence ${number(o.min_confidence, { decimals: 1 })} or more` : '';
+  if (!shown) {
+    // later scars only: none had burnt by the after picture, so none is drawn
+    return later
+      ? `No other burn scar${cut} had been seen burnt in this picture by ${dateIST(w.before)}. ${number(later)} ${later === 1 ? 'other, first seen burnt here after that day, is' : 'others, first seen burnt here after that day, are'} not drawn.`
+      : `No other burn scar${cut} is mapped in this picture.`;
+  }
+  // no area at all rather than a scar's whole area where the part inside the picture is unknown
+  const inside = (t: OtherScarTotals, where: string) => (t.area_in_box_ha != null ? ` (${areaText(t.area_in_box_ha)} ${where})` : '');
   const parts: string[] = [];
   if (same.scars) {
-    parts.push(`${plural(same.scars, 'other burn scar', 'other burn scars')} first seen burnt between ${dateIST(w.after)} and ${dateIST(w.before)} (${areaText(same.area_ha)})`);
+    parts.push(`${plural(same.scars, 'other burn scar', 'other burn scars')} first seen burnt between ${dateIST(w.after)} and ${dateIST(w.before)}${inside(same, 'inside the picture')}`);
   }
   if (earlier.scars) {
     const what = same.scars ? number(earlier.scars) : plural(earlier.scars, 'other burn scar', 'other burn scars');
-    parts.push(`${what} that had burnt by ${dateIST(w.after)} (${areaText(earlier.area_ha)})`);
+    parts.push(`${what} that had burnt by ${dateIST(w.after)}${inside(earlier, same.scars ? 'inside it' : 'inside the picture')}`);
   }
-  let text = shown
-    ? `Also mapped in this picture: ${parts.join(' and ')}${cut ? `, ${shown === 1 ? '' : 'all '}${cut}, as on the live map` : ''}.`
-    : `No other burn scar${cut ? ` ${cut}` : ''} is mapped in this picture.`;
-  if (shown && marks < shown) text += ` Only the ${number(marks)} largest are outlined.`;
-  if (later) text += ` ${plural(later, 'more', 'more')}, first seen burnt after ${dateIST(w.before)}, ${later === 1 ? 'is' : 'are'} not drawn.`;
+  let text = `Also mapped in this picture: ${parts.join(' and ')}${cut ? `, ${shown === 1 ? '' : 'all '}${cut.trim()}, as on the live map` : ''}.`;
+  if (marks < shown) text += ` Only the ${number(marks)} largest are outlined.`;
+  if (later) text += ` ${number(later)} more, first seen burnt after ${dateIST(w.before)}, ${later === 1 ? 'is' : 'are'} not drawn.`;
   return text;
 }
