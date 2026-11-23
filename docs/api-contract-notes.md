@@ -346,10 +346,16 @@ There is no `hours` parameter. A pass counts when the site lies inside the instr
 ## Burn scars: `/api/scars*` (Sentinel-2)
 
 - **GET /api/scars**: `since`, `until`, `district`, `unseen` (bool), `bbox`, `limit` (default
-  5000), `min_confidence` (0-1).
+  5000), `min_confidence` (0-1), `order` (`newest` or `area`; an addition of 2026-11-24).
   - Returns `{totals: {clusters, area_ha, unseen_clusters, unseen_area_ha, checked_clusters},
-    returned, truncated, window: {first_pass, last_pass}, method: {model_version, summary, label,
-    audit, unseen_rule}, features: FeatureCollection<Polygon>}`.
+    returned, truncated, window: {first_pass, last_pass}, order, method: {model_version, summary,
+    label, audit, unseen_rule}, features: FeatureCollection<Polygon>}`.
+  - `order=newest` (the default) lists the newest scar first, by its exact sensing time
+    (`burn_before`), then the largest. `order=area` lists the largest first. Both break ties by id.
+    When `limit` cuts the list, the order decides which rows are kept: `since=D&until=D&order=area`
+    gives the largest scars of the pass of UTC day D, while the default gives the most recently
+    sensed ones, which may be one or two tiles of that pass. The answer echoes `order`; an answer
+    without it was listed newest first.
   - Feature properties are `{id, area_ha, burn_after, burn_before, district, subdistrict,
     village, village_km, centroid, dnbr, nbr_post, confidence, unseen, fire_matches,
     nearest_fire_m, scene_pre, scene_post, label, state, gap_days, hazy, res_m, mgrs_tile,

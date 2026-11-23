@@ -1,7 +1,7 @@
 """Burn scars: the Sentinel-2 clusters, a season summary per district, and one scar's case file.
 
 GET /api/scars              scars as GeoJSON polygons, with totals (filters: since, until, district,
-                            unseen, bbox, limit)
+                            unseen, bbox, min_confidence, limit; order: newest first or largest)
 GET /api/scars/summary      season totals and a per-district table, with FIRMS counts beside them
 GET /api/scars/{id}         one scar: its properties and outline, before/after imagery links, the
                             other scars inside its pictures, the fire detections around it and the
@@ -19,7 +19,7 @@ from __future__ import annotations
 import datetime as dt
 import math
 import re
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from urllib.parse import urlencode
 
 import orjson
@@ -64,6 +64,9 @@ NEARBY_KM = 5.0  # fire detections listed around a scar
 NEARBY_DAYS = 2  # ...from this many days before the clear pass to this many after the burnt one
 KM_PER_DEG = 111.32  # length of one degree of latitude, km
 MAX_FORWARD_HOPS = 8  # a replaced scar's id is followed through at most this many replacements
+# The list's orders: the newest scar first (by exact sensing time), or the largest first. Both end
+# on id, so the same rows always come back in the same order.
+ORDERS = {"newest": "burn_before DESC, area_ha DESC, id", "area": "area_ha DESC, id"}
 
 _FEATURE_COLUMNS = """
     id, area_ha, burn_after, burn_before, gap_days, district, subdistrict, village, village_km,
@@ -209,8 +212,12 @@ def scars(
     unseen: bool | None = None,
     limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = 5000,
     min_confidence: Annotated[float | None, Query(ge=0, le=1, description="addition: drop weaker candidates")] = None,
+    order: Annotated[Literal["newest", "area"], Query(
+        description="addition: 'newest' (default) lists the newest scar first, then the largest; "
+                    "'area' the largest first")] = "newest",
 ) -> ORJSONResponse:
-    """Burn-scar polygons (newest first, then largest) and totals over everything that matched.
+    """Burn-scar polygons (newest first, then largest; or largest first with order=area) and totals
+    over everything that matched.
 
     `unseen` is true when no fire detection explains the scar, false when one does, and null while
     no fire records cover its window. Totals count all matching scars even when `limit` cuts the list."""
@@ -220,10 +227,12 @@ def scars(
         until = None
     key = canonical_key("scars", bbox=bbox, since=since, until=until,
                         district=district.strip().lower() if district else None, unseen=unseen,
-                        limit=limit, min_confidence=min_confidence)
+                        limit=limit, min_confidence=min_confidence,
+                        order=None if order == "newest" else order)  # the default keeps its old key
     return stored_response(
         session, key, scars_stamp(session, since, until, district, unseen, bbox, min_confidence),
-        lambda: _scars_payload(session, bbox, since, until, district, unseen, limit, min_confidence),
+        lambda: _scars_payload(session, bbox, since, until, district, unseen, limit, min_confidence,
+                               order),
         live_sources=lambda: _sources(session),
         guard=limit > GUARD_LIMIT and not _website_family(bbox, since, until, district, unseen, limit,
                                                           min_confidence))
@@ -273,7 +282,7 @@ def scars_stamp(
 def _scars_payload(
     session: Session, bbox: tuple[float, float, float, float] | None, since: dt.date | None,
     until: dt.date | None, district: str | None, unseen: bool | None, limit: int,
-    min_confidence: float | None,
+    min_confidence: float | None, order: str = "newest",
 ) -> tuple[dict[str, Any], list[SourceRef], int]:
     where, params = _filters(since, until, district, unseen, bbox, min_confidence)
     totals = session.execute(text(f"""
@@ -286,7 +295,7 @@ def _scars_payload(
     rows = session.execute(text(f"""
         SELECT {_FEATURE_COLUMNS}, ST_AsGeoJSON(geom, 6)::json AS geometry
         FROM burn_cluster WHERE {where}
-        ORDER BY burn_before DESC, area_ha DESC, id
+        ORDER BY {ORDERS[order]}
         LIMIT :limit"""), {**params, "limit": limit}).mappings().all()
     features = [
         {"type": "Feature", "id": r["id"], "geometry": r["geometry"], "properties": _properties(r)}
@@ -303,6 +312,7 @@ def _scars_payload(
         "returned": len(features),
         "truncated": len(features) < totals["clusters"],
         "window": {"first_pass": totals["first_pass"], "last_pass": totals["last_pass"]},
+        "order": order,  # addition: which rows a cut list kept (the newest, or the largest)
         "method": _method(),
         "features": {"type": "FeatureCollection", "features": features},
     }

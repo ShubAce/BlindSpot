@@ -457,3 +457,23 @@ def test_field_brief_tool_feeds_the_answer_check(rows: Any) -> None:
     invented = verify(good.replace("8.0 ha", "9.7 ha"), build_evidence([{"args": args, "output": seen[0]["output"]}]),
                       set(book.refs), runner.attributed(seen))
     assert not invented.passed and invented.unverified[0].startswith("9.7 ha")
+
+
+def test_the_scar_list_can_put_the_largest_first(client: TestClient, rows: Any) -> None:
+    """GET /api/scars?order=area (an addition) lists the largest scar first, and a cut list keeps the
+    largest rows: the landing's slips are the largest of the newest pass. The default stays newest
+    first (by exact sensing time), and the answer says which order it used."""
+    ids = {v: k for k, v in rows["scars"].items()}
+    query = {"bbox": "64.9,-8.1,65.2,-7.9", "district": A, "unseen": "true"}
+
+    def keys(params: dict[str, Any]) -> tuple[str, list[str], Any]:
+        body = client.get("/api/scars", params={**query, **params}).json()
+        return body["order"], [ids[f["id"]] for f in body["features"]["features"]], body
+
+    assert keys({})[:2] == ("newest", ["a1", "a2", "n1", "a3", "b1", "g1"])
+    assert keys({"order": "area"})[:2] == ("area", ["a2", "g1", "a1", "b1", "n1", "a3"])
+    _, cut, body = keys({"order": "area", "limit": 2})
+    assert cut == ["a2", "g1"] and body["truncated"] and body["totals"]["unseen_clusters"] == 6
+    # one pass is one UTC day: g1 (23 Oct, 23:50 UTC) is in it, b1 (24 Oct, 00:30 UTC) is not
+    assert keys({"order": "area", "since": "2026-10-23", "until": "2026-10-23"})[1] == ["g1"]
+    assert client.get("/api/scars", params={**query, "order": "size"}).status_code == 422
