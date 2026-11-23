@@ -168,6 +168,40 @@ def test_excluded_pixels_leave_the_background_and_are_reported_apart() -> None:
     assert not plain.excluded_fire.any()
 
 
+def test_window_accounting_adds_up() -> None:
+    """A scan on a window boundary counts once: half in the window, half in the gap after it, and
+    the gaps add up to exactly the pixel-hours outside the windows."""
+    from blindspot.api.routers.geostationary import _gaps
+
+    t = datetime(2026, 11, 17, 11, 17, tzinfo=UTC)  # Aqua over Punjab at 16:47 IST
+    p = gf.PolarPass("Aqua", "MODIS", t, t + timedelta(minutes=2), 10, 1.0, 100.0)
+    windows = gf.polar_windows([p], pad_minutes=15)
+    assert (windows[0]["start"], windows[0]["end"]) == ("16:32", "17:04")
+    end = windows[0]["end_min"]
+    assert gf.inside_windows(end - 1, windows) and not gf.inside_windows(end, windows)
+    spans = gf.window_spans(windows)
+    assert gf.scan_overlap(end, spans) == pytest.approx(0.5)
+    assert gf.scan_overlap(16 * 60 + 47, spans) == 1.0 and gf.scan_overlap(19 * 60, spans) == 0.0
+    # scans every 10 minutes, one exactly on the window's end, counts like an evening peak
+    start = datetime(2026, 11, 17, 9, 4, tzinfo=UTC)  # 14:34 IST
+    slots = [(start + timedelta(minutes=10 * k), 5 + k) for k in range(40)]
+    assert any(gf.ist_minutes(s) == end for s, _ in slots)
+    outside = sum(c * (1 - gf.scan_overlap(gf.ist_minutes(s), spans)) for s, c in slots)
+    in_gaps = 0.0
+    for g in _gaps(windows):
+        lo = int(g["start"][:2]) * 60 + int(g["start"][3:])
+        in_gaps += sum(c * gf.scan_overlap(gf.ist_minutes(s), [(lo, lo + g["minutes"])])
+                       for s, c in slots)  # fmt: skip
+    assert in_gaps == pytest.approx(outside)
+    # Wider pads leave less outside; windows taken day by day never leave less than one clock.
+    other_day = gf.PolarPass("Aqua", "MODIS", t - timedelta(days=1, minutes=40),
+                             t - timedelta(days=1, minutes=38), 10, 1.0, 100.0)  # fmt: skip
+    shares = gf.outside_shares(slots, [p, other_day], (0, 5, 10, 15))
+    unions = [r["union"] for r in shares]
+    assert unions == sorted(unions, reverse=True)
+    assert all(r["per_day"] >= r["union"] for r in shares)
+
+
 def test_diurnal_helpers() -> None:
     t = datetime(2026, 10, 29, 10, 45, tzinfo=UTC)  # 16:15 IST
     assert gf.ist_minute_of_day(t) == 16 * 60 + 15

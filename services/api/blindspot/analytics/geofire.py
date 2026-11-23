@@ -614,6 +614,12 @@ def ist_minute_of_day(t: datetime) -> int:
     return local.hour * 60 + local.minute
 
 
+def ist_minutes(t: datetime) -> float:
+    """Minute of the IST day with its fraction (seconds count)."""
+    local = t.astimezone(UTC) + IST_OFFSET
+    return local.hour * 60 + local.minute + local.second / 60
+
+
 def merge_intervals(intervals: Iterable[tuple[int, int]]) -> list[tuple[int, int]]:
     """Merge overlapping [start, end] minute-of-day intervals."""
     out: list[list[int]] = []
@@ -659,8 +665,67 @@ def polar_windows(passes: Iterable[PolarPass], pad_minutes: float) -> list[dict[
     return windows
 
 
-def inside_windows(minute_of_day: int, windows: Sequence[dict[str, Any]]) -> bool:
-    return any(w["start_min"] <= minute_of_day <= w["end_min"] for w in windows)
+def inside_windows(minute_of_day: float, windows: Sequence[dict[str, Any]]) -> bool:
+    """Whether a moment falls in a window, each window [start, end) so that a moment on a
+    boundary belongs to exactly one of a window and the gap after it."""
+    return any(w["start_min"] <= minute_of_day < w["end_min"] for w in windows)
+
+
+SCAN_MINUTES = 10  # GK-2A full-disk repeat cycle: each scan stands for 10 minutes
+
+
+def scan_overlap(
+    minute_of_day: float,
+    spans: Iterable[tuple[float, float]],
+    scan_minutes: float = SCAN_MINUTES,
+) -> float:
+    """Share (0-1) of the 10 minutes a scan stands for, [t - 5, t + 5), that falls inside the
+    given minute-of-day spans [start, end) (a span may run past 1440 when it wraps midnight).
+
+    Counting a scan by its overlap, instead of by whether its moment is inside, removes the knife
+    edge at window boundaries: with 15-minute pads Aqua's window used to end exactly on the
+    17:02 IST peak scan, which then counted fully on one side or the other (and on both sides,
+    before windows were made half-open)."""
+    lo, hi = minute_of_day - scan_minutes / 2, minute_of_day + scan_minutes / 2
+    total = 0.0
+    for start, end in spans:
+        for shift in (-1440.0, 0.0, 1440.0):
+            total += max(0.0, min(hi, end + shift) - max(lo, start + shift))
+    return min(1.0, total / scan_minutes)
+
+
+def window_spans(windows: Sequence[dict[str, Any]]) -> list[tuple[float, float]]:
+    return [(float(w["start_min"]), float(w["end_min"])) for w in windows]
+
+
+def outside_shares(
+    slots: Sequence[tuple[datetime, int]],
+    passes: Sequence[PolarPass],
+    pads: Sequence[float] = (0, 5, 10, 15),
+) -> list[dict[str, Any]]:
+    """Share of GK-2A fire pixels outside the polar windows, for several pads, two ways:
+    `union` puts every day's windows on one IST clock (a time of day counts as seen if a polar
+    satellite looked then on any day: what the diurnal headline uses), `per_day` compares each scan
+    only with the passes of its own IST day."""
+    total = sum(count for _, count in slots)
+    by_day: dict[Any, list[PolarPass]] = {}
+    for p in passes:
+        by_day.setdefault((p.start + IST_OFFSET).date(), []).append(p)
+    out = []
+    for pad in pads:
+        union = window_spans(polar_windows(passes, pad))
+        day_spans = {d: window_spans(polar_windows(dp, pad)) for d, dp in by_day.items()}
+        outside_union = outside_day = 0.0
+        for t, count in slots:
+            m = ist_minutes(t)
+            outside_union += count * (1 - scan_overlap(m, union))
+            outside_day += count * (1 - scan_overlap(m, day_spans.get((t + IST_OFFSET).date(), [])))
+        out.append({
+            "pad_min": pad,
+            "union": round(outside_union / total, 4) if total else None,
+            "per_day": round(outside_day / total, 4) if total else None,
+        })  # fmt: skip
+    return out
 
 
 def hourly_means(slots: Sequence[tuple[datetime, int]]) -> list[dict[str, Any]]:

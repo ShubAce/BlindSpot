@@ -2,8 +2,9 @@
 
 - GET /api/geostationary/diurnal?days=3: fire pixels per 10-minute GK-2A scan over Punjab +
   Haryana, the mean per IST hour, the IST times of day when a polar satellite looked (from FIRMS
-  detections in fire_detection), the share of fire activity outside those windows, and how well
-  GK-2A agrees with VIIRS and MODIS (geo_fire_validation).
+  detections in fire_detection), the share of fire activity outside those windows (each scan
+  counted by the share of its 10 minutes outside them; also for other pads and day by day), and
+  how well GK-2A agrees with VIIRS and MODIS (geo_fire_validation).
 - GET /api/geostationary/latest: the newest analysed scan and its fire pixels as GeoJSON
   (pixel footprints, ~12 km2: centres ~4.5 km apart along a row, ~3.6 km down a column).
 
@@ -38,10 +39,11 @@ from blindspot.sources import gk2a  # noqa: F401  (registers the gk2a source lab
 
 router = APIRouter(prefix="/api/geostationary", tags=["geostationary"])
 
-SCAN_MINUTES = 10  # GK-2A full-disk repeat cycle: each scan stands for 10 minutes
+SCAN_MINUTES = gf.SCAN_MINUTES  # GK-2A full-disk repeat cycle: each scan stands for 10 minutes
 POLAR_PAD_MIN = (
     15  # a polar look is its detections' time span, padded this much each side
 )
+PAD_SENSITIVITY_MIN = (0, 5, 10, 15)  # the outside share is also given for these pads
 REGION_ISOS = ["IN-PB", "IN-HR"]
 UNIT = (
     "GK-2A fire pixels (~12 km2 each) per 10-minute scan inside Punjab and Haryana (India's state "
@@ -236,6 +238,7 @@ def diurnal(
         "pixel_hours": None,
         "pixel_hours_outside_polar_windows": None,
         "share_outside_polar_windows": None,
+        "outside_share_by_pad": [],
         "unobserved_gaps_ist": [],
         "interpretation": [],
         "validation": validation,
@@ -257,25 +260,23 @@ def diurnal(
             "no FIRMS detections in fire_detection for this period: polar windows unknown"
         )
     elif total:
-        outside = sum(
-            s.count
-            for s in ok
-            if not gf.inside_windows(gf.ist_minute_of_day(s.t_utc), windows)
-        )
+        # Each scan counts by the share of its 10 minutes outside the windows (gf.scan_overlap),
+        # so the gaps below add up to exactly this total and a boundary scan is never split
+        # all-or-nothing, nor counted twice.
+        spans = gf.window_spans(windows)
+        outside = sum(s.count * (1 - gf.scan_overlap(gf.ist_minutes(s.t_utc), spans)) for s in ok)
         payload["pixel_hours_outside_polar_windows"] = round(
             outside * SCAN_MINUTES / 60, 1
         )
         payload["share_outside_polar_windows"] = round(outside / total, 4)
+        payload["outside_share_by_pad"] = gf.outside_shares(
+            [(s.t_utc, s.count) for s in ok], passes, PAD_SENSITIVITY_MIN
+        )
     gaps = _gaps(windows)
     for g in gaps:  # GK-2A activity inside each unobserved span
         lo = int(g["start"][:2]) * 60 + int(g["start"][3:])
         hi = lo + g["minutes"]
-        inside = sum(
-            s.count
-            for s in ok
-            if lo <= gf.ist_minute_of_day(s.t_utc) < hi
-            or lo <= gf.ist_minute_of_day(s.t_utc) + 1440 < hi
-        )
+        inside = sum(s.count * gf.scan_overlap(gf.ist_minutes(s.t_utc), [(lo, hi)]) for s in ok)
         g["pixel_hours"] = round(inside * SCAN_MINUTES / 60, 1)
     payload["unobserved_gaps_ist"] = gaps
     payload["interpretation"] = _interpretation(payload)
@@ -329,10 +330,17 @@ def _interpretation(p: dict[str, Any]) -> list[str]:
             "counts are not reliable."
         )
     if p.get("share_outside_polar_windows") is not None:
+        shares = [x for b in p.get("outside_share_by_pad") or [] for x in (b["union"], b["per_day"])
+                  if x is not None]  # fmt: skip
+        spread = (
+            f" ({_pct(min(shares))}-{_pct(max(shares))} with windows padded 0-15 minutes or "
+            "taken day by day)"
+            if shares else ""
+        )
         out.append(
             f"{_pct(p['share_outside_polar_windows'])} of GK-2A fire pixel-hours "
             f"({p['pixel_hours_outside_polar_windows']} of {p['pixel_hours']}) fell outside the "
-            f"times a polar satellite looked; activity peaked {p['peak_ist']} IST."
+            f"times a polar satellite looked{spread}; activity peaked {p['peak_ist']} IST."
         )
     gaps = [g for g in p.get("unobserved_gaps_ist") or [] if g.get("pixel_hours")]
     if gaps:
