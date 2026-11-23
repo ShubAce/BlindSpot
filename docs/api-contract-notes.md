@@ -380,8 +380,19 @@ There is no `hours` parameter. A pass counts when the site lies inside the instr
   - `case` holds the properties plus `geometry`.
   - `imagery: {bbox, pre: {date, datetime, item_id, collection, cloud_pct, truecolor_url,
     swir_url, nbr_url}, post: {...}}`.
-  - `fires_nearby: [{id, source, satellite, acq_utc, lat, lon, confidence, frp_mw, distance_m,
-    match_radius_m, in_window, explains_scar}]`.
+  - `other_scars: {bbox, model_version, min_confidence, totals: {same, earlier, later: {scars,
+    area_ha}}, total, returned, truncated, limit, scars: [{id, relation, burn_after, burn_before,
+    unseen, confidence, area_ha, outline}]}` (added 2026-11-23): every other stored scar of the
+    current model that reaches into `imagery.bbox`, with the live map's cut (confidence 0.5 or
+    more), so the pictures can outline every burn mapped in them. `relation` is how the scar
+    stands to the case's two pictures: `same` = first seen burnt after the before picture and at
+    the latest on the after picture (new in the after picture), `earlier` = seen burnt by the
+    before picture's pass (dark in both), `later` = first seen after the after picture (burnt in
+    neither); passes within an hour count as one (adjacent tiles of one pass). `outline` is a
+    GeoJSON Polygon simplified to one picture pixel (the box's shorter side / 512) with 5 decimals.
+    The list holds at most `limit` (300) scars, same first, then earlier, then later, larger first;
+    `totals` and `total` count every match. `area_ha` is a scar's whole area, also any part outside
+    the box. One query on the geometry index (2-11 ms on the 22 Nov data).
   - `weather_at_burn: {available, series: [{t, wind_10m_kmh, wind_from_deg, blh_m, temp_2m_c,
     precip_mm}]}`.
   - An unknown id returns 404 "no such scar".
