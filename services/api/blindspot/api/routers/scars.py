@@ -315,7 +315,9 @@ def _method() -> dict[str, Any]:
         "summary": (
             "Sentinel-2 L2A, cropland only: NIR and SWIR darkened since the previous clear pass "
             f"(dB8A>{RULE.d_b8a}, dB11>{RULE.d_b11}, dB12>{RULE.d_b12}) and the field now looks "
-            f"charred (BAIS2>={RULE.bais2_min}, brightness<={RULE.tbi_max}); passes at most "
+            f"charred (BAIS2>={RULE.bais2_min}, brightness<={RULE.tbi_max}); a smoke-hazy pass is "
+            "first corrected to the last clear one (per-band haze offsets measured on unchanged ground "
+            "in ~5 km cells; haze too thick to correct is left as it is); passes at most "
             f"{RULE.max_gap_days} days apart; clusters of at least {RULE.min_area_ha} ha whose mean "
             f"post-burn NBR is below {RULE.nbr_post_max} (drops flooded fields and cloud shadows). "
             "Candidates: tillage can look similar."

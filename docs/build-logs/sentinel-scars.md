@@ -87,3 +87,50 @@
 - These are model judgements on replay strata, not comparable with the hand audit in AUDIT. The old
   stratum's 17/26 (14 of 40 unsure) is a reason for a fresh random audit of stored rules-2 clusters.
 - Code and scripts: commit d4c84b2, reverted by 77a9f09 (branch models/burnscars).
+
+## s2burn-rules-4h (haze correction): evaluated 2026-11-24, blind audit pending
+- Why: on smoke-hazy passes burns plain to the eye were left unmarked (case 4723594, Ludhiana,
+  43REQ 17 -> 22 Nov: 14 of 24 hotspot blocks hazy). Haze adds path radiance to the visible and
+  near-infrared bands (little to SWIR), so dB8A shrinks and brightness (TBI) rises.
+- Rule: on a pass haze_check calls hazy, every band is corrected to the block's last clear pass
+  before any test (burnscar.normalise_haze): per ~5 km cell the median change of unchanged ground
+  (SWIR-2, SWIR-1 and NIR stable against the clear reference), clipped at 0 and non-increasing
+  with wavelength; cells with < 200 unchanged pixels take the median of fitted cells; < 4 fitted
+  cells or an offset > 0.15 leaves the pass raw; a cell with blue haze > 0.08 is left raw. The
+  memory keeps the corrected view and all nine bands of the last clear pass (state 11 -> 21 MB per
+  block). Clear passes are untouched (they are the reference). Also: a burn seen since the NDVI
+  reference is no longer called a harvest on the next clear pass.
+- Development (two cached blocks outside every evaluation window, 43RDP r0_c0 and 43REP
+  r4096_c1024): a first version took the most common change as haze and chained each correction on
+  the previous one; during the harvest the most common change is harvest (NIR down, SWIR up), and
+  over 9 consecutive hazy passes it drifted until it erased 99% of 43REP's burn pixels. Theil-Sen
+  gains on unchanged pixels ranged 0.54-1.79 between passes, so the rule fits offsets only.
+  W4's window touches r0_c0 for its top ~380 m (about 9% of the window).
+- Pre-registered bar: scripts/burn_haze_eval.py docstring, committed (91c3f28) before the first
+  evaluation run. Command: uv run python scripts/burn_haze_eval.py replay <out> (then summary, chips).
+- Six windows, season from 1 Oct through the 22 Nov pass, production resolution, ha:
+
+  | window | res | rules-2 | rules-4h | added | share | removed |
+  |---|---|---|---|---|---|---|
+  | W1 case 4723594 Ludhiana 43REQ (3 x 3 km) | 20 m | 92.36 | 163.64 | 71.28 | 77.2% | 0.00 |
+  | W2 case 4936479 Ratta Theh 43REN | 40 m | 721.44 | 737.60 | 16.32 | 2.3% | 0.16 |
+  | W3 case 4939467 Kalwan 43REN | 40 m | 239.36 | 241.28 | 2.88 | 1.2% | 0.96 |
+  | W4 Fazilka 43RDP | 20 m | 1467.28 | 1567.00 | 108.12 | 7.4% | 8.40 |
+  | W5 Barnala 43REP | 20 m | 2613.68 | 3234.44 | 642.72 | 24.6% | 21.96 |
+  | W6 Tarn Taran 43REQ | 20 m | 1610.72 | 1836.32 | 280.16 | 17.4% | 54.56 |
+
+  Bar (a) met in 3 of 6 windows (W1, W5, W6). 32 hazy block-passes, 26 corrected (6 left raw:
+  haze too thick or no offset). 22 Nov 43REQ offsets (gain 1): block r4096_c2048 B02 0.043,
+  B03 0.041, B04 0.030, B06 0.029, B07 0.025, B08 0.022, B8A 0.022, B11 0.003, B12 0 (16/16 cells);
+  block r0_c0 B02 0.037 ... B8A 0.009.
+- Visibly charred ground of 17 -> 22 Nov (raw reflectance, post BAIS2 >= 0.70, TBI <= 0.40,
+  dB12 > 0.02, dB8A > 0.04) outside every stored scar: W1 95.04 ha, of which rules-4h outlines
+  67.76 ha (rules-2 replay 0); W2 116.24 ha and W3 56.32 ha, of which rules-4h adds nothing (their
+  22 Nov pass was clear: those misses are 40 m mixed pixels, not haze).
+- FIRMS proxy (not a bar): a detection within 375 m in the pass window for 70/597 added pieces
+  (11.7%) and 266/2396 rules-2 clusters (11.1%).
+- Runtime: against main's rules-2 code on 5 cached blocks, +0.028-0.082 s per block-pass and
+  +0.46-0.62 s per block-memory save; with production's 4188 block-passes and 227 blocks (run
+  2065, 54.6 min) the run grows to about 62.6 min (77.7 min with 25% more passes); bar (d) met.
+- Blind audit chips (30 added, 20 baseline, 10 positive and 10 negative controls, seed 20261124):
+  scratchpad w3/haze/chips with key w3/haze/audit_key.json; bars (b) and (c) are the verifier's.

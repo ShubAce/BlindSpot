@@ -16,7 +16,9 @@ short-wave infrared at once. So a burn here is a cropland pixel that
   3. is cropland (ESA WorldCover 2021 class 40) and clear on both passes (SCL 2, 4, 5, 6 or 7);
 
 then a 2x2 opening removes speckle and 4-connected clusters of at least 13 pixels at 20 m (0.52 ha)
-are kept. On FIRMS-labelled fields this rule had the best trade-off of the rules tested (TPR 0.66 at
+are kept. Since s2burn-rules-4h a pass that is hazy with smoke (haze_check) is first brought to the
+radiometry of the last clear pass (normalise_haze): haze lifts the visible and near-infrared bands,
+which hid burns that are plain to the eye (dB8A too small, brightness too high). On FIRMS-labelled fields this rule had the best trade-off of the rules tested (TPR 0.66 at
 an upper-bound FPR of 0.35, doc section 3.5); tillage can still mimic it, so results are candidates.
 
 Each pixel remembers its last clear observation (BlockState), so a pixel hidden by cloud on one

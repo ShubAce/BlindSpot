@@ -77,6 +77,7 @@ from typing import Any
 
 import numpy as np
 import shapely
+import shapely.affinity
 from rasterio import features
 from rasterio.transform import from_origin
 from rasterio.windows import Window
@@ -497,8 +498,214 @@ def summary(args: argparse.Namespace) -> None:
     (args.out / "summary.json").write_text(json.dumps(out, indent=1))
 
 
+# --- audit chips -----------------------------------------------------------------------------------
+
+CHIP_RES = 10  # metres per chip pixel
+CHIP_HALF_M = 600  # a ~1.2 km square
+UPSCALE = 3
+N_STRATA = {"added": 30, "baseline": 20, "positive_control": 10, "negative_control": 10}
+NOT_DARK = {"d_b8a": 0.02, "d_b11": 0.02, "d_b12": 0.01}  # a negative control did not darken
+
+
+def chip_box(geom: Any) -> tuple[float, float, float, float]:
+    x0, y0, x1, y1 = geom.bounds
+    cx, cy = round((x0 + x1) / 40) * 20, round((y0 + y1) / 40) * 20  # whole 20 m pixels
+    half = round(max(CHIP_HALF_M, (x1 - x0) / 2 + 150, (y1 - y0) / 2 + 150) / 20) * 20
+    return cx - half, cy - half, cx + half, cy + half
+
+
+def read_10m(items: list[stac.SceneItem], bounds: tuple[float, ...], bands: tuple[str, ...]) -> dict[str, np.ndarray]:
+    """DN over `bounds` at 10 m for one pass (its items mosaicked, least nodata first)."""
+    from rasterio.enums import Resampling
+
+    shp = (round((bounds[3] - bounds[1]) / CHIP_RES), round((bounds[2] - bounds[0]) / CHIP_RES))
+    out: dict[str, np.ndarray] = {}
+    for item in sorted(items, key=lambda s: s.nodata_pct if s.nodata_pct is not None else 100.0):
+        got = {b: stac._read_one(item.hrefs[b], bounds, shp, Resampling.bilinear) for b in bands}
+        has = got["B04"] > 0
+        for b, arr in got.items():
+            dst = out.setdefault(b, np.zeros(shp, arr.dtype))
+            take = has & (dst == 0)
+            dst[take] = arr[take]
+    return out
+
+
+def render_chip(geom: Any, pre: dt.date, post: dt.date, by_day: dict[dt.date, list[stac.SceneItem]],
+                path: Path) -> list[float]:
+    """Four panels of one square: true colour before / after, SWIR false colour before / after,
+    the audited area in yellow on each, the dates in small captions; nothing else."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    from blindspot.sources import pcdata
+
+    bounds = chip_box(geom)
+    views = {d: read_10m(by_day[d], bounds, ("B04", "B03", "B02", "B12", "B8A")) for d in (pre, post)}
+    panels = []
+    for kind in ("truecolor", "swir"):
+        for d, word in ((pre, "before"), (post, "after")):
+            v = views[d]
+            bands = [v["B04"], v["B03"], v["B02"]] if kind == "truecolor" else [v["B12"], v["B8A"], v["B04"]]
+            panels.append((pcdata.colourise(kind, bands)[..., :3], f"{word}  {d}" + ("  (SWIR)" if kind == "swir" else "")))
+    rings = [geom.exterior, *geom.interiors] if geom.geom_type == "Polygon" else [g.exterior for g in geom.geoms]
+    px = [[((x - bounds[0]) / CHIP_RES * UPSCALE, (bounds[3] - y) / CHIP_RES * UPSCALE) for x, y in r.coords]
+          for r in rings]
+    size = panels[0][0].shape[1] * UPSCALE, panels[0][0].shape[0] * UPSCALE
+    gap, cap = 8, 18
+    canvas = Image.new("RGB", (2 * size[0] + gap, 2 * (size[1] + cap) + gap), (255, 255, 255))
+    font = ImageFont.load_default()
+    for i, (rgb, text) in enumerate(panels):
+        img = Image.fromarray(rgb).resize(size, Image.NEAREST)
+        draw = ImageDraw.Draw(img)
+        for ring in px:
+            draw.line([*ring, ring[0]], fill=(255, 255, 0), width=2)
+        x, y = (i % 2) * (size[0] + gap), (i // 2) * (size[1] + cap + gap)
+        canvas.paste(img, (x, y))
+        ImageDraw.Draw(canvas).text((x + 4, y + size[1] + 3), text, fill=(0, 0, 0), font=font)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    canvas.save(path, optimize=True)
+    return list(bounds)
+
+
+def _date_of(item_id: str) -> dt.date:
+    stamp = item_id.split("_")[2]  # S2B_T43REQ_20261117T054316_L2A
+    return dt.date(int(stamp[:4]), int(stamp[4:6]), int(stamp[6:8]))
+
+
+def _block_file(cache: Path, w: Win, b: Window, day: int) -> Path | None:
+    shared = [c / w.tile / f"r{b.row_off}_c{b.col_off}" / f"{day}.npz" for c in SHARED_CACHES] if w.res == 20 else []
+    return next((p for p in [*shared, cache_path(cache, w.tile, w.res, b, day).with_suffix(".npz")] if p.exists()), None)
+
+
+def window_pair(w: Win, grid: stac.TileGrid, inner: tuple[float, ...], cache: Path, pre: int, post: int,
+                area_utm: Any) -> np.ndarray | None:
+    """On the window grid (stage resolution): cropland in scope, clear on both passes, not darkened."""
+    shp = (round((inner[3] - inner[1]) / w.res), round((inner[2] - inner[0]) / w.res))
+    ok = np.zeros(shp, bool)
+    for b in grid.blocks(job.BLOCK_PX):
+        bb = grid.window_bounds(b)
+        if not box(*bb).intersects(box(*inner)):
+            continue
+        reads = {}
+        for day in (pre, post):
+            path = _block_file(cache, w, b, day)
+            if path is None:
+                return None
+            with np.load(path) as d:
+                reads[day] = ({x: stac.reflectance(d[x], 1e-4, -0.1) for x in ("B8A", "B11", "B12")}, d["SCL"])
+        scope = rasterize([area_utm], (b.height, b.width), grid.window_transform(b)) & grid.core_mask(b)
+        scope &= cropland(cache, w.tile, w.res, grid, b)
+        (r1, s1), (r2, s2) = reads[pre], reads[post]
+        with np.errstate(invalid="ignore"):
+            good = (scope & burnscar.valid_scl(s1) & burnscar.valid_scl(s2)
+                    & (r1["B8A"] - r2["B8A"] <= NOT_DARK["d_b8a"]) & (r1["B11"] - r2["B11"] <= NOT_DARK["d_b11"])
+                    & (r1["B12"] - r2["B12"] <= NOT_DARK["d_b12"]))
+        r0, c0 = round((bb[3] - inner[3]) / w.res), round((inner[0] - bb[0]) / w.res)
+        rs = slice(max(-r0, 0), min(shp[0], b.height - r0))
+        cs = slice(max(-c0, 0), min(shp[1], b.width - c0))
+        ok[rs, cs] |= good[rs.start + r0:rs.stop + r0, cs.start + c0:cs.stop + c0]
+    return ok
+
+
 def chips(args: argparse.Namespace) -> None:
-    raise SystemExit("chips: not written yet")
+    global DB_URL
+    DB_URL = args.db
+    cache = args.cache or (args.out / "cache")
+    rng = random.Random(SEED)
+    with db_session(args.db) as session:
+        areas, _ = job.stage_geometries(session)
+    pools: dict[str, list[dict[str, Any]]] = {k: [] for k in N_STRATA}
+    ctx: dict[str, dict[str, Any]] = {}
+    for w in WINDOWS:
+        cj = json.loads((args.out / w.name / "clusters.json").read_text())
+        inner, epsg = tuple(cj["inner"]), cj["epsg"]
+        ctx[w.name] = {"w": w, "inner": inner, "epsg": epsg}
+        for i, a in enumerate(cj["added"]):
+            pools["added"].append({"window": w.name, "id": f"{w.name}-added-{i}", "geom": a["geom"], "pre": a["pre"],
+                                   "post": a["post"], "area_ha": a["area_ha"]})
+        for i, c in enumerate(x for x in cj["clusters"] if x["rule"] == "base" and x["anchor_in_window"]):
+            pools["baseline"].append({"window": w.name, "id": f"{w.name}-base-{i}", "geom": c["geom"], "pre": c["pre"],
+                                      "post": c["post"], "area_ha": c["area_ha"]})
+        for s in stored_scars(args.db, w.tile, epsg, inner):
+            if not ((s["fire_matches"] or 0) > 0 or s["unseen"] is False):
+                continue
+            g = job._from_lonlat(shapely.from_wkt(s["wkt"]), epsg)
+            if not box(*inner).contains(job._anchor(g)):
+                continue
+            pools["positive_control"].append({"window": w.name, "id": f"scar-{s['id']}", "geom": g.wkt,
+                                              "pre": str(_date_of(s["scene_pre"])), "post": str(_date_of(s["scene_post"])),
+                                              "area_ha": float(s["area_ha"])})
+    picked: dict[str, list[dict[str, Any]]] = {}
+    for k in ("added", "baseline", "positive_control"):
+        pool = sorted(pools[k], key=lambda c: c["id"])
+        rng.shuffle(pool)
+        picked[k] = pool[: N_STRATA[k]]
+    scenes_by_tile: dict[str, dict[dt.date, list[stac.SceneItem]]] = {}
+    grids: dict[str, stac.TileGrid] = {}
+    for w in WINDOWS:
+        if w.tile in scenes_by_tile:
+            continue
+        lls = [stac.utm_bounds_to_lonlat(ctx[x.name]["epsg"], ctx[x.name]["inner"]) for x in WINDOWS if x.tile == w.tile]
+        bbox = (min(b[0] for b in lls) - 0.05, min(b[1] for b in lls) - 0.05, max(b[2] for b in lls) + 0.05,
+                max(b[3] for b in lls) + 0.05)
+        items = search(w.tile, bbox)
+        by_day: dict[dt.date, list[stac.SceneItem]] = defaultdict(list)
+        for it in items:
+            by_day[it.datetime.date()].append(it)
+        scenes_by_tile[w.tile] = by_day
+        grids[w.tile] = stac.TileGrid.from_scene(items[0], 20)
+    # Negative controls: a random baseline cluster's outline and pass pair, moved to cropland of the
+    # same window that was clear on both passes, did not darken, and lies in no scar (stored or replayed).
+    negs: list[dict[str, Any]] = []
+    shapes = sorted(pools["baseline"], key=lambda c: c["id"])
+    rng.shuffle(shapes)
+    for c in shapes:
+        if len(negs) >= N_STRATA["negative_control"]:
+            break
+        x = ctx[c["window"]]
+        w, inner = x["w"], x["inner"]
+        g20 = grids[w.tile]
+        grid = stac.TileGrid(g20.tile, g20.epsg, w.res, g20.x0, g20.y0, int(g20.width * 20 / w.res),
+                             int(g20.height * 20 / w.res), g20.core)
+        area_utm = job._from_lonlat(areas[w.stage], grid.epsg).intersection(box(*grid.core))
+        ok = window_pair(w, grid, inner, cache, stac.day_number(dt.date.fromisoformat(c["pre"])),
+                         stac.day_number(dt.date.fromisoformat(c["post"])), area_utm)
+        if ok is None:
+            continue
+        tf = from_origin(inner[0], inner[3], w.res, w.res)
+        masks = np.load(args.out / w.name / "masks.npz")
+        stored = [job._from_lonlat(shapely.from_wkt(s["wkt"]), grid.epsg) for s in stored_scars(args.db, w.tile, grid.epsg, inner)]
+        ok &= ~(masks["base"] | masks["cand"] | rasterize(stored, ok.shape, tf))
+        g = shapely.from_wkt(c["geom"])
+        gx0, gy0, gx1, gy1 = g.bounds
+        for _ in range(300):
+            dx = rng.uniform(inner[0] - gx0, inner[2] - gx1)
+            dy = rng.uniform(inner[1] - gy0, inner[3] - gy1)
+            moved = shapely.affinity.translate(g, round(dx / w.res) * w.res, round(dy / w.res) * w.res)
+            pix = rasterize([moved], ok.shape, tf)
+            if pix.sum() >= RULE.min_px(w.res) and (pix & ok).sum() >= 0.95 * pix.sum():
+                negs.append({"window": w.name, "id": f"neg-{c['id']}", "geom": moved.wkt, "pre": c["pre"],
+                             "post": c["post"], "area_ha": c["area_ha"]})
+                break
+    picked["negative_control"] = negs
+    entries = [{"stratum": k, **c} for k, v in picked.items() for c in v]
+    random.Random(SEED + 1).shuffle(entries)
+    args.chips_dir.mkdir(parents=True, exist_ok=True)
+
+    def one(i_e: tuple[int, dict[str, Any]]) -> dict[str, Any]:
+        i, e = i_e
+        name = f"chip_{i + 1:03d}.png"
+        tile = ctx[e["window"]]["w"].tile
+        box_utm = render_chip(shapely.from_wkt(e["geom"]), dt.date.fromisoformat(e["pre"]),
+                              dt.date.fromisoformat(e["post"]), scenes_by_tile[tile], args.chips_dir / name)
+        return {"chip": name, "path": str((args.chips_dir / name).resolve()), **e, "chip_utm": box_utm, "tile": tile}
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        key = list(pool.map(one, enumerate(entries)))
+    summary_ = {"counts": {k: len(v) for k, v in picked.items()}, "pools": {k: len(v) for k, v in pools.items()}}
+    args.key.write_text(json.dumps({"seed": SEED, **summary_, "chips": key}, indent=1))
+    print(json.dumps(summary_))
 
 
 def main() -> None:
