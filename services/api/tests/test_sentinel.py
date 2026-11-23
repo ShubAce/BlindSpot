@@ -605,6 +605,19 @@ def test_lookalike_filter_and_audit_interval() -> None:
     assert 0 < audit["candidate_unseen"]["precision_ci95"][0] <= audit["candidate_unseen"]["precision"] <= 1
 
 
+def test_published_precision_leaves_out_the_development_sample() -> None:
+    """The first audit sample (a3) designed the look-alike filter and was re-scored under it, so the
+    candidate-unseen precision the site quotes counts only the held-out samples (15 of 18). The pooled
+    figure (20 of 23) stays beside it, for the record."""
+    unseen = burnscar.audit_summary()["candidate_unseen"]
+    assert (unseen["burnt"], unseen["audited"]) == (15, 18) and unseen["precision"] == pytest.approx(0.833)
+    assert unseen["precision_ci95"] == burnscar.wilson_interval(15, 18) == (0.608, 0.942)
+    assert sum(t["audited"] for t in unseen["by_tile"].values()) == 18
+    assert sum(t["burnt"] for t in unseen["by_tile"].values()) == 15
+    pooled = unseen["with_development_sample"]
+    assert (pooled["burnt"], pooled["audited"], pooled["precision"]) == (20, 23, 0.87)
+
+
 def test_burnt_centre_field_survives_the_lookalike_filter(window) -> None:
     _state, _registry, results = _run_passes(window)
     clear = results[2]

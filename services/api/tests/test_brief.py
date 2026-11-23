@@ -185,10 +185,10 @@ def test_list_has_the_window_the_districts_and_their_qualification(client: TestC
     # the audit always travels with the figures
     audit = body["candidate_unseen_audit"]
     assert audit["precision"] == AUDIT["precision"] and audit["precision_ci95"] == list(AUDIT["precision_ci95"])
-    assert audit["audited"] == AUDIT["audited"] == 23
+    assert audit["audited"] == AUDIT["audited"] == 18  # held out only (burnscar.AUDIT)
     assert body["label"] == "candidate unseen burns"
-    assert "candidates, not confirmed fires" in body["notes"][0] and "87%" in body["notes"][0]
-    assert "95% CI 68%-96%" in body["notes"][0] and "upper bound" in body["notes"][0]
+    assert "candidates, not confirmed fires" in body["notes"][0] and "83%" in body["notes"][0]
+    assert "95% CI 61%-94%" in body["notes"][0] and "upper bound" in body["notes"][0]
     assert {s["key"] for s in body["sources"]} >= set(brief.SOURCE_KEYS)
     # on the DAILY clock of api/cache.py (the clock of /api/scars and /api/risk), not the hourly one
     cc = r.headers["cache-control"]
@@ -342,9 +342,9 @@ def test_csv_opens_in_excel_with_links_in_three_languages(client: TestClient, ro
     assert header == brief.csv_header("en", audit, window) and len(header) == 10
     # a saved file still says the counts and areas are upper bounds, with the audit and the passes
     assert header[3] == ("candidate unseen burns, Sentinel-2 passes 2026-10-24 to 2026-10-30 (upper bound: "
-                         "in a hand audit of 23, 87% were real burns, 95% CI 68%-96%)")
-    assert header[4] == ("area of candidate unseen burns, ha (upper bound: in a hand audit of 23, 87% were real "
-                         "burns, 95% CI 68%-96%)")
+                         "in a hand audit of 18, 83% were real burns, 95% CI 61%-94%)")
+    assert header[4] == ("area of candidate unseen burns, ha (upper bound: in a hand audit of 18, 83% were real "
+                         "burns, 95% CI 61%-94%)")
     assert lines[0] == ["Alpha", "North", A, "2", "8.00", "2026-10-30", "-8.000000", "65.010000",
                         "https://www.google.com/maps/search/?api=1&query=-8.000000,65.010000",
                         f"https://www.blindspotin.tech/case/{ids['a2']}"]
@@ -359,7 +359,7 @@ def test_csv_opens_in_excel_with_links_in_three_languages(client: TestClient, ro
         assert header == brief.csv_header(lang, audit, window) != brief.csv_header("en", audit, window)
         assert foreign_script(" ".join(header), lang) == []  # Devanagari for Hindi, Gurmukhi for Punjabi
         for cell in header[3:5]:  # the audit in every language, its numbers in the digits 0-9
-            assert all(s in cell for s in ("23 ", "87%", "95% CI 68%-96%")), cell
+            assert all(s in cell for s in ("18 ", "83%", "95% CI 61%-94%")), cell
         assert "2026-10-24" in header[3] and "2026-10-30" in header[3]
         assert localized[2][0] == brief.UNNAMED[lang] and foreign_script(brief.UNNAMED[lang], lang) == []
         for line in localized:  # numbers in the digits 0-9
@@ -420,13 +420,13 @@ def test_field_brief_tool_feeds_the_answer_check(rows: Any) -> None:
     assert "watchlist_harvested_fields" not in data and "best_ranked_outside_top_tenth" in data
     description = tools.TOOLS["get_field_brief"].description
     assert "watchlist_top_tenth" in description and "never call them top tenth" in description
-    assert data["candidate_unseen_audit"]["precision_pct"] == 87.0
-    assert data["candidate_unseen_audit"]["precision_ci95_pct"] == [67.9, 95.5]
+    assert data["candidate_unseen_audit"]["precision_pct"] == 83.3  # held out only (burnscar.AUDIT)
+    assert data["candidate_unseen_audit"]["precision_ci95_pct"] == [60.8, 94.2]
     assert data["ranking_reliability"]["strength"] == "weak" and len(data["notes"]) == 5
     flat = json.dumps(data)
     assert "risk_score" not in flat and "probability" not in flat
     assert "s2_cog" in {ref.key for ref in result.sources}
-    assert "candidate unseen burns" in result.summary and "95% CI 67.9-95.5%" in result.summary
+    assert "candidate unseen burns" in result.summary and "95% CI 60.8-94.2%" in result.summary
     assert not unknown.ok and "HTTP 404" in (unknown.error or "") and "Atlantis" in (unknown.error or "")
     assert not empty.ok and "district" in (empty.error or "")
     assert "get_field_brief" in tools.TOOLS and "get_field_brief" in [d.name for d in tools.declarations()]
@@ -441,13 +441,13 @@ def test_field_brief_tool_feeds_the_answer_check(rows: Any) -> None:
                   if s["source"] == label_for("s2_cog"))
     facts = honesty_facts([{"args": t["args"], "output": t["output"]} for t in seen])
     assert facts.precision == AUDIT["precision"] and facts.precision_ci == tuple(AUDIT["precision_ci95"])
-    assert facts.audited == 23 and {8.0, 12.5} <= set(facts.unseen_area_ha)
+    assert facts.audited == 18 and {8.0, 12.5} <= set(facts.unseen_area_ha)
     assert facts.auc_all is not None and facts.auc_all["auc"] == 0.56 and facts.auc_all["ci"] == (0.491, 0.663)
     assert facts.auc_all["strength"] == "weak" and facts.risk_scores == [] and facts.top_village is None
     bare = f"Alpha in {A} had 8.0 ha of unseen burns [{marker}]."
     assert [i.kind for i in check_honesty([bare], "en", facts)] == ["unseen_not_candidate"]
-    good = (f"Alpha in {A} had 8.0 ha of candidate unseen burns [{marker}]. In an audit of 23 candidates, 87% were "
-            f"real burns (95% CI 68%-96%) [{marker}], so that area is an upper bound.")
+    good = (f"Alpha in {A} had 8.0 ha of candidate unseen burns [{marker}]. In an audit of 18 candidates, 83% were "
+            f"real burns (95% CI 61%-94%) [{marker}], so that area is an upper bound.")
     assert check_honesty([good], "en", facts) == []
     report = verify(good, build_evidence([{"args": args, "output": seen[0]["output"]}]), set(book.refs),
                     runner.attributed(seen))

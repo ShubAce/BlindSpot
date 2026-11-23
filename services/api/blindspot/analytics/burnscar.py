@@ -127,17 +127,25 @@ RULE = BurnRule()
 # "Uncertain" clusters (e.g. a pre pass too hazy to judge) are counted as NOT burnt. Look-alike
 # strata were inspected separately and are not in the precision. Chips and method:
 # docs/build-logs/sentinel-scars.md. Re-audit whenever RULE changes.
+# The candidate-unseen precision counts only held-out samples (h1, f1, g1). The first random sample,
+# a3, was the development sample: its one false positive (#2906, a flooded field) is what the
+# look-alike filter (BurnRule.keeps) was designed on, and a3 was then re-scored under that filter, so
+# its 5 remaining candidate unseen clusters (all burnt) cannot test the rule; with them it read
+# 20/23. (a3's 4 FIRMS-confirmed clusters had no false positive for the filter to remove, so the
+# FIRMS-confirmed count is unchanged.)
 AUDIT: dict[str, Any] = {
     "date": "2026-10-31",
     "model_version": "s2burn-rules-2",
     "method": "random clusters, pre/post true colour + SWIR chips judged by eye; no field visits",
     "candidate_unseen": {
-        "audited": 23, "burnt": 20,
+        "audited": 18, "burnt": 15, "samples": "held out: h1, f1, g1",
         "by_tile": {
-            "43REP": {"audited": 11, "burnt": 11},
+            "43REP": {"audited": 6, "burnt": 6},
             "43RFP": {"audited": 4, "burnt": 2, "false": ["16446 cloud/smoke shadow", "7673 flooded field"]},
             "other hotspot tiles": {"audited": 8, "burnt": 7, "uncertain": ["48980 pre pass too hazy"]},
         },
+        "development_sample": {"name": "a3", "audited": 5, "burnt": 5,
+                               "why_left_out": "designed the look-alike filter, then re-scored under it"},
     },
     "firms_confirmed": {"audited": 12, "burnt": 10,
                         "uncertain": ["24423 pre pass is thick haze, not judgeable",
@@ -171,6 +179,10 @@ def audit_summary() -> dict[str, Any]:
         s = AUDIT[key]
         out[key] = {**s, "precision": round(s["burnt"] / s["audited"], 3),
                     "precision_ci95": wilson_interval(s["burnt"], s["audited"])}
+        if dev := s.get("development_sample"):  # the pooled figure, for the record only
+            n, k = s["audited"] + dev["audited"], s["burnt"] + dev["burnt"]
+            out[key]["with_development_sample"] = {"audited": n, "burnt": k, "precision": round(k / n, 3),
+                                                   "precision_ci95": wilson_interval(k, n)}
     r = AUDIT["recall_vs_firms"]
     out["recall_vs_firms"] = {**r, "recall_same_window": round(r["scar_same_window"] / r["viirs_detections"], 3),
                               "recall_same_window_ci95": wilson_interval(r["scar_same_window"], r["viirs_detections"])}
