@@ -29,6 +29,7 @@ import datetime as dt
 import json
 import random
 import sys
+import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -63,12 +64,24 @@ def chip_box(g: Any) -> tuple[float, float, float, float]:
     return cx - half, cy - half, cx + half, cy + half
 
 
+def _read(href: str, bounds: tuple[float, float, float, float], shp: tuple[int, int]) -> np.ndarray:
+    """One band window, retried: a COG read over HTTP sometimes fails once (throttling)."""
+    for attempt in range(4):
+        try:
+            return stac._read_one(href, bounds, shp, Resampling.bilinear)
+        except Exception:
+            if attempt == 3:
+                raise
+            time.sleep(2 + 4 * attempt)
+    raise AssertionError("unreachable")
+
+
 def read_bands(items: list[stac.SceneItem], bounds: tuple[float, float, float, float]) -> dict[str, np.ndarray]:
     """DN over `bounds` at 10 m for one pass (its items mosaicked, least nodata first)."""
     shp = (round((bounds[3] - bounds[1]) / RES), round((bounds[2] - bounds[0]) / RES))
     out: dict[str, np.ndarray] = {}
     for item in sorted(items, key=lambda s: s.nodata_pct if s.nodata_pct is not None else 100.0):
-        got = {b: stac._read_one(item.hrefs[b], bounds, shp, Resampling.bilinear) for b in ("B02", "B03", "B04", "B8A", "B12")}
+        got = {b: _read(item.hrefs[b], bounds, shp) for b in ("B02", "B03", "B04", "B8A", "B12")}
         has = got["B04"] > 0
         for b, arr in got.items():
             if b not in out:
@@ -274,7 +287,8 @@ def main() -> None:
         cover = box(*stac.utm_bounds_to_lonlat(c["epsg"], chip_box(g)))
         days = {k: [s for s in by_day[stac.day_number(dt.date.fromisoformat(c[k]))] if shape(s.geometry).intersects(cover)]
                 for k in ("pre", "post")}
-        bounds = render(g, days["pre"], days["post"], c["pre"], c["post"], args.chips / name)
+        path = args.chips / name  # a rerun (same seed, same sample) keeps the chips already rendered
+        bounds = chip_box(g) if path.exists() else render(g, days["pre"], days["post"], c["pre"], c["post"], path)
         return {"chip": name, "path": str((args.chips / name).resolve()), "stratum": c["stratum"],
                 "window": c["window"], "tile": c["tile"], "pre": c["pre"], "post": c["post"], "area_ha": c["area_ha"],
                 "chip_utm": bounds, "geom_ll": mapping(job._to_lonlat(g, c["epsg"])),
