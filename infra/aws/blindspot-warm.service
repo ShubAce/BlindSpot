@@ -1,8 +1,10 @@
 [Unit]
-Description=BlindSpot: refresh the API cache from the website's main pages
+Description=BlindSpot: refresh the API cache after a daily job, then from the website's main pages
 After=blindspot-web.service nginx.service
 
 [Service]
 Type=oneshot
 ExecStart=/bin/bash /usr/local/sbin/blindspot-warm
 Nice=10
+# /var/lib/blindspot-warm: the job runs already handled (warm.sh)
+StateDirectory=blindspot-warm

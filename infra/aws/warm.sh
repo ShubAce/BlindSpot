@@ -1,11 +1,169 @@
 #!/usr/bin/env bash
-# blindspot-warm.timer: request the website's main pages on the server itself, so that their API
-# answers are fetched through the cache (nginx-api-cache.conf) before a visitor needs them. An
-# answer still within its cache time (s-maxage: until the next job clock point in
-# services/api/blindspot/api/cache.py) comes straight from the cache; an expired one is refreshed
-# in the background while the old copy is served; one not cached yet (new parameters, evicted) is
-# built now, by this request rather than by a visitor.
+# blindspot-warm.timer, every 10 minutes: keep the API cache (nginx-api-cache.conf) in step with the
+# data, then request the website's main pages so that their API answers are cached before a visitor
+# needs them.
+#
+# 1. After a daily job, replace the answers it feeds. Each cached answer is kept until its job clock
+#    next ticks (s-maxage, services/api/blindspot/api/cache.py CDN_RULES): up to ~23 h for the DAILY
+#    group, whose last point is 14:30 UTC. A daily job that finishes after that point (a late
+#    Sentinel-2 run, a long risk run) would leave those answers on the old data until the next day,
+#    while the hourly answers move on: two pages, two different counts. So each run asks the
+#    database (local psql, as postgres) which of the jobs in ROUTES finished since the last run, and
+#    for every cached answer those jobs feed:
+#      - refreshed: fetched again through 127.0.0.1:8002, a second door to the same cache that always
+#        asks the API and stores the new answer (proxy_cache_bypass). Visitors keep getting the old
+#        copy until the new one is stored, so nothing goes cold. At most REFRESH_MAX, newest first;
+#      - purged: case files, CSVs, any answer over that cap, and copies of a refreshed answer kept for
+#        a request with another Origin (the API varies on Origin) are deleted. The next request that
+#        needs one builds it again, once (proxy_cache_lock).
+#    The hourly and six-hourly jobs are left to their clocks, which tick within the hour.
+# 2. Request the main pages. An answer still within its cache time comes straight from the cache; an
+#    expired one is refreshed in the background while the old copy is served; one not cached yet is
+#    built now, by this request rather than by a visitor.
+#
+# Try it without changing anything (prints what it would refresh and delete, writes no state):
+#   sudo WARM_DRY_RUN=1 /usr/local/sbin/blindspot-warm
+# Test overrides (infra/aws/warm_test.sh): WARM_PSQL (a command printing "id name" lines for the SQL
+# in $WARM_SQL), WARM_CACHE_DIR, WARM_STATE_DIR, WARM_REFRESH_URL, WARM_REFRESH_MAX, WARM_SITE_URL,
+# WARM_SKIP_PAGES=1.
 set -u
+
+CACHE=${WARM_CACHE_DIR:-/var/cache/nginx/blindspot}   # proxy_cache_path in nginx-api-cache.conf
+STATE_DIR=${WARM_STATE_DIR:-/var/lib/blindspot-warm}  # StateDirectory= of blindspot-warm.service
+REFRESH_URL=${WARM_REFRESH_URL:-http://127.0.0.1:8002}  # the refresh door (nginx-api-cache.conf)
+SITE_URL=${WARM_SITE_URL:-http://127.0.0.1:3000}
+DRY=${WARM_DRY_RUN:-0}
+ORIGIN=https://www.blindspotin.tech  # the Origin the website and its visitors send: their shared copy
+API_HOST=api.blindspotin.tech        # the Host Caddy passes on, so a refresh looks like a visitor's read
+LOOKBACK_MIN=90                      # job runs finished this recently are looked at (handled ones skipped)
+REFRESH_MAX=${WARM_REFRESH_MAX:-60}  # answers refreshed per run; the rest are purged
+
+# The daily, weekly and bulletin jobs (data-jobs.yml) and the answers they feed (cache keys are the
+# request URI). /api/stats/headline and /api/scars/summary tick hourly but carry the Sentinel-2 totals
+# and the TLE passes, so they are refreshed with those jobs: every page then shows one count.
+declare -A ROUTES=(
+  [sentinel]='^/api/(scars|brief|stats/headline|imagery/scenes)([/?]|$)'
+  [risk]='^/api/(risk|brief)([/?]|$)'
+  [featured]='^/api/imagery/featured([/?]|$)'
+  [featured_investigations]='^/api/agent/examples([/?]|$)'
+  [bulletin]='^/api/bulletin/'
+  [tle]='^/api/(orbits|stats/headline)([/?]|$)'
+  [smoke_validate]='^/api/smoke/validation([/?]|$)'
+  [boundaries]='^/api/geo/'
+)
+# Answers deleted rather than refreshed: many and rarely read (a case file, a CSV download).
+PURGE_ONLY='^/api/scars/[0-9]+([/?]|$)|/csv([/?]|$)'
+# A key fetched again must be a plain request URI (no spaces, quotes or backslashes) of at most 1,500
+# characters; others are purged. (A {0,1500} bound would exceed POSIX regex's RE_DUP_MAX of 255.)
+SAFE_KEY='^/api/[][A-Za-z0-9._~%/?&=,:;+@!*()-]*$'
+
+log() { echo "warm: $*"; }
+
+if [ -n "${WARM_PSQL:-}" ]; then
+  read -r -a PSQL <<< "$WARM_PSQL"
+else
+  PSQL=(runuser -u postgres -- psql -d blindspot -X -q -At -v ON_ERROR_STOP=1)
+fi
+
+# --- 1. which jobs finished since the last run ----------------------------------------------------
+names=$(printf "'%s'," "${!ROUTES[@]}")
+export WARM_SQL="SELECT id || ' ' || name FROM job_run WHERE ok AND name IN (${names%,})
+  AND finished_at > now() - interval '${LOOKBACK_MIN} minutes' ORDER BY finished_at"
+handled_file="$STATE_DIR/handled-job-runs"
+declare -A handled=()
+if [ -r "$handled_file" ]; then
+  while read -r id; do [ -n "$id" ] && handled[$id]=1; done < "$handled_file"
+fi
+
+if ! rows=$("${PSQL[@]}" -c "$WARM_SQL" 2>&1); then
+  log "could not read job_run, no refresh this time: ${rows//$'\n'/ }"
+  rows=""
+  db_ok=0
+else
+  db_ok=1
+fi
+
+declare -A jobs=()
+seen_ids=()
+while read -r id name; do
+  [[ "$id" =~ ^[0-9]+$ ]] && [ -n "$name" ] && [ -n "${ROUTES[$name]+x}" ] || continue
+  seen_ids+=("$id")
+  [ -n "${handled[$id]+x}" ] && continue
+  jobs[$name]=1
+  log "job $name finished (job_run $id)"
+done <<< "$rows"
+
+# --- 2. the cached answers those jobs feed --------------------------------------------------------
+if [ "${#jobs[@]}" -gt 0 ] && [ -d "$CACHE" ]; then
+  pattern=""
+  for name in "${!jobs[@]}"; do pattern+="${pattern:+|}(${ROUTES[$name]})"; done
+
+  # One line per cache file: "path:KEY: <request URI>" (nginx writes the key near the file's start).
+  declare -A files_of=()   # key -> its cache files, space-separated
+  while IFS= read -r line; do
+    path=${line%%:*}
+    key=${line#*:KEY: }
+    [[ "$key" =~ $pattern ]] || continue
+    files_of[$key]+="${files_of[$key]:+ }$path"
+  done < <(find "$CACHE" -type f -exec grep -a -m1 -H '^KEY: ' {} + 2>/dev/null)
+
+  # nginx names a cache file by the MD5 of its key (levels=1:2: .../<last char>/<2 before it>/<md5>);
+  # a file of the same key under another name holds another Origin's copy (Vary).
+  primary() { local h; h=$(printf '%s' "$1" | md5sum); h=${h%% *}; echo "$CACHE/${h: -1}/${h: -3:2}/$h"; }
+  remove() { if [ "$DRY" = 1 ]; then echo "warm: would delete $1"; else rm -f -- "$1"; fi; }
+
+  declare -A primary_of=()  # key -> its primary file, for each answer to refresh
+  purged=0
+  for key in "${!files_of[@]}"; do
+    if [[ "$key" =~ $PURGE_ONLY ]] || ! [[ "$key" =~ $SAFE_KEY ]] || [ "${#key}" -gt 1500 ]; then
+      for f in ${files_of[$key]}; do remove "$f"; done
+      purged=$((purged + 1))
+    else
+      primary_of[$key]=$(primary "$key")
+    fi
+  done
+
+  # Newest first (the primary copy's age), so the answers read most lately are refreshed first.
+  ordered=()
+  if [ "${#primary_of[@]}" -gt 0 ]; then
+    while IFS=$'\t' read -r _age key; do ordered+=("$key"); done < <(
+      for key in "${!primary_of[@]}"; do
+        printf '%s\t%s\n' "$(stat -c %Y -- "${primary_of[$key]}" 2>/dev/null || echo 0)" "$key"
+      done | sort -t $'\t' -k1,1nr)
+  fi
+
+  refreshed=0
+  failed=0
+  for key in "${ordered[@]}"; do
+    p=${primary_of[$key]}
+    for f in ${files_of[$key]}; do [ "$f" = "$p" ] || remove "$f"; done
+    if [ "$refreshed" -ge "$REFRESH_MAX" ]; then  # over the cap: purged, built again when next read
+      [ -e "$p" ] && remove "$p"
+      purged=$((purged + 1))
+      continue
+    fi
+    if [ "$DRY" = 1 ]; then
+      echo "warm: would refresh $key"
+      refreshed=$((refreshed + 1))
+    elif curl -fsS -g -o /dev/null --max-time 180 -H "Origin: $ORIGIN" -H "Host: $API_HOST" \
+        -H "X-Forwarded-Proto: https" "$REFRESH_URL$key"; then
+      refreshed=$((refreshed + 1))
+    else  # the old copy stays (stale-if-error); the clock or the next job tries again
+      failed=$((failed + 1))
+      log "refresh failed: $key"
+    fi
+  done
+  log "after ${!jobs[*]}: ${refreshed} answers refreshed, ${purged} purged, ${failed} failed"
+fi
+
+# Remember what was handled (the look-back window keeps the file small). A dry run changes nothing.
+if [ "$DRY" != 1 ] && [ "$db_ok" = 1 ]; then
+  mkdir -p "$STATE_DIR" && printf '%s\n' "${seen_ids[@]}" > "$handled_file.tmp" && mv -f "$handled_file.tmp" "$handled_file"
+fi
+
+# --- 3. the pages -------------------------------------------------------------------------------
+[ "${WARM_SKIP_PAGES:-0}" = 1 ] && exit 0
 for path in / /live /bulletin /brief /method; do
-  curl -fsS -o /dev/null --max-time 120 "http://127.0.0.1:3000${path}" || echo "warm: ${path} did not answer"
+  if [ "$DRY" = 1 ]; then echo "warm: would request $SITE_URL$path"; continue; fi
+  curl -fsS -o /dev/null --max-time 120 "${SITE_URL}${path}" || log "${path} did not answer"
 done
