@@ -37,7 +37,7 @@ MODIS_ALT_KM = 705.0
 GROUPS = ("modis_aqua_day", "viirs_day", "viirs_night", "modis_terra", "all")
 
 
-def check_tle(eng, orbits: dict) -> None:  # noqa: ANN001
+def check_tle(eng, orbits: dict) -> None:
     with eng.connect() as conn:
         rows = conn.execute(
             text(
@@ -72,7 +72,7 @@ def check_tle(eng, orbits: dict) -> None:  # noqa: ANN001
               f"angle {a[:, 2].min():.0f}-{a[:, 2].max():.0f} deg")  # fmt: skip
 
 
-def replay(eng, scans: L.Scans, orbits: dict) -> list[dict]:  # noqa: ANN001
+def replay(eng, scans: L.Scans, orbits: dict) -> list[dict]:
     passes, _ = L.stored_passes(eng, scans)
     out = []
     mismatches = missing = 0
@@ -162,7 +162,7 @@ def report(rows: list[dict]) -> None:
                 L.fmt_rate(pool, ci, k) for k in ("false_alarm_rate", "hit_rate")))  # fmt: skip
 
 
-def windows_report(eng, now: datetime, days: int = 7) -> None:  # noqa: ANN001
+def windows_report(eng, now: datetime, days: int = 7) -> None:
     since = now - timedelta(days=days)
     with eng.connect() as conn:
         slots = conn.execute(

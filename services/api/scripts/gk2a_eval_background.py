@@ -58,7 +58,7 @@ GROUPS = ("all", "modis_aqua_day", "viirs_day", "viirs_night", "modis_terra")  #
 K_EXCLUDE = 3.0
 
 
-def _backgrounds(btd, bt38, bt11, usable, cand, p):  # noqa: ANN001, ANN202
+def _backgrounds(btd, bt38, bt11, usable, cand, p):
     shape = btd.shape
     nan = np.full(shape, np.nan)
     bg_btd, bg_btd_s, bg_38, bg_38_s, bg_11 = (nan.copy() for _ in range(5))

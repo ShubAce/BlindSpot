@@ -55,7 +55,7 @@ UNIONS = {"firms|deep2": ("firms", "deep2"), "firms_seen|deep2": ("firms_seen", 
 BAR = 0.01
 
 
-def load_history(eng) -> pd.DataFrame:  # noqa: ANN001
+def load_history(eng) -> pd.DataFrame:
     with eng.connect() as conn:
         df = pd.read_sql(
             text(
@@ -74,7 +74,7 @@ def load_history(eng) -> pd.DataFrame:  # noqa: ANN001
     return df
 
 
-def firms_night(eng) -> pd.DataFrame:  # noqa: ANN001
+def firms_night(eng) -> pd.DataFrame:
     with eng.connect() as conn:
         df = pd.read_sql(
             text("SELECT lat, lon, acq_utc FROM fire_detection WHERE daynight = 'N'"), conn
@@ -152,7 +152,7 @@ def masks_by_night(hist: pd.DataFrame, firms: pd.DataFrame, grid: Grid, nights: 
     return out
 
 
-def precision(flagged: set[tuple[int, int]], grid: Grid, eng, firms: pd.DataFrame) -> dict:  # noqa: ANN001
+def precision(flagged: set[tuple[int, int]], grid: Grid, eng, firms: pd.DataFrame) -> dict:
     """Share of flagged pixels backed by FIRMS (production static site, or >= 3 night detections
     within 2 km on >= 2 nights), over the whole season."""
     if not flagged:
@@ -219,7 +219,7 @@ def report(hist: pd.DataFrame, masks: dict, name: str, rules: tuple[str, ...]) -
     return out
 
 
-def ring_effect(scans_dirs: list[Path], polys, masks: dict, rules: tuple[str, ...]) -> None:  # noqa: ANN001
+def ring_effect(scans_dirs: list[Path], polys, masks: dict, rules: tuple[str, ...]) -> None:
     scans = L.Scans(scans_dirs, polys)
     base_n = new_n = ring_base = ring_new = excl = 0
     for slot in sorted(scans.paths):

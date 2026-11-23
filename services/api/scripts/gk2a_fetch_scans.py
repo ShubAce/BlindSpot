@@ -24,7 +24,7 @@ import orjson
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # services/api (not installed)
 
-from blindspot.sources import gk2a  # noqa: E402
+from blindspot.sources import gk2a
 
 AOI = (73.8, 27.6, 77.7, 32.6)  # Settings.aoi_bbox, the job's window
 CHANNELS = ("sw038", "ir112")
@@ -41,7 +41,7 @@ class _Result:
     fetch_id: int | None = None
 
 
-def _fetch(source_key, url, *, params=None, headers=None, expect="json", **_):  # noqa: ANN001
+def _fetch(source_key, url, *, params=None, headers=None, expect="json", **_):
     for attempt in range(4):
         try:
             r = CLIENT.get(url, params=params, headers=headers)

@@ -30,10 +30,10 @@ from sqlalchemy.engine import Engine
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # services/api (not installed)
 
-from blindspot.analytics import geofire as gf  # noqa: E402
-from blindspot.analytics import passes as ps  # noqa: E402
-from blindspot.jobs import geostationary as job  # noqa: E402
-from blindspot.sources import gk2a  # noqa: E402
+from blindspot.analytics import geofire as gf
+from blindspot.analytics import passes as ps
+from blindspot.jobs import geostationary as job
+from blindspot.sources import gk2a
 
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
