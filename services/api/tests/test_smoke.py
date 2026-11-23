@@ -22,6 +22,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import delete
 from test_met import fixture_grid, meta_fixture
+from test_met import stored_runs  # noqa: F401  (a fixture: the met job on the recorded grids)
 
 from blindspot.analytics import trajectory as tj
 from blindspot.db import init_db, session_scope
@@ -640,6 +641,52 @@ def test_smoke_routes(recorded_runs, monkeypatch):
     finally:
         with session_scope() as session:
             session.execute(delete(SmokeRun).where(SmokeRun.id.in_(created)))
+        smoke_router._cache.clear()
+
+
+def test_smoke_validate_job_on_the_database(stored_runs, monkeypatch):
+    """The job path end to end: the met job stores the recorded grids, then smoke_validate reads
+    them back (load_validation_inputs), writes its smoke_run row and stored answer, and GET
+    /api/smoke/validation serves it. Cities, fires and PM2.5 are the recorded inputs the other
+    validation tests use (their loaders have database tests of their own)."""
+    from sqlalchemy import text
+
+    from blindspot.api.main import app
+    from blindspot.api.routers import smoke as smoke_router
+
+    ref = recorded_validation_inputs(("Delhi", "Ludhiana"))
+    monkeypatch.setattr(job, "utcnow", lambda: ref.run_at)
+    monkeypatch.setattr(job, "load_receptors", lambda session, bbox: (ref.cities, "test: recorded cities"))
+    monkeypatch.setattr(job, "load_pm25", lambda session, receptors, t0, t1: ref.obs)
+    monkeypatch.setattr(job, "load_fires", lambda session, t0, t1, bbox, **kw: (ref.fires, "test: recorded FIRMS"))
+    monkeypatch.setattr(job, "load_scars", lambda session, t0, t1, bbox: (None, "test: no scars"))
+    smoke_router._cache.clear()
+    res = job.smoke_validate()
+    assert "id" in res, res
+    try:
+        assert res["bodies"].get("stored") == 1, res["bodies"]
+        assert res["scored"]["from"].timestamp() == ref.t_score and res["scored"]["to"].timestamp() == ref.t_end
+        with session_scope() as session:
+            row = session.get(SmokeRun, res["id"])
+            assert row.kind == "validation" and row.met_run_ids == stored_runs[0]
+            summary = row.summary
+        assert [c["city"] for c in summary["cities"]] == ["Delhi", "Ludhiana"]
+        assert res["headline"] == summary["headline"] == summary["cities"][0]["summary"]
+        assert res["headline_city"] == summary["headline_city"] == "Delhi"
+        with TestClient(app) as client:
+            r = client.get("/api/smoke/validation")
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["headline"] == summary["headline"] and not body["headline"].startswith("Delhi")
+        assert body["headline_text"] == f"Delhi: {summary['headline']}"
+        assert body["placebo_comparison"] == summary["placebo_comparison"]
+        assert body["median_r_model_same_hours_as_day_shift"] == summary["median_r_model_same_hours_as_day_shift"]
+        assert body["day_shift_model_higher"]["cities_compared"] == 2
+        assert {s["city"] for s in body["series"]} == {"Delhi", "Ludhiana"}
+    finally:
+        with session_scope() as session:
+            session.execute(text("DELETE FROM response_body WHERE key = :k"), {"k": f"smoke/validation/{res['id']}"})
+            session.execute(delete(SmokeRun).where(SmokeRun.id == res["id"]))
         smoke_router._cache.clear()
 
 
