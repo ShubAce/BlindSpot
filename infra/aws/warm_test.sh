@@ -75,7 +75,9 @@ ok "dry run after sentinel: 5 refreshed, case file, CSV, odd key and the other O
 # 2. The refresh cap: over it, answers are purged instead (newest first are refreshed).
 out=$(run '101 sentinel\n' WARM_DRY_RUN=1 WARM_REFRESH_MAX=2)
 has "$out" "2 answers refreshed, 6 purged, 0 failed" "cap"
-ok "refresh cap"
+out=$(run '101 sentinel\n' WARM_DRY_RUN=1 WARM_REFRESH_BUDGET_S=0)
+has "$out" "0 answers refreshed, 8 purged, 0 failed" "time budget"
+ok "refresh cap and time budget"
 
 # 3. For real, with a stand-in refresh door that logs what it is asked.
 py=""

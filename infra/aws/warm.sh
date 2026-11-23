@@ -12,7 +12,8 @@
 #    for every cached answer those jobs feed:
 #      - refreshed: fetched again through 127.0.0.1:8002, a second door to the same cache that always
 #        asks the API and stores the new answer (proxy_cache_bypass). Visitors keep getting the old
-#        copy until the new one is stored, so nothing goes cold. At most REFRESH_MAX, newest first;
+#        copy until the new one is stored, so nothing goes cold. At most REFRESH_MAX, newest first,
+#        within REFRESH_BUDGET_S;
 #      - purged: case files, CSVs, any answer over that cap, and copies of a refreshed answer kept for
 #        a request with another Origin (the API varies on Origin) are deleted. The next request that
 #        needs one builds it again, once (proxy_cache_lock).
@@ -24,8 +25,8 @@
 # Try it without changing anything (prints what it would refresh and delete, writes no state):
 #   sudo WARM_DRY_RUN=1 /usr/local/sbin/blindspot-warm
 # Test overrides (infra/aws/warm_test.sh): WARM_PSQL (a command printing "id name" lines for the SQL
-# in $WARM_SQL), WARM_CACHE_DIR, WARM_STATE_DIR, WARM_REFRESH_URL, WARM_REFRESH_MAX, WARM_SITE_URL,
-# WARM_SKIP_PAGES=1.
+# in $WARM_SQL), WARM_CACHE_DIR, WARM_STATE_DIR, WARM_REFRESH_URL, WARM_REFRESH_MAX,
+# WARM_REFRESH_BUDGET_S, WARM_SITE_URL, WARM_SKIP_PAGES=1.
 set -u
 
 CACHE=${WARM_CACHE_DIR:-/var/cache/nginx/blindspot}   # proxy_cache_path in nginx-api-cache.conf
@@ -37,6 +38,7 @@ ORIGIN=https://www.blindspotin.tech  # the Origin the website and its visitors s
 API_HOST=api.blindspotin.tech        # the Host Caddy passes on, so a refresh looks like a visitor's read
 LOOKBACK_MIN=90                      # job runs finished this recently are looked at (handled ones skipped)
 REFRESH_MAX=${WARM_REFRESH_MAX:-60}  # answers refreshed per run; the rest are purged
+REFRESH_BUDGET_S=${WARM_REFRESH_BUDGET_S:-480}  # and no refresh starts after this long (a slow API)
 
 # The daily, weekly and bulletin jobs (data-jobs.yml) and the answers they feed (cache keys are the
 # request URI). /api/stats/headline and /api/scars/summary tick hourly but carry the Sentinel-2 totals
@@ -134,10 +136,13 @@ if [ "${#jobs[@]}" -gt 0 ] && [ -d "$CACHE" ]; then
 
   refreshed=0
   failed=0
+  started=$SECONDS
   for key in "${ordered[@]}"; do
     p=${primary_of[$key]}
     for f in ${files_of[$key]}; do [ "$f" = "$p" ] || remove "$f"; done
-    if [ "$refreshed" -ge "$REFRESH_MAX" ]; then  # over the cap: purged, built again when next read
+    # over the cap or the time budget: purged, built again when next read (the timer's next run and
+    # the pages are not held up behind a slow API)
+    if [ "$refreshed" -ge "$REFRESH_MAX" ] || [ $((SECONDS - started)) -ge "$REFRESH_BUDGET_S" ]; then
       [ -e "$p" ] && remove "$p"
       purged=$((purged + 1))
       continue
