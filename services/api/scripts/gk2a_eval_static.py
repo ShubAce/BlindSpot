@@ -97,6 +97,12 @@ class Grid:
         cx, cy = self.tr.transform(g.corner_lon, g.corner_lat)
         self.cx, self.cy = cx, cy
 
+    def in_region(self, rc: tuple[int, int]) -> bool:
+        i, j = rc[0] - self.window.row0, rc[1] - self.window.col0
+        return 0 <= i < self.region.shape[0] and 0 <= j < self.region.shape[1] and bool(
+            self.region[i, j]
+        )
+
     def footprint_m(self, i: int, j: int) -> shapely.Polygon:
         cx, cy = self.cx, self.cy
         corners = [(i, j), (i, j + 1), (i + 1, j + 1), (i + 1, j)]
@@ -133,8 +139,9 @@ def masks_by_night(hist: pd.DataFrame, firms: pd.DataFrame, grid: Grid, nights: 
         past = firms[firms.night < n]
         sites = fs.find_static_sites(list(zip(past.lat, past.lon, past.night, strict=True)))
         members = [m for s in sites for m in s.members]
-        firms_px = grid.pixels_near(np.array([m[0] for m in members]), np.array([m[1] for m in members]),
-                                    fs.STATIC_RADIUS_KM * 1000)  # fmt: skip
+        near = grid.pixels_near(np.array([m[0] for m in members]), np.array([m[1] for m in members]),
+                                fs.STATIC_RADIUS_KM * 1000)  # fmt: skip
+        firms_px = {rc for rc in near if grid.in_region(rc)}  # as the job: region pixels only
         seen = {rc for rc, s in deep_n.items() if len(s) >= 1}
         out[n] = {
             "firms": firms_px,
@@ -246,11 +253,35 @@ def ring_effect(scans_dirs: list[Path], polys, masks: dict, rules: tuple[str, ..
           f"with mask {ring_new}")  # fmt: skip
 
 
+def job_check(job_db: str, a0: L.Prepared, hist: pd.DataFrame, firms: pd.DataFrame, grid: Grid) -> None:
+    """The job's own mask code (load_static_evidence + static_mask) against the evaluated rule, as
+    of the night after the record ends. job_db: a copy of the evaluation database with the job's
+    tables created (init_db); it is only read."""
+    from datetime import UTC, datetime
+
+    from sqlalchemy.orm import Session
+
+    from blindspot.jobs import geostationary as job
+
+    night = max(hist.night) + timedelta(days=1)
+    with Session(L.read_only_engine(job_db)) as session:
+        ev = job.load_static_evidence(session, datetime(night.year, night.month, night.day, 12,
+                                                        tzinfo=UTC))  # fmt: skip
+    pixels = job.static_mask(ev, a0.scan, a0.geom).pixels
+    rule = masks_by_night(hist, firms, grid, [night])[night]
+    for name, key in (("firms", "firms"), ("gk2a_night", "deep2")):
+        prod = {rc for rc, r in pixels.items() if name in r}
+        print(f"  job mask as of night {night}, {name}: {len(prod)} pixels; evaluated rule "
+              f"{len(rule[key])}; differ: {sorted(prod ^ rule[key])}")  # fmt: skip
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     ap.add_argument("--eval-db", default=L.EVAL_DB)
     ap.add_argument("--scans", type=Path, nargs="*", default=[], help="folders of .npz scans")
     ap.add_argument("--geometry-scan", type=Path, help="any one scan .npz (default: first in --scans)")
+    ap.add_argument("--job-db", help="copy of the evaluation database with the job's tables: "
+                    "compare the job's mask code with the evaluated rule")  # fmt: skip
     args = ap.parse_args()
     eng = L.read_only_engine(args.eval_db)
     polys = L.region_polygons(eng)
@@ -281,6 +312,9 @@ def main() -> None:
               f">=3 FIRMS night detections within 2 km on >=2 nights {p.get('firms_3_nights2')}")  # fmt: skip
         for d in p.get("detail", []):
             print("   ", d)
+    if args.job_db:
+        print("\n== the job's mask code vs the evaluated rule ==")
+        job_check(args.job_db, a0, hist, firms, grid)
     if chosen and args.scans:
         ring_effect(args.scans, polys, masks, UNIONS[chosen])
 
