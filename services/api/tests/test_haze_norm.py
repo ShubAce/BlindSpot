@@ -9,6 +9,7 @@ smoke haze of the size seen in November 2026 (blue +0.05, NIR +0.02) hides it.
 from __future__ import annotations
 
 import dataclasses
+from itertools import pairwise
 
 import numpy as np
 
@@ -82,8 +83,8 @@ def test_haze_with_a_loss_of_contrast_still_recovers_the_burn() -> None:
 
 def test_a_clear_pair_is_left_as_it_is() -> None:
     post = _pass(2, True)
-    s4, out4 = _run(post)
-    s2, out2 = _run(post, RULES_2)
+    _, out4 = _run(post)
+    _, out2 = _run(post, RULES_2)
     assert not out4.hazy and "haze_norm" not in out4.stats
     assert np.array_equal(out4.burn, out2.burn)
     for k, v in out2.evidence.items():
@@ -126,7 +127,7 @@ def test_thick_haze_is_left_raw() -> None:
 def test_the_memory_keeps_the_corrected_view_and_the_clear_reference() -> None:
     """After a corrected hazy pass the memory holds clear-equivalent values (so the next clear pass
     sees no false darkening), and the haze reference (clear_*) still holds the last clear pass."""
-    state, out = _run(_pass(2, True, HAZE))
+    state, _ = _run(_pass(2, True, HAZE))
     a = state.arrays
     unchanged = ~_field_mask()
     assert abs(float(np.median(a["last_b8a"][unchanged])) - GROUND["B8A"]) < 0.003
@@ -145,7 +146,7 @@ def test_offsets_never_grow_with_wavelength_or_go_negative() -> None:
                         np.ones(SHAPE, bool), [], res_m=RES)
     grid, stats = burnscar.normalise_haze(state.arrays, _pass(2, False, odd), np.ones(SHAPE, bool), DAYS[1], RES)
     off = [stats["offsets"][b] for b in BANDS]
-    assert grid is not None and all(x >= 0 for x in off) and all(a >= b for a, b in zip(off, off[1:], strict=False))
+    assert grid is not None and all(x >= 0 for x in off) and all(a >= b for a, b in pairwise(off))
     assert off[2] <= off[1] + 1e-6 and stats["offsets"]["B8A"] == 0.0
 
 
