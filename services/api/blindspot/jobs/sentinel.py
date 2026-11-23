@@ -111,22 +111,6 @@ HOTSPOT_DISTRICTS: dict[tuple[str, str], tuple[str, ...]] = {
     ("Punjab", "Gurdaspur"): ("gurdaspur",),
     ("Punjab", "Jalandhar"): ("jalandhar",),
     ("Punjab", "Malerkotla"): ("malerkotla",),
-    # Added 2026-11-23: Haryana's seven districts with the most burnt area mapped this season (40 m
-    # scars stored by 22 Nov: Fatehabad 38,879 ha, Sirsa 18,946, Kaithal 14,711, Jind 13,476, Karnal
-    # 12,228, Hisar 11,960, Kurukshetra 7,085; 117,285 of Haryana's 140,221 ha; next is Bhiwani with
-    # 4,940). Replaying the rule from 1 Oct to 22 Nov in five windows of Fatehabad, Jind, Sirsa,
-    # Kaithal and Karnal (scripts/burn_res_replay.py), the area 20 m detected and 40 m did not was
-    # 11-20% of the 40 m area, 80-96% of it within 40 m of a 40 m detection (field edges and strips
-    # a 40 m pixel mixes with unburnt ground); 40 m detected about as much that 20 m did not (it
-    # counts mixed edge pixels whole), so the totals differ by under 2.3%. The estimated daily tile
-    # loop grows from about 51 to 60 min of SENTINEL_BUDGET_MIN = 100 (22 Nov pass counts).
-    ("Haryana", "Fatehabad"): ("fatehabad",),
-    ("Haryana", "Sirsa"): ("sirsa",),
-    ("Haryana", "Kaithal"): ("kaithal",),
-    ("Haryana", "Jind"): ("jind", "jhind"),
-    ("Haryana", "Karnal"): ("karnal",),
-    ("Haryana", "Hisar"): ("hisar", "hissar"),
-    ("Haryana", "Kurukshetra"): ("kurukshetra",),
 }
 STATES = ("punjab", "haryana")  # each state's districts outside HOTSPOT_DISTRICTS form its 40 m stage
 
