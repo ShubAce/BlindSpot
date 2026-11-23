@@ -153,7 +153,7 @@ export function useSourceCadence(): (key: string) => number | undefined {
 
 type Precision = { precision?: number | null; precision_ci95?: [number, number] | null; precision_n?: number | null } | null | undefined;
 
-/** "audited precision 87% (95% CI 68–96%, n = 23)", read from the headline; never typed in. */
+/** "audited precision 83% (95% CI 61%–94%, n = 18)", read from the headline; never typed in. */
 export function precisionText(u: Precision): string | null {
   if (!u || u.precision == null) return null;
   const ci = u.precision_ci95 && u.precision_ci95.length === 2 ? `95% CI ${percent(u.precision_ci95[0])}–${percent(u.precision_ci95[1])}` : null;
@@ -164,12 +164,6 @@ export function precisionText(u: Precision): string | null {
 
 /** A signed or plain change in the true minus. */
 export const minus = (s: string) => s.replace(/^-/, MINUS);
-
-/** "Amritsar, Ludhiana and Patiala" */
-export function listJoin(items: readonly string[]): string {
-  if (items.length <= 1) return items[0] ?? '';
-  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
-}
 
 /** "11:30" (IST "HH:MM") minutes since midnight. */
 export function hhmmMinutes(s: string | null | undefined): number | null {

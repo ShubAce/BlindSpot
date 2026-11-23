@@ -5,14 +5,14 @@ import type { StateBoundaries } from '@/components/case/types';
 import { loadFailed } from '@/components/pwa/LoadFailed';
 import { PATHS } from '@/lib/api';
 import { serverGet, type ApiResult } from '@/lib/api-server';
-import { dateIST, dateTimeIST, metric, MISSING, number, percent } from '@/lib/format';
+import { dateIST, dateTimeIST, interval, listJoin, metric, MISSING, number, percent } from '@/lib/format';
 import { onePerUpstream } from '@/lib/sources';
 
 import { Architecture } from './Architecture';
 import { AucStrip, AuditForest, DiurnalChart, PassErrorChart, SmokeDots, type ForestRow } from './charts';
 import { FrameImage } from './FrameImage';
 import { Relative } from './Relative';
-import type { Featured, GeoDiurnal, GeoGroup, Headline, OrbitValidation, RiskMethod, ScarsSummary, SmokeCityRow, SmokeValidation, SourcesList } from './types';
+import type { Featured, GeoDiurnal, GeoGroup, Headline, OrbitValidation, PooledAuc, RiskMethod, ScarsSummary, SmokeCityRow, SmokeValidation, SourcesList } from './types';
 
 /**
  * The method page's sections. Each is an async Server Component that reads its own endpoints (cached
@@ -175,9 +175,12 @@ export async function BlindHours() {
   const r = await serverGet<GeoDiurnal>(PATHS.geostationaryDiurnal);
   if (!r.ok) return <Failed what="the geostationary record" r={r} />;
   const d = r.data;
-  if (d.available === false || !d.hourly_ist?.length) return <p className="m-failed">No geostationary scans are stored yet{d.reason ? `: ${d.reason}` : '.'}</p>;
+  // hourly_ist always has 24 hours, so the scan count is what says whether there is anything to show
+  if (d.available === false || !d.scans || !d.hourly_ist?.length) return <p className="m-failed">No geostationary scans are stored yet{d.reason ? `: ${d.reason}` : '.'}</p>;
   const biggest = [...(d.unobserved_gaps_ist ?? [])].sort((a, b) => b.pixel_hours - a.pixel_hours)[0];
   const g = d.validation?.groups ?? {};
+  // pixels on plants, kilns and flares, left out of every count here (null until the job has flagged them)
+  const flagged = d.static_sources?.included ? null : d.static_sources?.pixels_flagged;
   const cell = (v: number | null | undefined, of?: number) => (v == null ? <span className="missing">—</span> : <>{percent(v)}{of != null ? <span className="m-of"> of {number(of)}</span> : null}</>);
   return (
     <>
@@ -199,6 +202,7 @@ export async function BlindHours() {
         <DiurnalChart data={d} />
         <p className="m-caption">
           {d.unit}. Mean over the last {number(d.days)} days ({number(d.scans)} scans since {dateTimeIST(d.since, { suffix: true })}). Shaded: the windows when a VIIRS or MODIS satellite passed, {d.polar_windows_ist.map((w) => `${w.start}–${w.end}`).join(', ')}.
+          {flagged ? ` ${number(flagged)} GK-2A pixels flagged as persistent heat sources (the rules aim at plants, kilns and flares) are left out of the counts.` : ''}
         </p>
       </div>
       {d.validation ? (
@@ -417,6 +421,14 @@ export async function Smoke() {
     }))
     .filter((c) => c.model != null || c.cams != null)
     .sort((a, b) => (b.model ?? -2) - (a.model ?? -2));
+  // The chart's period and inputs. With hindcast_from, period.from is the first scored hour and the
+  // hindcast starts spinup_h earlier; in an answer stored before 2026-11-23, period.from is where the
+  // hindcast started.
+  const inputs = d.inputs ? `from ${number(d.inputs.fires ?? null)} fire detections and ${number(d.inputs.scars ?? null)} candidate unseen burns${phrase ? ` (${phrase})` : ''}` : null;
+  const p = d.period;
+  const run = p?.hindcast_from
+    ? `Scored from ${dateTimeIST(p.from, { suffix: true })} to ${dateTimeIST(p.to, { suffix: true })}; the hindcast${inputs ? `, ${inputs},` : ''} starts ${p.spinup_h != null ? `${number(p.spinup_h)} h earlier (${dateTimeIST(p.hindcast_from, { suffix: true })})` : `at ${dateTimeIST(p.hindcast_from, { suffix: true })}`} so the smoke of earlier fires has arrived`
+    : `${p ? `Hindcast from ${dateTimeIST(p.from, { suffix: true })} to ${dateTimeIST(p.to, { suffix: true })}` : `Run of ${dateTimeIST(d.run_at, { suffix: true })}`}${inputs ? `, ${inputs}` : ''}`;
   return (
     <>
       <div className="m-figures">
@@ -425,7 +437,12 @@ export async function Smoke() {
         <Figure value={number(d.median_r_ventilation_only ?? null, { decimals: 2 })}>for ventilation alone: stagnant air with no smoke at all.</Figure>
       </div>
       <div className="m-cols m-cols--figures">
-        {d.headline ? <p className="m-statement">Delhi: {d.headline}.</p> : <span />}
+        <div>
+          {/* the city the headline is about (answers stored before 2026-11-23 do not say: Delhi) */}
+          {d.headline ? <p className="m-statement">{d.headline_city ?? 'Delhi'}: {d.headline}.</p> : null}
+          {/* the API's own sentence: each placebo against the model on the same hours */}
+          {d.placebo_comparison ? <p className="m-body">{`${d.placebo_comparison}.`}</p> : null}
+        </div>
         <Quote label="How the API checks it">{d.method}</Quote>
       </div>
       {rows.length ? (
@@ -453,8 +470,7 @@ export async function Smoke() {
           </ul>
           <SmokeDots rows={rows} />
           <p className="m-caption">
-            {d.period ? `Hindcast from ${dateTimeIST(d.period.from, { suffix: true })} to ${dateTimeIST(d.period.to, { suffix: true })}` : `Run of ${dateTimeIST(d.run_at, { suffix: true })}`}
-            {d.inputs ? `, from ${number(d.inputs.fires ?? null)} fire detections and ${number(d.inputs.scars ?? null)} candidate unseen burns${phrase ? ` (${phrase})` : ''}` : ''}. &ldquo;n eff&rdquo; is the number of independent hours behind each r, as the API counts them: hourly values that follow each other are not independent.
+            {run}. &ldquo;n eff&rdquo; is the number of independent hours behind each r, as the API counts them: hourly values that follow each other are not independent.
           </p>
         </div>
       ) : null}
@@ -471,6 +487,10 @@ const BASELINE_WORDS: Record<string, string> = {
   neighbourhood_only: 'Burning nearby, alone',
   burned_ha_7d_only: 'Scar hectares nearby in the last 7 days, alone',
   history_only: "Last season's fires nearby, alone",
+  timing_only: 'Harvest timing, alone',
+  // a rival ranking, not a placebo: it knows how much burnt around the field (backtest.recent.placebos_are)
+  location_only: "How much burnt this season in the field's 10 km square, alone",
+  observation_only: 'How often the field was seen (placebo)',
 };
 
 /** The same rankings inside a sentence: "ranking by burning nearby alone scored …". */
@@ -480,6 +500,10 @@ const BASELINE_IN_A_SENTENCE: Record<string, string> = {
   neighbourhood_only: 'ranking by burning nearby alone',
   burned_ha_7d_only: 'ranking by scar hectares nearby in the last 7 days alone',
   history_only: "ranking by last season's fires nearby alone",
+  timing_only: 'ranking by harvest timing alone',
+  location_only: "ranking by how much burnt this season in the field's 10 km square alone",
+  // named only after the sentence that introduces the placebo
+  observation_only: 'the placebo',
 };
 
 export async function Risk() {
@@ -487,20 +511,46 @@ export async function Risk() {
   if (!r.ok) return <Failed what="the risk method" r={r} />;
   const d = r.data;
   const m = d.method;
-  const hb = d.backtest?.headline;
+  // The headline: every pass pair of the last days, pooled. A report stored before 2026-11-23 has none
+  // (null), and too few field checks give no figure (shown false); the page then leaves it all out.
+  const recent = d.backtest?.recent;
+  const rc = recent?.shown && recent.auc != null ? recent : null;
+  const rcCi = interval(rc?.auc_ci95);
+  // the newest pair alone: only the chart's gold dot
+  const lp = d.backtest?.latest_pair;
   const all = d.backtest?.all_pairs;
+  const allCi = interval(all?.auc_ci95);
+  // every ranking the score is compared with on the same field checks, the placebos among them
+  const rivals = rc
+    ? [...Object.entries(rc.baselines ?? {}), ...Object.entries(rc.placebos ?? {})]
+        .filter((e): e is [string, PooledAuc] => e[1]?.auc != null)
+        .sort((a, b) => (b[1].auc ?? 0) - (a[1].auc ?? 0))
+    : [];
+  // Said plainly, as the API's verdict says it: each ranking the score is not clearly ahead of (the 95%
+  // interval of its AUC minus the score's reaches 0 or above). The random order has no difference.
+  const close = rivals
+    .filter(([, v]) => {
+      const [lo, hi] = v.minus_score?.ci95 ?? [null, null];
+      return lo != null && hi != null && hi >= 0;
+    })
+    .map(([k]) => BASELINE_IN_A_SENTENCE[k] ?? `ranking by ${k.replace(/_only$/, '').replace(/_/g, ' ')} alone`);
+  // The placebo knows nothing about burning: its AUC is read from the data, and its whole interval
+  // above 0.5 means the labels follow how often fields were seen.
+  const obs = rc?.placebos?.observation_only;
+  const obsLo = obs?.auc_ci95?.[0];
+  const obsCi = interval(obs?.auc_ci95);
   return (
     <>
-      {hb || all ? (
+      {rc || all ? (
         <div className="m-figures">
           {all?.auc_weighted_mean != null ? (
             <Figure value={number(all.auc_weighted_mean, { decimals: 3 })}>
-              area under the curve over all {number(all.pairs)} pass pairs, weighted by size{all.auc_ci95?.length === 2 ? ` (95% CI ${number(all.auc_ci95[0], { decimals: 3 })}–${number(all.auc_ci95[1], { decimals: 3 })})` : ''}. 0.5 is a random order; 1 would rank every burnt field first.
+              area under the curve over all {number(all.pairs)} pass pairs, weighted by size{allCi ? ` (95% CI ${allCi})` : ''}. 0.5 is a random order; 1 would rank every burnt field first.
             </Figure>
           ) : null}
-          {hb ? (
-            <Figure value={number(hb.auc, { decimals: 3 })}>
-              on the latest pair, tile {hb.tile}, {dateIST(hb.t0)} to {dateIST(hb.t1)}: {number(hb.burnt)} fields burnt and {number(hb.unburnt)} did not ({percent(hb.base_rate, 1)}).
+          {rc ? (
+            <Figure value={number(rc.auc, { decimals: 3 })}>
+              over the last {number(rc.window.days)} days of passes, {dateIST(rc.window.from)} to {dateIST(rc.window.to)}: {number(rc.pairs)} pass pairs on {number(rc.tiles)} tiles, pooled{rcCi ? ` (95% CI ${rcCi}${rc.block_km != null ? `, from resampling ${number(rc.block_km)} km squares of land` : ''})` : ''}. {number(rc.burnt)} burnt and {number(rc.unburnt)} unburnt field checks: a field still waiting is checked again in each pair.
             </Figure>
           ) : null}
         </div>
@@ -544,64 +594,84 @@ export async function Risk() {
               </svg>
               0.5, a random ranking
             </li>
-            {hb ? (
+            {lp ? (
               <li>
                 <svg width="14" height="14" aria-hidden="true">
                   <circle cx="7" cy="7" r="5.5" fill="var(--accent-mark)" stroke="var(--ink)" strokeWidth="1.5" />
                 </svg>
-                {`The latest pair: ${hb.tile}, ${dateIST(hb.t0)} to ${dateIST(hb.t1)}`}
+                {`The latest pair: ${lp.tile}, ${dateIST(lp.t0)} to ${dateIST(lp.t1)}`}
               </li>
             ) : null}
           </ul>
-          <AucStrip pairs={all.auc_by_pair} mean={all.auc_weighted_mean} lead={hb ? { tile: hb.tile, t0: hb.t0, t1: hb.t1, burnt: hb.burnt, unburnt: hb.unburnt } : null} />
+          <AucStrip pairs={all.auc_by_pair} mean={all.auc_weighted_mean} lead={lp ? { tile: lp.tile, t0: lp.t0, t1: lp.t1, burnt: lp.burnt, unburnt: lp.unburnt } : null} />
           <p className="m-caption">Each dot is one pair of Sentinel-2 passes over one tile, placed at the later pass. One pass covers many tiles, so a date can hold many dots.</p>
         </div>
       ) : null}
+      {/* the pooled last days, as the second figure: left out whole when the report has none */}
+      {rc ? (
       <div className="m-cols m-cols--table">
-      {hb?.baselines ? (
+      {rivals.length ? (
         <div className="m-table-wrap">
-          <table className="m-table m-table--fit">
-            <caption>The latest pair against simpler rankings</caption>
+          <table className="m-table m-table--stack">
+            <caption>{`The last ${number(rc.window.days)} days against simpler rankings and a placebo`}</caption>
             <thead>
               <tr>
                 <th scope="col">Ranking</th>
                 <th scope="col" className="num">Area under the curve</th>
+                <th scope="col" className="num">Difference from the score</th>
               </tr>
             </thead>
             <tbody>
               <tr className="is-lead">
                 <th scope="row">{`The risk score (${m?.model ?? 'current model'})`}</th>
-                <td className="num">{number(hb.auc, { decimals: 3 })}</td>
+                <td className="num" data-label="Area under the curve">
+                  {number(rc.auc, { decimals: 3 })}
+                  {rcCi ? <span className="m-of">{` (${rcCi})`}</span> : null}
+                </td>
+                <td className="num" data-label="Difference from the score">
+                  <span className="missing">—</span>
+                </td>
               </tr>
-              {Object.entries(hb.baselines)
-                .sort((a, b) => b[1].auc - a[1].auc)
-                .map(([k, v]) => (
+              {rivals.map(([k, v]) => {
+                const ci = interval(v.auc_ci95);
+                const diff = interval(v.minus_score?.ci95, { signed: true });
+                return (
                   <tr key={k}>
                     <th scope="row">{BASELINE_WORDS[k] ?? k.replace(/_/g, ' ')}</th>
-                    <td className="num">{number(v.auc, { decimals: 3 })}</td>
+                    <td className="num" data-label="Area under the curve">
+                      {number(v.auc, { decimals: 3 })}
+                      {ci ? <span className="m-of">{` (${ci})`}</span> : null}
+                    </td>
+                    <td className="num" data-label="Difference from the score">
+                      {v.minus_score?.diff != null ? number(v.minus_score.diff, { decimals: 3, signed: true }) : <span className="missing">—</span>}
+                      {v.minus_score?.diff != null && diff ? <span className="m-of">{` (${diff})`}</span> : null}
+                    </td>
                   </tr>
-                ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
       ) : null}
       <div>
-        <p className="m-statement">
-          Both scores come from this season&apos;s own <span className="m-nobreak">Sentinel-2</span> passes.
-        </p>
-        <p className="m-body">
-          {/* the pair the second figure, the gold dot and the table all describe; never "the pair shown first", which is the all-pairs mean */}
-          {hb ? `The table's pair, tile ${hb.tile} from ${dateIST(hb.t0)} to ${dateIST(hb.t1)}, is ${hb.why_this_pair ?? 'the latest pass pair'}.` : ''}
-          {(() => {
-            // Said plainly when a simpler ranking beat the full score on this pair.
-            const best = hb?.baselines ? Object.entries(hb.baselines).sort((a, b) => b[1].auc - a[1].auc)[0] : undefined;
-            return hb && best && best[1].auc > hb.auc
-              ? ` On it, ${BASELINE_IN_A_SENTENCE[best[0]] ?? `ranking by ${best[0].replace(/_only$/, '').replace(/_/g, ' ')} alone`} scored ${number(best[1].auc, { decimals: 3 })}, above the full score's ${number(hb.auc, { decimals: 3 })}.`
-              : '';
-          })()}
-        </p>
+        {all?.auc_weighted_mean != null ? (
+          <p className="m-statement">
+            Both scores come from this season&apos;s own <span className="m-nobreak">Sentinel-2</span> passes.
+          </p>
+        ) : null}
+        {rivals.length ? (
+          <p className="m-body">
+            {/* the table's brackets, then the placebo read from the data, then every ranking the score is not clearly ahead of */}
+            In brackets, 95% intervals; a difference is the ranking&apos;s AUC minus the score&apos;s, on the same resamples.
+            {obs?.auc != null
+              ? ` The placebo knows only how often the field was seen and nothing about burning, so it should score about 0.5; it scored ${number(obs.auc, { decimals: 3 })}${obsCi ? ` (95% CI ${obsCi})` : ''}.${obsLo != null && obsLo > 0.5 ? " Its whole interval is above 0.5, so the backtest's labels follow, in part, how often fields were seen." : ''}`
+              : ''}
+            {close.length ? ` The score is not clearly ahead of ${listJoin(close, 'or')}: within the 95% interval of the difference, ${close.length > 1 ? 'each' : 'it'} could do as well as the score or better.` : ''}
+          </p>
+        ) : null}
       </div>
       </div>
+      ) : null}
     </>
   );
 }
@@ -631,9 +701,14 @@ export async function Limits() {
     const phrase = auditPhrase(u);
     items.push({ title: 'The unseen share is an upper bound.', body: `${prose(u.note)}${phrase && u.unseen_share != null ? ` Today: ${percent(u.unseen_share)} of the burnt area, ${phrase}.` : ''}` });
   }
-  if (geo.ok && geo.data.interpretation?.[1]) items.push({ title: 'GK-2A is an activity index, not a fire count.', body: geo.data.interpretation[1] });
+  // Picked by what it says, not where it stands: the list's sentences come and go with the data (no
+  // midday VIIRS sentence before the first validated passes). The midday one when there is one, else
+  // the one on the hours no polar satellite saw; never the afternoon hit rate or the outside share.
+  const gk = geo.ok ? geo.data.interpretation?.find((t) => /midday counts are not reliable|not a fire count/.test(t)) : undefined;
+  if (gk) items.push({ title: 'GK-2A is an activity index, not a fire count.', body: gk });
   const na = sm.ok ? sm.data.method?.match(/Correlation is not attribution.*$/)?.[0] : null;
-  if (sm.ok && sm.data.headline) items.push({ title: 'The smoke check is thin.', body: `In Delhi, ${sm.data.headline}.${na ? ` ${na}` : ''}` });
+  // the city the headline is about (answers stored before 2026-11-23 do not say: Delhi)
+  if (sm.ok && sm.data.headline) items.push({ title: 'The smoke check is thin.', body: `In ${sm.data.headline_city ?? 'Delhi'}, ${sm.data.headline}.${na ? ` ${na}` : ''}` });
   if (rk.ok && rk.data.method?.note) items.push({ title: 'Risk is a ranking.', body: prose(rk.data.method.note) });
   if (!items.length)
     return (

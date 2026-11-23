@@ -159,7 +159,17 @@ export type Risk = Envelope & {
   ranking_order?: string;
   method?: { note?: string; formula?: string };
   backtest?: {
-    headline?: { auc?: number; tile?: string; burnt?: number; unburnt?: number; baselines?: { random?: { auc?: number } } } | null;
+    /** Every pass pair of the last window.days days on every tile, pooled; its counts are field checks.
+     *  Null in a report stored before 2026-11-23; with too few checks, shown is false and auc null. */
+    recent?: {
+      shown?: boolean;
+      auc?: number | null;
+      auc_ci95?: [number | null, number | null] | null;
+      window?: { from?: IsoTime; to?: IsoTime; days?: number };
+      pairs?: number;
+      tiles?: number;
+      baselines?: { random?: { auc?: number } | null } | null;
+    } | null;
     all_pairs?: { pairs?: number; auc_weighted_mean?: number; auc_ci95?: [number, number] | null } | null;
   } | null;
   reason?: string | null;

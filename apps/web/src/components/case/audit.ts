@@ -17,7 +17,7 @@ import type { UnseenBurnsBlock } from './types';
 export type CaseState = 'unseen' | 'alerted' | 'unchecked';
 export const caseState = (unseen: boolean | null | undefined): CaseState => (unseen === true ? 'unseen' : unseen === false ? 'alerted' : 'unchecked');
 
-/** "audit precision 87% (95% CI 68–96%, n = 23)" (with `verb`: "audit precision was 87% (…)", for a
+/** "audit precision 83% (95% CI 61%–94%, n = 18)" (with `verb`: "audit precision was 83% (…)", for a
  *  sentence), or null when the API has no audit to state. */
 export function auditPhrase(u: UnseenBurnsBlock | null | undefined, verb?: string): string | null {
   if (!u || u.precision == null) return null;

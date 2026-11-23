@@ -137,7 +137,7 @@ Cached for 60 s.
   "checked_area_ha": 104476.3, "unseen_share": 0.8261, "districts": 38,
   "first_pass": "2026-10-02T05:40:36.219000Z", "last_pass": "2026-10-30T05:40:52.298000Z",
   "model_version": "s2burn-rules-2",
-  "precision": 0.87, "precision_ci95": [0.679, 0.955], "precision_n": 23,
+  "precision": 0.833, "precision_ci95": [0.608, 0.942], "precision_n": 18,
   "note": "Scars from Sentinel-2 passes processed so far ...; treat the share as an upper bound ..."
  },
  "delhi": {
@@ -364,12 +364,18 @@ There is no `hours` parameter. A pass counts when the site lies inside the instr
    "unseen_share": 0.748, "fire_detections": 658, "scope": ["hotspots", "punjab"], "res_m": 20}],
  "coverage": {"processed": 142, "skipped": 32, "failed": 0, "catalogued": 251, "latest_processed_pass": "2026-10-30T05:40:52.298000Z", "tiles": ["43RCP", "... 12 tiles"]},
  "method": {"model_version": "s2burn-rules-2", "summary": "...", "label": "candidate unseen burn",
-   "audit": {"candidate_unseen": {"precision": 0.87, "precision_ci95": [0.679, 0.955], "audited": 23, "...": "..."},
+   "audit": {"candidate_unseen": {"precision": 0.833, "precision_ci95": [0.608, 0.942], "audited": 18, "...": "..."},
              "firms_confirmed": {"precision": 0.833, "...": "..."}, "recall_vs_firms": {"recall_same_window": 0.353, "...": "..."}, "current": true},
    "unseen_rule": "unseen = no FIRMS detection within max(1 km, pixel half-diagonal + 200 m) ..."}}
 ```
 
   `res_m` is 20 in the hotspot districts and 40 elsewhere. Coverage grows daily (11:17 UTC).
+  `method.audit.candidate_unseen` (changed 2026-11-23): precision comes from held-out random samples
+  only: 15 of 18 candidate unseen clusters were real burns (83%, 95% CI 61-94%). The first sample,
+  used to design the look-alike filter, is left out; with it the figure was 20 of 23. `samples`
+  names the held-out samples, `development_sample` `{name, audited, burnt, why_left_out}` the one
+  left out, and `with_development_sample` `{audited, burnt, precision, precision_ci95}` the pooled
+  figure, for the record only.
 - **GET /api/scars/{id}** returns the case file:
   - `case` holds the properties plus `geometry`.
   - `imagery: {bbox, pre: {date, datetime, item_id, collection, cloud_pct, truecolor_url,
@@ -394,7 +400,8 @@ Params: `district`, `limit` (default 500), `min_score`, `bbox`.
  "unnamed": {"clusters": 0, "area_ha": 0.0, "why": "..."},
  "ranking_order": "risk_weighted_ha = ...",
  "method": {"model": "risk-v2", "formula": "risk = 100 x dryness x (0.4 timing + 0.4 neighbourhood + 0.2 history)", "weights": {"timing": 0.4, "neighbourhood": 0.4, "history": 0.2}, "factors": {}, "note": "A transparent ranking, not a probability ..."},
- "backtest": {"headline": {"tile": "43REP", "auc": 0.687, "burnt": 182, "unburnt": 991, "base_rate": 0.155, "precision_at_k": {}, "baselines": {}, "villages": {}},
+ "backtest": {"recent": {"shown": true, "window": {"days": 7, "...": "..."}, "pairs": "...", "tiles": "...", "burnt": "...", "unburnt": "...", "auc": "...", "auc_ci95": ["...", "..."], "...": "..."},
+   "latest_pair": {"tile": "43REP", "auc": 0.687, "burnt": 182, "unburnt": 991, "base_rate": 0.155, "precision_at_k": {}, "baselines": {}, "villages": {}},
    "all_pairs": {"pairs": 148, "auc_weighted_mean": 0.556}, "timing_tested": false},
  "reason": null}
 ```
@@ -426,25 +433,53 @@ Params: `district`, `limit` (default 500), `min_score`, `bbox`.
 - `backtest` additions: `model`, `verdict` (one paragraph, every number from the report),
   `strength` ("weak" / "modest" / "moderate", decided by the numbers), `calibration` (`bands`:
   [{top_share_max, band, fields, burnt, burnt_share, burnt_share_ci95, lift}], `base_rate`,
-  `horizon`, `what`), `pairs_are`. `headline` adds `n`, `auc_ci95`, `precision_ci95`, `lift_ci95`,
-  `hits_at_k`, `ci_note`, `factors_used`. `all_pairs` adds `field_pairs`, `tiles`, `auc_ci95`,
-  `top_10pct` {burnt_share, burnt_share_ci95, lift, lift_ci95, base_rate},
-  `baselines_auc_weighted_mean`, `what`, `ci_method`; `auc_by_pair` items add `tile`. `windows`
-  is still the number of pass-pair windows.
+  `horizon`, `what`), `pairs_are`. `latest_pair` (`headline` until 2026-11-23) adds `n`,
+  `auc_ci95`, `precision_ci95`, `lift_ci95`, `hits_at_k`, `ci_note`, `factors_used`. `all_pairs`
+  adds `field_pairs`, `tiles`, `auc_ci95`, `top_10pct` {burnt_share, burnt_share_ci95, lift,
+  lift_ci95, base_rate}, `baselines_auc_weighted_mean`, `what`, `ci_method`; `auc_by_pair` items
+  add `tile`. `windows` is still the number of pass-pair windows.
 - Repair additions (2026-10-31): `all_pairs.auc_by_tile` [{tile, pairs, field_checks, auc}] (size-
   weighted AUC per tile, most checks first); `backtest.tested_order` {run_id, what, fields, cuts:
-  [{band, min_tested_score}], spearman_with_risk_score, top_1pct_overlap}. `backtest.verdict` now
-  says the latest pair's interval is narrower than the truth and where its tile ranks among tiles
-  with over 100 checks (on the dev data 43REP was the best tile; 43REQ, 35% of the checks, scored
-  0.444). `method.note` says the tested part of the ordering is weak, that timing (40% of the
-  weight) is untested, and how closely today's score follows the tested ordering (dev database:
-  Spearman 0.754, 49.4% of today's top 1% also in the tested top 1%; reviewer's measurement).
+  [{band, min_tested_score}], spearman_with_risk_score, top_1pct_overlap}. `backtest.verdict` says
+  how far apart the tiles with over 100 checks are (on the dev data 43REP was the best tile; 43REQ,
+  35% of the checks, scored 0.444); since 2026-11-23 it gives the pooled figure of the last 7 days
+  (`recent`, below) instead of the latest pair's, and no longer ranks the latest pair's tile.
+  `method.note` says the tested part of the ordering is weak, that timing (40% of the weight) is
+  untested, and how closely today's score follows the tested ordering (dev database: Spearman
+  0.754, 49.4% of today's top 1% also in the tested top 1%; reviewer's measurement).
 - Backtest, measured with risk-v3 on the dev database (148 pass pairs, 361,031 field checks, 12
   tiles): AUC 0.560 (95% CI 0.491-0.663, resampling whole tiles), so **not clearly better than
   chance**; fields in the top 10% of each pass burnt 1.42 times as often as the average field (95%
   CI 1.24-1.73; 21.6% against 15.2%). Latest pair (43REP, 1,173 fields): AUC 0.701 (0.664-0.736,
   field bootstrap, optimistic). Present it as `backtest.verdict` says: a weak ranking for choosing
   where to look first, not a forecast. Never show a raw score as certainty ("score 100").
+- **The backtest headline is `recent` (2026-11-23; `headline` is gone).** Every pass pair of the
+  last 7 days on all tiles (pairs whose second pass falls in the 7 days up to the newest one),
+  pooled: the AUC over every burnt x unburnt comparison of field checks within a pair, with a 95%
+  CI from resampling 30 km squares of land, beside simpler rankings and an observation placebo.
+  `recent` is `{what, window: {from, to, days, anchor}, pairs, tiles, burnt, unburnt, base_rate,
+  comparisons, min_each, shown, auc, auc_ci95, ci_method, blocks, block_km, top_10pct:
+  {burnt_share, burnt_share_ci95, base_rate, lift, lift_ci95}, baselines: {random: {auc},
+  fires_7d_only, neighbourhood_only, burned_ha_7d_only, history_only[, timing_only]}, placebos:
+  {location_only, observation_only}, placebos_are, factors_used}`. Each baseline and placebo is
+  `{auc, auc_ci95, minus_score: {diff, ci95}}`: its AUC minus the score's, on the same resamples.
+  With fewer than `min_each` (100) burnt or unburnt checks, `shown` is false, `auc` and `auc_ci95`
+  are null, and `reason` says why. No figure of `recent` is quoted here: the first comes from the
+  next production run.
+  - `burnt`, `unburnt`, `base_rate`, `comparisons` and `top_10pct.base_rate` count **field
+    checks** (one field in one pair), not fields: a field still waiting is checked again in every
+    pair it enters. Never label them "fields".
+  - `location_only` (how much burnt this season in the field's 10 km square) is burn information,
+    a rival ranking more than a placebo. `observation_only` (how often the field was seen) is the
+    placebo: above 0.5, the backtest's labels also follow how fields were seen.
+  - `latest_pair` is the newest pair's own detail in the old `headline` shape (`tile`, `n`,
+    `burnt`, `unburnt`, `auc`, `auc_ci95`, `precision_at_k`, `baselines`, `villages`, ...); its
+    `why_this_pair` says why it is no longer the headline: one pair is one tile's luck. In the
+    sample above it holds what the 2026-10-31 answer served as `headline`.
+  - `backtest.verdict` now gives the pooled sentence in field checks and names every ranking or
+    placebo the score is not clearly ahead of (the 95% CI of its AUC minus the score's reaches 0).
+  - Reports stored before this change have neither `recent` nor `latest_pair` (both null) until
+    the next risk run, and their stored `verdict` keeps the old latest-pair sentence until then.
 - `risk_factors.neighbourhood.candidate_unseen_burns_7d` was renamed from `unseen_burns_7d`;
   v3 adds `risk_factors.neighbourhood.scale`, and `combined` reads "mean of events and burnt hectares".
 - Village names come from census 2011 and are cut at 40 characters upstream (see the ranking
@@ -505,8 +540,8 @@ evidence, each with its qualification in every answer: candidate unseen burns (u
   candidate unseen burns, area (ha), newest pass date, lat, lon, Google Maps link, case file link.
   - The header is in the chosen language, and the count and area cells name the window and carry
     the audit, so a saved or forwarded file keeps its qualification: "candidate unseen burns,
-    Sentinel-2 passes 2026-10-24 to 2026-10-30 (upper bound: in a hand audit of 23, 87% were real
-    burns, 95% CI 68%-96%)".
+    Sentinel-2 passes 2026-10-24 to 2026-10-30 (upper bound: in a hand audit of 18, 83% were real
+    burns, 95% CI 61%-94%)".
   - The file is `blindspot-brief-<district slug>-<from>-to-<to>.csv`, and
     `Link: </api/brief/<district>?days=<days>>; rel="describedby"` points to the JSON brief, whose
     `sources` and `notes` cover every figure in the file.
@@ -604,8 +639,33 @@ evidence, each with its qualification in every answer: candidate unseen burns (u
   fire_exposure_range, blh_m_now, wind_from_deg_now}]}` for 24 cities. These are the map
   markers.
 - **GET /api/smoke/validation** returns the modelled smoke index against observed PM2.5 per
-  city, with `r` and `n_eff`. Delhi now: r 0.65 at lag 0, 0.85 at a 4 h lag. n_eff is small:
-  show it as indicative.
+  city, with `r` and `n_eff`. n_eff is small: show it as indicative. On a copy of production data
+  (16 cities, 17-22 Nov 2026, scored after a 48 h spin-up) the median r over cities
+  (`median_r_smoke_per_km_mixing_depth`) was 0.11 (Delhi 0.06), below the CAMS model (0.40),
+  ventilation alone (0.33) and 1/BLH alone (0.29); against its own smoke moved 1-3 days, on the
+  same hours, it tied or was slightly above (0.22 vs 0.21). No sign of skill at timing smoke that
+  week; about 10 independent hours per city.
+  - Additions (2026-11-23): `period.hindcast_from`; `period.from` is now the first scored hour,
+    `period.spinup_h` (48) after the hindcast starts, so smoke from earlier fires has arrived.
+    `headline` stays the bare sentence (pages print the city before it: `headline_city`, or Delhi
+    for answers stored before 2026-11-23); `headline_city` says whose it is (Delhi when Delhi has
+    measurements, else the city with the most hours), `headline_text` is "<city>: <sentence>" and
+    `headline_placebos` that city's placebo sentence.
+  - Placebos (additions), each compared with the model on the same hours: per city `placebos:
+    {constant_smoke, day_shift}` and `placebo_summary` (a sentence). `constant_smoke` (1/BLH with
+    the smoke held constant) has the usual `{lag0, best_lag, by_lag}`; `day_shift` (the modelled
+    smoke moved by 1 to 3 days) is `{shifts_h, by_shift: [{shift_h, n, r, r_model_same_hours}],
+    mean_r, max_r, model_mean_r_same_hours, model_higher, compared}`. Top level:
+    `median_r_placebo_constant_smoke`, `median_r_placebo_day_shift`,
+    `median_r_model_same_hours_as_day_shift`, `day_shift_model_higher: {cities, cities_compared,
+    shifts, shifts_compared}` and `placebo_comparison` (a sentence). Compare the day-shift median
+    with `median_r_model_same_hours_as_day_shift`, never with the model's whole-window median r:
+    the moved copies cover fewer hours, and r depends on which hours are in.
+  - `monte_carlo: {seed, particles_per_member, allocation}` (addition): the seed is the window's
+    own, so the same window and inputs give the same numbers on every run.
+  - `by_lag` now runs from -12 to +12 h (25 entries; `cams_baseline` and `members` stay lag 0
+    only), so `best_lag.lag_h` can be negative. `best_lag` is picked after seeing the data, so it
+    flatters.
 - Cadence: `smoke` runs after each `met`; `smoke_validate` daily at 11:17 UTC.
 
 ## Imagery: `/api/imagery/*`
@@ -732,14 +792,39 @@ evidence, each with its qualification in every answer: candidate unseen burns (u
   modis_aqua_day, modis_terra, all}, period, algorithm, method}}`.
   - Use `unit` and `interpretation` as the copy.
   - `mean_count` is null for hours without scans.
+  - `include_static` (addition, 2026-11-23; default false): pixels flagged as persistent heat
+    sources (the rules, in `static_sources.rule`, aim at plants, kilns and flares) are left out of
+    `slots[].count`, `count_pb`, `count_hr`, `hourly_ist` and the totals built from them unless it
+    is true.
+    `slots[].count_static` (addition) is what the fire test found on flagged pixels in that scan.
+    `static_sources` (addition) is `{rule, included, pixels_flagged, pixels_flagged_by_rule,
+    pixel_hours}`; before the job has built the static tables, `pixels_flagged` and `pixel_hours`
+    are null and it has a `reason`.
+  - `outside_share_by_pad: [{pad_min, union, per_day}]` (addition): the share of fire pixels
+    outside the polar windows with each pass padded 0, 5, 10 or 15 minutes, on one IST clock
+    (`union`; at 15 minutes it equals `share_outside_polar_windows`) or each day against its own
+    passes (`per_day`). Quote only pads of 10-15 minutes: with no pad, a pass's ~2-minute
+    detection span is compared with 10-minute scans and nearly everything falls outside by
+    construction. Each scan counts by the share of its 10 minutes outside the windows, so
+    `unobserved_gaps_ist[].pixel_hours` add up to `pixel_hours_outside_polar_windows`.
 - **GET /api/geostationary/latest** (`min_confidence=1|2`, `slot=<ISO>`) returns
   `{scan: {slot_utc, t, age_min, count, count_pb, count_hr, count_high, frp_sum_mw,
   clear_frac, sza_deg, daylight, algorithm}, unit, fires: FeatureCollection<Polygon, {lon,
   lat, state, confidence: "nominal"|"high", frp_mw, excess_k, bt38_k, bt11_k, area_km2,
   absolute_test}>}`.
   - At night the newest scan usually has 0 features. Use `slot=2026-10-29T10:40:00Z` (49
-    pixels) for the evening-peak demo.
+    pixels; a `gk2a-ctx-2` scan, so 404 until it is reprocessed under `gk2a-ctx-3`) for the
+    evening-peak demo.
   - An unknown slot returns 404.
+  - Additions (2026-11-23): every feature has `properties.static` (false). `include_static=true`
+    (default false) adds the flagged pixels too, with `static: true` and `static_rules`.
+    `scan.count_static` is what the fire test found on flagged pixels; the other `scan` counts
+    leave them out whatever `include_static` says. `static_sources: {rule, included}`.
+- Algorithm (2026-11-23): every slot, pixel, validation and static read is for `gk2a-ctx-3`,
+  which differs from `gk2a-ctx-2` only on flagged pixels. Until the job has run under it, `slots`
+  are empty, `validation` has no passes and `interpretation` has no validation sentences, so pick
+  its sentences by content, not by position. Scans stored under ctx-2 are not read: an older
+  `slot=` (such as the demo slot above) returns 404 until it is reprocessed under ctx-3.
 - Cadence: hourly 08:17-18:17 UTC and at 00:17, 03:17, 06:17, 21:17. The backfill runs daily at
   06:17 UTC (11:47 IST).
 
@@ -820,7 +905,7 @@ done         {"type":"done","run_id":"97c49cde-...","duration_ms":8228,"ok":true
   - `tool_call`/`tool_result` can name an 11th tool, `get_field_brief` (addition, 2026-11-01):
     the district field brief below, for "where should PPCB/HSPCB teams go in <district>". Its
     `tool_result.summary` is "Field brief <district> (<first day> to <last day>): <n> candidate
-    unseen burns, <ha> ha in <v> villages (audited precision 87%, 95% CI 67.9-95.5%); <k>
+    unseen burns, <ha> ha in <v> villages (audited precision 83.3%, 95% CI 60.8-94.2%); <k>
     villages with fields in the risk run's top tenth". `describe.ts` has no label for it yet (it
     falls back to "Called get field brief").
 - **GET /api/agent/runs/{id}** returns `{run: {id, kind, question, lang, model, started_at,

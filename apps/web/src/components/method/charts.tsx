@@ -294,13 +294,13 @@ export function SmokeDots({ rows }: { rows: SmokeCityRow[] }) {
 // ---------------------------------------------------------------------------------------------
 // risk ranking AUC for every pass pair, by the date of the later pass
 
-/** The pair the method page states on its own (backtest.headline). */
+/** The newest pass pair, marked gold (backtest.latest_pair). */
 export type AucLead = { tile?: string; t0: string; t1: string; burnt?: number; unburnt?: number };
 
 /**
- * The index of the one dot that is the headline pair, or -1. Pass dates alone are not enough: one
+ * The index of the one dot that is the latest pair, or -1. Pass dates alone are not enough: one
  * Sentinel-2 pass covers many tiles, and a tile can list the same two passes twice, so the tile and
- * then the headline's own field counts decide, and at most one dot is ever gold.
+ * then the pair's own field counts decide, and at most one dot is ever gold.
  */
 function leadIndex(pts: (AucPair & { ms: number })[], lead: AucLead | null): number {
   if (!lead) return -1;
@@ -364,7 +364,7 @@ export function AucStrip({ pairs, mean, lead }: { pairs: AucPair[]; mean: number
             <circle key={i} cx={x(p.ms)} cy={y(p.auc as number)} r={3.5} fill="var(--chart-1)" fillOpacity={0.55} stroke={hover === i ? 'var(--ink)' : 'var(--bg)'} strokeWidth={hover === i ? 2 : 1} />
           ),
         )}
-        {/* the headline pair last, so no other dot covers it */}
+        {/* the latest pair last, so no other dot covers it */}
         {li >= 0 ? <circle cx={x(pts[li].ms)} cy={y(pts[li].auc as number)} r={6} fill="var(--accent-mark)" stroke="var(--ink)" strokeWidth={2} /> : null}
         {weeks.map((t) => (
           <text key={t} x={x(t)} y={h - 8} fontSize={11} textAnchor="middle" fill="var(--axis-ink)">

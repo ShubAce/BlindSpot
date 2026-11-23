@@ -72,10 +72,12 @@
   judges it against that view.
 - Pre-registered bar: new-only area >= 10% of old in 2 of 3 replay windows, and new-only precision
   >= max(0.6, old precision - 0.10) in a blind audit.
-- Replays from 1 Oct on cached Earth Search reads at 20 m (scripts/burn_replay.py): new-only area was
-  13.5% (Fazilka 43RDP), 39.6% (Barnala 43REP) and 30.1% (Tarn Taran 43REQ) of old. Area half met.
-- Blind audit of 100 chips from those replays (scripts/burn_chips.py, seed 20261123; chips show the
-  passes and the outline only), judged by a vision model, three votes per chip, majority verdict.
+- Replays from 1 Oct on cached Earth Search reads at 20 m (scripts/burn_replay.py, added in d4c84b2
+  and removed by its revert 77a9f09): new-only area was 13.5% (Fazilka 43RDP), 39.6% (Barnala
+  43REP) and 30.1% (Tarn Taran 43REQ) of old. Area half met.
+- Blind audit of 100 chips from those replays (scripts/burn_chips.py, also added in d4c84b2 and
+  removed by 77a9f09; seed 20261123; chips show the passes and the outline only), judged by a
+  vision model, three votes per chip, majority verdict.
   Burnt / not burnt / unsure: old 17 / 9 / 14, new-only 8 / 17 / 15, loose-only 3 / 16 / 1.
   New-only precision 8/25 = 0.32 (Wilson 0.17-0.52) against max(0.6, 17/26 - 0.10) = 0.60, and
   23/40 = 0.575 even with every unsure chip counted as burnt. Precision half failed: reverted.
