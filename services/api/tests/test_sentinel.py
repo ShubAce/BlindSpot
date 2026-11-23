@@ -550,8 +550,9 @@ def test_a_rebuilt_tile_keeps_the_rows_that_came_out_the_same() -> None:
         rows = {r.block: r for r in session.execute(text(_STORED), {"t": KEEP_TILE})}
         idle = job._replace_rows(session, BurnCluster, scope, params, [dict(r) for r in rebuilt])
         session.rollback()
-    assert first == {"computed": 3, "kept": 0, "updated": 0, "deleted": 0, "inserted": 3}
-    assert again == {"computed": 3, "kept": 1, "updated": 1, "deleted": 1, "inserted": 1}
+    assert first == {"computed": 3, "kept": 0, "updated": 0, "deleted": 0, "inserted": 3, "forwarded": 0}
+    # the vanished scar (r0_c) has no successor of its burn: its id is not forwarded
+    assert again == {"computed": 3, "kept": 1, "updated": 1, "deleted": 1, "inserted": 1, "forwarded": 0}
     assert set(rows) == {"r0_a", "r0_b", "r0_d"}
     assert rows["r0_a"].id == ids["r0_a"] and rows["r0_a"].unseen is True and rows["r0_a"].fire_matches == 0
     # The same scar with new numbers: same id, verdict and names, the new numbers in place.
@@ -559,7 +560,8 @@ def test_a_rebuilt_tile_keeps_the_rows_that_came_out_the_same() -> None:
     assert b.id == ids["r0_b"] and b.unseen is True and b.fire_matches == 0 and (b.district, b.village) == ("D", "V")
     assert b.confidence == pytest.approx(0.61) and b.d_b12 == pytest.approx(0.09) and b.model_version == "test-rules"
     assert rows["r0_d"].id not in ids.values() and rows["r0_d"].unseen is None  # new: waits for its verdict
-    assert idle == {"computed": 3, "kept": 3, "updated": 0, "deleted": 0, "inserted": 0}  # nothing to write
+    assert idle == {"computed": 3, "kept": 3, "updated": 0, "deleted": 0, "inserted": 0,
+                    "forwarded": 0}  # nothing to write
 
 
 def test_a_scar_with_another_outline_or_window_is_another_scar() -> None:
@@ -581,7 +583,8 @@ def test_a_scar_with_another_outline_or_window_is_another_scar() -> None:
             _scar_row(scar, "r0_o", 0.02), {**window, "burn_after": later}])
         rows = {r.block: r for r in session.execute(text(_STORED), {"t": KEEP_TILE})}
         session.rollback()
-    assert out == {"computed": 2, "kept": 0, "updated": 0, "deleted": 2, "inserted": 2}
+    # Both are the same burns (same post pass, overlapping outlines): their old ids are forwarded.
+    assert out == {"computed": 2, "kept": 0, "updated": 0, "deleted": 2, "inserted": 2, "forwarded": 2}
     assert all(rows[b].id != before[b] and rows[b].unseen is None for b in ("r0_o", "r0_w"))
 
 
@@ -601,7 +604,7 @@ def test_updating_a_scar_in_place_writes_one_row_version() -> None:
         out = job._replace_rows(session, BurnCluster, scope, params, [{**r, "confidence": 0.7} for r in rows])
         end = session.execute(writes).one()
         session.rollback()
-    assert out == {"computed": 3, "kept": 0, "updated": 3, "deleted": 0, "inserted": 0}
+    assert out == {"computed": 3, "kept": 0, "updated": 3, "deleted": 0, "inserted": 0, "forwarded": 0}
     assert tuple(e - s for e, s in zip(end, start, strict=True)) == (0, 3, 0)
 
 
@@ -649,7 +652,8 @@ def test_a_scope_with_nothing_computed_is_emptied() -> None:
         out = job._replace_rows(session, BurnCluster, scope, params, [])
         left = session.execute(text("SELECT count(*) FROM burn_cluster WHERE mgrs_tile = :t"), {"t": KEEP_TILE}).scalar()
         session.rollback()
-    assert out == {"computed": 0, "kept": 0, "updated": 0, "deleted": 1, "inserted": 0} and left == 0
+    assert out == {"computed": 0, "kept": 0, "updated": 0, "deleted": 1, "inserted": 0, "forwarded": 0}
+    assert left == 0
 
 
 def test_rows_of_a_stage_that_left_a_tile_are_dropped() -> None:
@@ -677,8 +681,10 @@ def test_rows_of_a_stage_that_left_a_tile_are_dropped() -> None:
     finally:
         with SessionLocal() as session:
             session.execute(text("DELETE FROM burn_cluster WHERE mgrs_tile = :t"), {"t": tile})
+            session.execute(text("DELETE FROM burn_cluster_forward WHERE forwarded_at > now() - interval '1 hour' "
+                                 "AND new_id NOT IN (SELECT id FROM burn_cluster)"))
             session.commit()
-    assert dropped == {"burn_cluster": 1}
+    assert dropped == {"burn_cluster": 1, "forwarded": 1}  # to the new stage's scar of the same burn
     assert left == {"hotspots": 1}
 
 

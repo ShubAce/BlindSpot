@@ -1,4 +1,5 @@
-"""Stages as (state, district) pairs, and a district moving from the 40 m to the 20 m stage.
+"""Stages as (state, district) pairs, a district moving from the 40 m to the 20 m stage, and case
+links that survive a replaced scar (burn_cluster_forward, GET /api/scars/{id}).
 
 The geometries are made up (boxes of a few hundred metres near 30.5 N, 75.6 E, or far from India
 for the boundary rows), on tiles no real row uses; every test rolls back or deletes its own rows.
@@ -9,6 +10,7 @@ from __future__ import annotations
 import datetime as dt
 
 import pytest
+from fastapi.testclient import TestClient
 from shapely import affinity
 from shapely.geometry import Point, box
 from sqlalchemy import text
@@ -87,7 +89,8 @@ def test_a_district_moved_to_20m_leaves_no_40m_rows_and_each_goes_once() -> None
     """District D moves from the 40 m Haryana stage to the 20 m stage; E stays at 40 m.
 
     The 20 m stage stores the tile and at once deletes the 40 m rows lying wholly in D (so the
-    moved area never holds both, even if the 40 m stage's turn never comes). The 40 m stage's rebuild then replaces the scar that
+    moved area never holds both, even if the 40 m stage's turn never comes), forwarding their ids
+    to its own scars of the same burn. The 40 m stage's rebuild then replaces the scar that
     straddled D and E by its E part, and finds nothing of D left to delete: every old row goes
     exactly once, and no 40 m row overlaps D afterwards."""
     tile = "TEST4"
@@ -117,18 +120,22 @@ def test_a_district_moved_to_20m_leaves_no_40m_rows_and_each_goes_once() -> None
         scopes = dict(session.execute(text("SELECT block, scope FROM burn_cluster WHERE mgrs_tile = :t"), {"t": tile}).all())
         fields = session.execute(text("SELECT scope, count(*) FROM harvest_cluster WHERE mgrs_tile = :t GROUP BY 1"),
                                  {"t": tile}).all()
+        forwards = dict(session.execute(text("SELECT old_id, new_id FROM burn_cluster_forward WHERE old_id = ANY(:i)"),
+                                        {"i": list(old.values())}).all())
         overlap = session.execute(text(
             "SELECT coalesce(sum(ST_Area(ST_Intersection(geom, ST_GeomFromText(:d, 4326)))), 0) FROM burn_cluster "
             "WHERE mgrs_tile = :t AND scope = 'haryana'"), {"d": d_area.wkt, "t": tile}).scalar()
         session.rollback()
     assert hot["inserted"] == 2 and hot["deleted"] == 0
-    assert claimed == {"burn_cluster": 1, "harvest_cluster": 1}  # r_in and the field in D
-    assert (rest["deleted"], rest["kept"], rest["inserted"]) == (1, 1, 1)  # only r_cross
-    assert again == {"burn_cluster": 0, "harvest_cluster": 0}
+    assert claimed == {"burn_cluster": 1, "harvest_cluster": 1, "forwarded": 1}  # r_in and the field in D
+    assert (rest["deleted"], rest["kept"], rest["inserted"], rest["forwarded"]) == (1, 1, 1, 1)  # only r_cross
+    assert again == {"burn_cluster": 0, "harvest_cluster": 0, "forwarded": 0}
     assert scopes == {"c": "haryana", "f": "haryana", "d": "hotspots", "e": "hotspots"}
     assert fields == [("haryana", 1)]
     assert overlap == pytest.approx(0.0, abs=1e-12)
     assert now["c"] == old["c"]  # untouched scar of E: same id
+    # r_in -> its 20 m outline; r_cross -> its larger part (E, 62.5%) of the same burn
+    assert forwards == {old["a"]: now["d"], old["b"]: now["f"]}
 
 
 def test_a_row_across_the_new_area_edge_is_not_claimed() -> None:
@@ -143,7 +150,7 @@ def test_a_row_across_the_new_area_edge_is_not_claimed() -> None:
         claimed = job.claim_moved_rows(session, tile, "hotspots", d_area.wkt)
         left = session.execute(text("SELECT count(*) FROM burn_cluster WHERE mgrs_tile = :t"), {"t": tile}).scalar()
         session.rollback()
-    assert claimed == {"burn_cluster": 0, "harvest_cluster": 0} and left == 1
+    assert claimed == {"burn_cluster": 0, "harvest_cluster": 0, "forwarded": 0} and left == 1
 
 
 def test_area_key_changes_only_with_the_area() -> None:
@@ -151,3 +158,55 @@ def test_area_key_changes_only_with_the_area() -> None:
     same = box(0, 0, 1000, 1000).reverse()  # other vertex order
     assert job._area_key(a) == job._area_key(same) == job._area_key(affinity.translate(a, 0.2, 0.2))
     assert job._area_key(a) != job._area_key(box(0, 0, 1000, 990))
+
+
+@pytest.fixture(scope="module")
+def client() -> TestClient:
+    from blindspot.api.main import app
+
+    with TestClient(app) as c:
+        yield c
+
+
+def test_a_replaced_scar_link_answers_with_its_successor(client) -> None:
+    """/api/scars/<old id> answers with the scar that replaced it (chains followed) and says so in
+    forwarded_from; a scar that vanished without a successor of its burn stays 404, and so does a
+    chain longer than MAX_FORWARD_HOPS or a cycle."""
+    from blindspot.api.routers.scars import MAX_FORWARD_HOPS
+
+    tile = "TEST5"
+    poly = box(75.70, 30.40, 75.702, 30.402)
+    haryana, punjab = {"tile": tile, "scope": "haryana"}, {"tile": tile, "scope": "punjab"}
+    fake = 9_000_000_000_000  # ids no scar has
+    try:
+        with SessionLocal() as session:
+            ids = []
+            for i in range(3):  # A, then B replacing A, then C replacing B: same burn, moved outline
+                job._replace_rows(session, BurnCluster, SCOPE_SQL, haryana,
+                                  [_scar(affinity.translate(poly, 0.0002 * i), "haryana", 40, tile, f"x{i}")])
+                ids.append(_ids(session, tile)[f"x{i}"])
+            job._replace_rows(session, BurnCluster, SCOPE_SQL, punjab, [_scar(box(75.8, 30.4, 75.802, 30.402),
+                                                                            "punjab", 40, tile, "z")])
+            gone = _ids(session, tile)["z"]
+            job._replace_rows(session, BurnCluster, SCOPE_SQL, punjab, [])  # vanished: no successor
+            # fake+1 reaches C in MAX_FORWARD_HOPS hops, fake in one more
+            chain = [(fake + k, fake + k + 1) for k in range(MAX_FORWARD_HOPS)] + [(fake + MAX_FORWARD_HOPS, ids[2])]
+            chain += [(fake + 100, fake + 101), (fake + 101, fake + 100)]
+            session.execute(text("INSERT INTO burn_cluster_forward (old_id, new_id, overlap_share) VALUES (:o, :n, 1)"),
+                            [{"o": o, "n": n} for o, n in chain])
+            session.commit()
+        a, b, c = (client.get(f"/api/scars/{i}") for i in ids)
+        far, too_far = client.get(f"/api/scars/{fake + 1}"), client.get(f"/api/scars/{fake}")
+        missing, cycle = client.get(f"/api/scars/{gone}"), client.get(f"/api/scars/{fake + 100}")
+    finally:
+        with SessionLocal() as session:
+            session.execute(text("DELETE FROM burn_cluster_forward WHERE old_id = ANY(:i) OR old_id BETWEEN :f AND :g"),
+                            {"i": ids + [gone], "f": fake, "g": fake + 200})
+            session.execute(text("DELETE FROM burn_cluster WHERE mgrs_tile = :t"), {"t": tile})
+            session.commit()
+    assert (a.status_code, b.status_code, c.status_code) == (200, 200, 200)
+    assert a.json()["case"]["id"] == ids[2] and a.json()["forwarded_from"] == ids[0]
+    assert b.json()["case"]["id"] == ids[2] and b.json()["forwarded_from"] == ids[1]
+    assert c.json()["case"]["id"] == ids[2] and "forwarded_from" not in c.json()
+    assert far.status_code == 200 and far.json()["case"]["id"] == ids[2]  # MAX_FORWARD_HOPS hops
+    assert too_far.status_code == 404 and missing.status_code == 404 and cycle.status_code == 404

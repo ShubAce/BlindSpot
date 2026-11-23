@@ -16,7 +16,9 @@ What one run does:
    columns are updated if they changed (a new confidence formula or rule version), so a rebuild
    writes only what changed. The harvested-but-unburnt snapshot of the tile is replaced the same
    way, matching whole rows. Rows another stage left wholly inside this stage's area on the tile (a
-   district moved between stages) are deleted in the same transaction (claim_moved_rows).
+   district moved between stages) are deleted in the same transaction (claim_moved_rows). A scar
+   deleted by any of these steps has its id forwarded to the stored scar of the same burn that
+   overlaps it most (burn_cluster_forward), so its case link keeps working.
 4. Match every scar against fire detections (fire_detection, filled by the fires module) and name
    its district, sub-district and nearest village from the boundary and place tables. Writes that
    can touch most of a table go in steps of their own, each followed by a VACUUM, so the database
@@ -52,6 +54,7 @@ from shapely.geometry import Polygon, mapping, shape
 from shapely.geometry.base import BaseGeometry
 from sqlalchemy import column, func, insert, select, table, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from blindspot.analytics import burnscar, fires_stats
@@ -608,6 +611,7 @@ def store_tile(result: TileResult, fetch_id: int | None) -> dict[str, dict[str, 
         claimed = claim_moved_rows(session, tile, stage_name, result.area_wkt)
         for name, counts in stored.items():
             counts["claimed"] = claimed.get(name, 0)
+        stored["burn_cluster"]["forwarded"] += claimed.get("forwarded", 0)
         current = dict(session.execute(
             select(S2Scene.item_id, S2Scene.stats).where(S2Scene.item_id.in_(list(result.item_stats)))
         ).all())
@@ -855,6 +859,12 @@ def _replace_rows(session: Session, model: type[BurnCluster | HarvestCluster], s
     real = model.__table__
     stage = table(f"new_{real.name}", *(column(c.name, c.type) for c in real.columns))
     out = {"computed": len(rows), "kept": 0, "updated": 0, "deleted": 0, "inserted": 0}
+    forward = real.name == "burn_cluster"  # deleted scars are kept aside, then forwarded (forward_gone)
+    if forward:
+        out["forwarded"] = 0
+        _gone_table(session)
+    gone_cols = "t.id, t.geom, t.burn_before" if forward else "1"
+    saved = f"saved AS (INSERT INTO {GONE_TABLE} SELECT * FROM gone RETURNING 1)," if forward else ""
     session.execute(text(f"CREATE TEMP TABLE {stage.name} (LIKE {real.name} INCLUDING DEFAULTS) ON COMMIT DROP"))
     if rows:
         session.execute(insert(stage), rows)
@@ -880,36 +890,98 @@ def _replace_rows(session: Session, model: type[BurnCluster | HarvestCluster], s
                  pair AS (SELECT n.id AS new_id, o.id AS old_id, n.csig = o.csig AS same
                           FROM n JOIN o USING (isig, rn)),
                  gone AS (DELETE FROM {real.name} t USING o WHERE t.id = o.id
-                           AND NOT EXISTS (SELECT 1 FROM pair p WHERE p.old_id = o.id) RETURNING 1),
+                           AND NOT EXISTS (SELECT 1 FROM pair p WHERE p.old_id = o.id) RETURNING {gone_cols}),
+                 {saved}
                  changed AS ({update}),
                  taken AS (DELETE FROM {stage.name} t USING pair p WHERE t.id = p.new_id RETURNING 1)
             SELECT (SELECT count(*) FROM gone), (SELECT count(*) FROM pair WHERE same),
                    (SELECT count(*) FROM changed)
         """), params).one()
     elif scope is not None:
-        out["deleted"] = session.execute(text(f"DELETE FROM {real.name} t WHERE {scope}"), params).rowcount
+        delete = f"DELETE FROM {real.name} t WHERE {scope}"
+        if forward:
+            delete = f"WITH gone AS ({delete} RETURNING {gone_cols}) INSERT INTO {GONE_TABLE} SELECT * FROM gone"
+        out["deleted"] = session.execute(text(delete), params).rowcount
     if out["computed"] > out["kept"] + out["updated"]:  # some new rows matched nothing stored
         _name_places(session, stage.name)
         out["inserted"] = session.execute(text(f"INSERT INTO {real.name} SELECT * FROM {stage.name}")).rowcount
     session.execute(text(f"DROP TABLE {stage.name}"))
+    if forward and out["deleted"]:
+        out["forwarded"] = forward_gone(session)
     return out
+
+
+# --- case links that survive a replaced scar --------------------------------------------------------
+
+GONE_TABLE = "gone_scar"  # scars deleted in this transaction, waiting to be forwarded
+# A deleted scar's successor: the stored scar of the same burn (same post pass day) whose outline
+# overlaps it most. ST_MakeValid: an outline rounded to 6 decimals can self-touch, and GEOS would
+# reject it in an intersection.
+_FORWARD_SQL = text(f"""
+    INSERT INTO burn_cluster_forward (old_id, new_id, overlap_share, forwarded_at)
+    SELECT g.id, s.id, s.share, now()
+      FROM {GONE_TABLE} g
+      CROSS JOIN LATERAL (
+          SELECT b.id, ST_Area(ST_Intersection(ST_MakeValid(b.geom), ST_MakeValid(g.geom)))
+                       / NULLIF(ST_Area(g.geom), 0) AS share
+            FROM burn_cluster b
+           WHERE b.geom && g.geom AND b.burn_before::date = g.burn_before::date
+           ORDER BY share DESC NULLS LAST, b.id
+           LIMIT 1) s
+     WHERE s.share > 0
+    ON CONFLICT (old_id) DO UPDATE SET new_id = EXCLUDED.new_id, overlap_share = EXCLUDED.overlap_share,
+                                       forwarded_at = EXCLUDED.forwarded_at
+""")
+
+
+def _gone_table(session: Session) -> None:
+    session.execute(text(f"CREATE TEMP TABLE IF NOT EXISTS {GONE_TABLE} "
+                         "(id bigint, geom geometry, burn_before timestamptz) ON COMMIT DROP"))
+
+
+def forward_gone(session: Session) -> int:
+    """Point the ids of the scars deleted so far in this transaction (GONE_TABLE) at their
+    successors in burn_cluster_forward, then forget them. Returns the rows written.
+
+    A case link (/case/<id>) must survive a rebuild that changes a scar's outline and a stage change
+    that maps its district at another resolution (both give the scar a new id). A scar with no
+    successor of the same burn gets no row (its link answers 404, as before). Best effort: a failure
+    here is logged and rolled back to a savepoint, so it never costs the tile its rows."""
+    try:
+        with session.begin_nested():
+            written = session.execute(_FORWARD_SQL).rowcount
+    except DBAPIError as exc:
+        log.warning("sentinel: scar ids not forwarded: %s", str(exc)[:300])
+        written = 0
+    session.execute(text(f"DELETE FROM {GONE_TABLE}"))
+    return written
 
 
 def claim_moved_rows(session: Session, tile: str, scope: str, area_wkt: str) -> dict[str, int]:
     """Delete the rows other stages stored on this tile that lie wholly inside this stage's area
     there (`area_wkt`, lon/lat): a district moved to this stage. Run right after this stage stored
     the tile, in the same transaction, so the moved area never holds both stages' rows, even when
-    the old stage's turn on the tile never comes (a run that ran out of budget). A row across the
-    edge of the area is left to its own stage, whose next rebuild of the tile replaces it with its
-    part outside the area, so no row is deleted twice. Returns rows deleted per table."""
+    the old stage's turn on the tile never comes (a run that ran out of budget); each scar's id is
+    forwarded to this stage's scar of the same burn. A row across the edge of the area is left to
+    its own stage, whose next rebuild of the tile replaces it with its part outside the area, so no
+    row is deleted twice. Returns rows deleted per table, and 'forwarded'."""
     if not area_wkt:
         return {}
     params = {"tile": tile, "scope": scope, "area": area_wkt}
     area = "(SELECT ST_GeomFromText(:area, 4326) AS g) a"
-    return {name: session.execute(text(f"""
-                DELETE FROM {name} t USING {area}
-                 WHERE t.mgrs_tile = :tile AND t.scope <> :scope AND ST_Covers(a.g, t.geom)"""), params).rowcount
-            for name in ("burn_cluster", "harvest_cluster")}
+    _gone_table(session)
+    claimed = {
+        "burn_cluster": session.execute(text(f"""
+            WITH gone AS (DELETE FROM burn_cluster t USING {area}
+                           WHERE t.mgrs_tile = :tile AND t.scope <> :scope AND ST_Covers(a.g, t.geom)
+                          RETURNING t.id, t.geom, t.burn_before)
+            INSERT INTO {GONE_TABLE} SELECT * FROM gone"""), params).rowcount,
+        "harvest_cluster": session.execute(text(f"""
+            DELETE FROM harvest_cluster t USING {area}
+             WHERE t.mgrs_tile = :tile AND t.scope <> :scope AND ST_Covers(a.g, t.geom)"""), params).rowcount,
+    }
+    claimed["forwarded"] = forward_gone(session) if claimed["burn_cluster"] else 0
+    return claimed
 
 
 def label_places(session: Session) -> dict[str, int]:
@@ -930,12 +1002,18 @@ def drop_stage_rows(scope: str, tiles: list[str], dead: dict[str, DeadRows]) -> 
     would otherwise stay for good, counted beside the rows the tile's new stage writes."""
     deleted = {}
     with session_scope() as session:
+        _gone_table(session)
         for name in ("burn_cluster", "harvest_cluster"):
-            n = session.execute(text(f"DELETE FROM {name} WHERE scope = :scope AND mgrs_tile = ANY(:tiles)"),
-                                {"scope": scope, "tiles": tiles}).rowcount
+            delete = f"DELETE FROM {name} WHERE scope = :scope AND mgrs_tile = ANY(:tiles)"
+            if name == "burn_cluster":  # their ids go to the scars the tile's new stage stored
+                delete = (f"WITH gone AS ({delete} RETURNING id, geom, burn_before) "
+                          f"INSERT INTO {GONE_TABLE} SELECT * FROM gone")
+            n = session.execute(text(delete), {"scope": scope, "tiles": tiles}).rowcount
             if n:
                 deleted[name] = n
                 dead[name].add(n)
+        if deleted.get("burn_cluster"):
+            deleted["forwarded"] = forward_gone(session)
     return deleted
 
 
