@@ -316,8 +316,9 @@ export function MapPanel() {
         ? [
             s.scarsView === 'districts' && summary.data?.season
               ? // every mapped scar, not the candidates alone (the headline's figure): named as such, from
-                // the season's first Sentinel-2 pass the headline reports where it has one
-                `All mapped burn scars this season, with or without a fire alert: ${metricText('area_ha', summary.data.season.area_ha)} in ${number(summary.data.by_district?.length ?? 0)} districts, ${
+                // the season's first Sentinel-2 pass the headline reports where it has one; the summary's
+                // row of scars outside every district polygon (district null) is not a district
+                `All mapped burn scars this season, with or without a fire alert: ${metricText('area_ha', summary.data.season.area_ha)} in ${number(summary.data.by_district?.filter((d) => d.district).length ?? 0)} districts, ${
                   head.data?.unseen_burns?.first_pass ? `from the pass of ${dateIST(head.data.unseen_burns.first_pass)}` : `since ${dateIST(`${summary.data.season.since}T12:00:00+05:30`)}`
                 }.`
               : null,

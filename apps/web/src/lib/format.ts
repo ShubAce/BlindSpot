@@ -160,7 +160,11 @@ export const isMissing = (v: unknown): v is null | undefined => v == null || (ty
 export function number(v: number | null | undefined, opts: { decimals?: number; signed?: boolean; compact?: boolean } = {}): string {
   if (isMissing(v)) return MISSING;
   const decimals = opts.decimals ?? 0;
-  const body = nf(decimals, opts.compact).format(Math.abs(v));
+  // Rounded on the number itself (toFixed), as the API's Python rounds it in the sentences it writes
+  // (f"{r:.2f}"): 0.305 is stored as 0.30499..., so both say 0.30. Intl alone rounds the digits "0.305"
+  // and says 0.31, and one figure would then read two ways on one page.
+  const x = opts.compact ? Math.abs(v) : Number(Math.abs(v).toFixed(decimals));
+  const body = nf(decimals, opts.compact).format(x);
   // A value that rounds to zero carries no sign: "0", never "-0" or "+0".
   const zero = Number(Math.abs(v).toFixed(decimals)) === 0;
   const sign = zero ? '' : v < 0 ? MINUS : opts.signed ? '+' : '';
@@ -205,6 +209,9 @@ export const METRICS = {
   pm10: { decimals: 0, unit: 'µg/m³' },
   aqi: { decimals: 0, unit: '' },
   km: { decimals: 0, unit: 'km' },
+  // a scar's nearest fire alert: one decimal, as on its case file, so 1.3 km never reads as the 1 km
+  // match radius
+  near_km: { decimals: 1, unit: 'km', wholeAbove: 10 },
   m: { decimals: 0, unit: 'm' },
   blh_m: { decimals: 0, unit: 'm' },
   wind_kmh: { decimals: 0, unit: 'km/h' },

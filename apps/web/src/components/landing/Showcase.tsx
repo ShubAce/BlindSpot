@@ -7,7 +7,7 @@ import { absoluteApiUrl } from '@/lib/api';
 import { dateIST, metricText, number } from '@/lib/format';
 import { modelName } from '@/lib/models';
 
-import { getCases, getExamples, getHeadline } from './data';
+import { getCases, getExamples, getHeadline, getSlipScars, UNSEEN_LIST_QUERY } from './data';
 import { AOI_CENTRE, boxAround, gibsDay, gibsPicture } from './gibs';
 import { s } from './styles';
 import { Pic } from './Pic';
@@ -80,19 +80,24 @@ async function PlainsPicture() {
   );
 }
 
-/** The slips' scope in one line (the headline's share and its audit sit on the first screen). */
+/** The slips' scope in one line (the headline's share and its audit sit on the first screen). The
+ *  slips come from the newest scars (the list is newest pass first), so they are the largest of the
+ *  newest pass, not of the season: the line says which pass and how confident, from the list itself. */
 async function UnseenClaim() {
-  const r = await getHeadline();
+  const [r, shown] = await Promise.all([getHeadline(), getSlipScars()]);
   const u = r.ok ? r.data.unseen_burns : null;
   if (!r.ok) return <p className={s.honestOnDark} data-load-failed="">{`The burn scar totals did not load. ${r.error.message}`}</p>;
   if (!u?.available || u.unseen_clusters == null) {
     return <p className={s.honestOnDark}>{u?.reason ?? 'No scar has been checked against the fire alerts yet.'}</p>;
   }
-  return (
-    <p className={s.claimText}>
-      {`The slips below are the largest of the ${number(u.unseen_clusters)} ${u.label ?? 'candidate unseen burns'}${u.districts != null ? ` in ${number(u.districts)} districts` : ''}${u.last_pass ? `, mapped up to the pass of ${dateIST(u.last_pass)}` : ''}, one per village. Each opens its case file.`}
-    </p>
-  );
+  const label = u.label ?? 'candidate unseen burns';
+  const season = `${number(u.unseen_clusters)} ${label}${u.districts != null ? ` in ${number(u.districts)} districts` : ''}${u.first_pass ? ` since ${dateIST(u.first_pass)}` : ''}`;
+  const passes = [...new Set(shown.map((p) => dateIST(p.burn_before)))];
+  // (a list that did not load says so in the slips' own place; this line then gives the season only)
+  const text = shown.length
+    ? `The slips below are the largest ${label} of the ${passes.length === 1 ? `pass of ${passes[0]}` : 'newest passes'} with confidence ${number(UNSEEN_LIST_QUERY.min_confidence, { decimals: 1 })} or more, one per village: ${number(shown.length)} of the ${season}. Each opens its case file.`
+    : `Sentinel-2 has mapped ${season}.`;
+  return <p className={s.claimText}>{text}</p>;
 }
 
 async function Slips() {
@@ -116,7 +121,7 @@ function CaseSlip({ c }: { c: ScarCase }) {
   const post = c.imagery?.post;
   const chip = absoluteApiUrl(post?.truecolor_url);
   const sat = sentinelName(post?.item_id ?? p.scene_post);
-  const nearest = p.nearest_fire_m != null ? metricText('km', p.nearest_fire_m / 1000) : null;
+  const nearest = p.nearest_fire_m != null ? metricText('near_km', p.nearest_fire_m / 1000) : null;
   return (
     <Link href={`/case/${p.id}`} className={s.slip}>
       <span className={s.slipHead}>Case {p.id}</span>
@@ -146,17 +151,23 @@ function CaseSlip({ c }: { c: ScarCase }) {
 }
 
 async function AnswerSlip() {
-  const r = await getExamples();
+  const [r, slips] = await Promise.all([getExamples(), getSlipScars()]);
   // no slip without the read, but the render is marked, so it never replaces a good offline copy
   if (!r.ok) return <LoadFailed />;
   const all = (r.data.examples ?? []).filter((e) => e.ok !== false && e.answer && e.question && e.verification?.passed);
-  // The answer about one of the case files below, if one is stored; else what the satellites missed;
-  // else Delhi's air; else any.
+  // The answer about one of the case files below, if one is stored. An answer about any other case is
+  // left out: it may be weeks old and about a scar the season's rebuild has replaced. Else the daily
+  // job's featured answers (new each morning): what the satellites missed, Delhi's air, any of them.
+  const caseOf = (e: AgentExample) => /\bcase (\d+)/i.exec(e.question ?? '')?.[1];
+  const onSlips = new Set(slips.map((p) => String(p.id)));
+  const general = all.filter((e) => caseOf(e) == null);
+  const featured = general.filter((e) => e.kind === 'featured');
+  const pool = featured.length ? featured : general;
   const pick: AgentExample | undefined =
-    all.find((e) => /\bcase \d+/i.test(e.question ?? '')) ??
-    all.find((e) => /miss|unseen/i.test(e.question ?? '')) ??
-    all.find((e) => /delhi/i.test(e.question ?? '')) ??
-    all[0];
+    all.find((e) => onSlips.has(caseOf(e) ?? '')) ??
+    pool.find((e) => /miss|unseen/i.test(e.question ?? '')) ??
+    pool.find((e) => /delhi/i.test(e.question ?? '')) ??
+    pool[0];
   if (!pick) return null;
   // One point. Left out: any point naming an unobserved span (the investigator measures its own gap
   // between FIRMS detections, which would sit beside the clock's polar-window span as a second,

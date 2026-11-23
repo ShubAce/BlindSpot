@@ -291,6 +291,9 @@ export async function ScarRule() {
   if (!r.ok) return <Failed what="the burn-scar method" r={r} />;
   const m = r.data.method;
   const c = r.data.coverage;
+  // the rest of the catalogue, so the lines add up: passes on tiles outside the mapped ones, or not
+  // reached yet
+  const notProcessed = c ? c.catalogued - c.processed - c.skipped - c.failed : 0;
   const frames = f.ok ? f.data.frames : [];
   const pair = frames.length >= 2 ? [frames[0], frames[frames.length - 1]] : [];
   return (
@@ -334,6 +337,7 @@ export async function ScarRule() {
                 <dt>Skipped (cloud, haze, no data) and failed</dt>
                 <dd className="nums">
                   {number(c.skipped)} and {number(c.failed)}
+                  {notProcessed > 0 ? `; ${number(notProcessed)} not processed` : ''}
                 </dd>
               </div>
               <div>

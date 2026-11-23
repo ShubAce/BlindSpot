@@ -27,7 +27,7 @@ export function FindingLine({ initialHeadline, initialSummary }: { initialHeadli
   }
 
   const top = (summary.data?.by_district ?? [])
-    .filter((d) => d.unseen_area_ha > 0)
+    .filter((d) => d.district && d.unseen_area_ha > 0) // (scars outside every district: no name)
     .slice()
     .sort((a, b) => b.unseen_area_ha - a.unseen_area_ha)
     .slice(0, 3)

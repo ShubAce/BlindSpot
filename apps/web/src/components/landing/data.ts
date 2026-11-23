@@ -33,9 +33,13 @@ export const getFrameScars = (bbox: number[]) => serverGet<FrameScars>(PATHS.sca
 /** How many case slips the showcase stands up. */
 export const SLIPS = 6;
 
+/** The query behind the slips: the newest candidate unseen burns (the API lists the newest pass first)
+ *  at this confidence or more. */
+export const UNSEEN_LIST_QUERY = { unseen: true, min_confidence: 0.9, limit: 120 };
+
 /** The API's most confident candidate unseen burns: the slips' source here, and the sitemap's case
  *  pages (app/sitemap.ts), which share this one cached read. */
-export const getUnseenList = () => serverGet<ScarList>(PATHS.scars, { unseen: true, min_confidence: 0.9, limit: 120 }, 15_000);
+export const getUnseenList = () => serverGet<ScarList>(PATHS.scars, UNSEEN_LIST_QUERY, 15_000);
 
 /** Up to `n` of the list's unseen scars, largest first and one per village, so they are `n` places. */
 export function onePerPlace(list: ScarList, n: number): ScarListProps[] {
@@ -52,6 +56,13 @@ export function onePerPlace(list: ScarList, n: number): ScarListProps[] {
       return true;
     })
     .slice(0, n);
+}
+
+/** The slips' scars (onePerPlace of the list) without their case files, for the lines that only name
+ *  them; [] when the list did not load (the slips then say so in their own place). */
+export async function getSlipScars(): Promise<ScarListProps[]> {
+  const list = await getUnseenList();
+  return list.ok ? onePerPlace(list.data, SLIPS) : [];
 }
 
 /**
