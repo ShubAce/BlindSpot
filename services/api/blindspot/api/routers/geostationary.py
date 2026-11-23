@@ -141,8 +141,8 @@ def _static_tables_ready(session: Session) -> bool:
     return bool(
         session.execute(
             text(
-                "SELECT to_regclass('geo_fire_static') IS NOT NULL "
-                "AND to_regclass('geo_fire_static_pixel') IS NOT NULL"
+                "SELECT to_regclass('public.geo_fire_static') IS NOT NULL "
+                "AND to_regclass('public.geo_fire_static_pixel') IS NOT NULL"
             )
         ).scalar_one()
     )
