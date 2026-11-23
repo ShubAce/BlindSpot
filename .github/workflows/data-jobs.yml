@@ -34,6 +34,10 @@ on:
         description: "A cron string from the schedule above (set by scheduler.yml); overrides jobs"
         required: false
         default: ""
+      gk2a_backfill_days:
+        description: "geostationary_backfill only: days to rebuild (1-30; empty = the usual 3)"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -56,6 +60,8 @@ jobs:
       LSASAF_PASSWORD: ${{ secrets.LSASAF_PASSWORD }}
       ENABLE_SCHEDULER: "0"
       INIT_DB_ON_STARTUP: "0"
+      # Empty on schedules and by default; the job then rebuilds its usual 3 days.
+      GK2A_BACKFILL_DAYS: ${{ github.event.inputs.gk2a_backfill_days }}
       # Every run re-reads the season, Punjab first, then Haryana. At 40 min the budget ran out before
       # 13 of Haryana's 16 tiles every day (2026-11-22), so they were never mapped; 100 min covers all
       # (18 Punjab districts at 20 m, the rest of Punjab and Haryana at 40 m) with room to spare.
