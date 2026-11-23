@@ -380,6 +380,8 @@ There is no `hours` parameter. A pass counts when the site lies inside the instr
   - `case` holds the properties plus `geometry`.
   - `imagery: {bbox, pre: {date, datetime, item_id, collection, cloud_pct, truecolor_url,
     swir_url, nbr_url}, post: {...}}`.
+  - `fires_nearby: [{id, source, satellite, acq_utc, lat, lon, confidence, frp_mw, distance_m,
+    match_radius_m, in_window, explains_scar}]`.
   - `other_scars: {bbox, model_version, min_confidence, totals: {same, earlier, later: {scars,
     area_ha}}, total, returned, truncated, limit, scars: [{id, relation, burn_after, burn_before,
     unseen, confidence, area_ha, outline}]}` (added 2026-11-23): every other stored scar of the
