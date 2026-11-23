@@ -127,13 +127,14 @@ if [ "${#jobs[@]}" -gt 0 ] && [ -d "$CACHE" ]; then
   # a file of the same key under another name holds another Origin's copy (Vary).
   primary() { local h; h=$(printf '%s' "$1" | md5sum); h=${h%% *}; echo "$CACHE/${h: -1}/${h: -3:2}/$h"; }
   remove() { if [ "$DRY" = 1 ]; then echo "warm: would delete $1"; else rm -f -- "$1"; fi; }
+  # An answer purged: every copy of its key (each Origin's) deleted, counted once.
+  purge_key() { local f; for f in ${files_of[$1]}; do remove "$f"; done; purged=$((purged + 1)); }
 
   declare -A primary_of=()  # key -> its primary file, for each answer to refresh
   purged=0
   for key in "${!files_of[@]}"; do
     if [[ "$key" =~ $PURGE_ONLY ]] || ! [[ "$key" =~ $SAFE_KEY ]] || [ "${#key}" -gt 1500 ]; then
-      for f in ${files_of[$key]}; do remove "$f"; done
-      purged=$((purged + 1))
+      purge_key "$key"
     else
       primary_of[$key]=$(primary "$key")
     fi
@@ -158,8 +159,7 @@ if [ "${#jobs[@]}" -gt 0 ] && [ -d "$CACHE" ]; then
   for key in "${ordered[@]}"; do
     p=${primary_of[$key]}
     if [ "$refreshed" -ge "$REFRESH_MAX" ]; then  # over the cap: purged, built again when next read
-      for f in ${files_of[$key]}; do remove "$f"; done
-      purged=$((purged + 1))
+      purge_key "$key"
       continue
     fi
     # over the time budget: kept as they are, every copy (the timer's next run and the pages are not

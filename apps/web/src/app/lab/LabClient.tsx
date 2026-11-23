@@ -66,10 +66,10 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-/** When a layer's data is late, by the live map's rules (MapPanel): its source's own schedule from GET
- *  /api/sources, and the daily run's rule for scars and risk. The registry's cadence is how often the
- *  browser re-reads: three of them called a smoke run three hours into its six-hour schedule stale. */
-const LAYER_SOURCE: Partial<Record<MapLayerId, string>> = { fires: 'firms', geostationary: 'gk2a', smoke: 'openmeteo', wind: 'openmeteo', air: 'openaq', satellites: 'celestrak' };
+/** When a layer's data is late, by the live map's rules (MapPanel): its first source's own schedule
+ *  from GET /api/sources (registry sourceKeys), and the daily run's rule for scars and risk. The
+ *  registry's cadence is how often the browser re-reads: three of them called a smoke run three hours
+ *  into its six-hour schedule stale. Imagery keeps that cadence: a scene has no schedule. */
 const DAILY_LAYERS: readonly MapLayerId[] = ['scars', 'risk'];
 
 /** What one layer's data currently is: loading, failed, empty or a count, with its freshness. */
@@ -132,10 +132,9 @@ export function LabClient() {
   const sourceCadence = useSourceCadence();
   // A layer with a source is judged by that source's schedule only: none while GET /api/sources
   // loads, so nothing is called stale meanwhile (as on the live map). The rest keep the registry's.
-  const staleRule = (l: { id: MapLayerId; cadenceMs: number }) => {
+  const staleRule = (l: { id: MapLayerId; cadenceMs: number; sourceKeys: string[] }) => {
     if (DAILY_LAYERS.includes(l.id)) return { staleAfterMs: DAILY_RUN_STALE_MS };
-    const source = LAYER_SOURCE[l.id];
-    return { cadenceMs: source ? sourceCadence(source) : l.cadenceMs };
+    return { cadenceMs: l.id === 'imagery' ? l.cadenceMs : sourceCadence(l.sourceKeys[0]) };
   };
 
   const sats: Satellite[] = useMemo(() => parseTles(tle.data), [tle.data]);

@@ -11,8 +11,8 @@ import { useMemo } from 'react';
 import { preload, useSWRConfig } from 'swr';
 
 import { getJSON, PATHS, type AirLatestResponse, type FiresResponse, type GeostationaryDiurnalResponse, type Query, type SourcesResponse } from '@/lib/api';
-import { auditOlderText, type AuditOf } from '@/components/case/audit';
-import { MINUS, number, percent } from '@/lib/format';
+import { auditBrackets, type AuditOf } from '@/components/case/audit';
+import { MINUS, NBSP, number, percent } from '@/lib/format';
 import { CADENCE, swrKey, useApi } from '@/lib/live';
 
 import type {
@@ -155,13 +155,10 @@ export function useSourceCadence(): (key: string) => number | undefined {
 type Precision = ({ precision?: number | null; precision_ci95?: [number, number] | null; precision_n?: number | null } & AuditOf) | null | undefined;
 
 /** "audited precision 83% (95% CI 61%–94%, n = 18)", read from the headline; never typed in. An
- *  audit of an earlier rule says so inside the brackets (auditOlderText). */
+ *  audit of an earlier rule says so inside the brackets (auditBrackets). */
 export function precisionText(u: Precision): string | null {
   if (!u || u.precision == null) return null;
-  const ci = u.precision_ci95 && u.precision_ci95.length === 2 ? `95% CI ${percent(u.precision_ci95[0])}–${percent(u.precision_ci95[1])}` : null;
-  const n = u.precision_n != null ? `n = ${number(u.precision_n)}` : null;
-  const inner = [[ci, n].filter(Boolean).join(', '), auditOlderText(u)].filter(Boolean).join('; ');
-  return `audited precision ${percent(u.precision)}${inner ? ` (${inner})` : ''}`;
+  return `audited precision ${percent(u.precision)}${auditBrackets(u, { n: number, space: NBSP })}`;
 }
 
 /** A signed or plain change in the true minus. */

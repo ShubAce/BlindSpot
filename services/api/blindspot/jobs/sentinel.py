@@ -933,9 +933,9 @@ _FORWARD_SQL = text(f"""
                            / NULLIF(ST_Area(g.geom), 0) AS share,
                      abs(b.burn_before::date - g.burn_before::date) AS days_apart
                 FROM burn_cluster b
-               WHERE b.geom && g.geom
-                 AND abs(b.burn_before::date - g.burn_before::date) <= {int(RULE.rearm_days)}) c
-           WHERE c.share > 0 AND (c.days_apart = 0 OR c.share >= {FORWARD_MOVED_SHARE})
+               WHERE b.geom && g.geom) c
+           WHERE c.days_apart <= {int(RULE.rearm_days)} AND c.share > 0
+             AND (c.days_apart = 0 OR c.share >= {FORWARD_MOVED_SHARE})
            ORDER BY c.days_apart > 0, c.share DESC, c.days_apart, c.id
            LIMIT 1) s
     ON CONFLICT (old_id) DO UPDATE SET new_id = EXCLUDED.new_id, overlap_share = EXCLUDED.overlap_share,

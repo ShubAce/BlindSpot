@@ -7,6 +7,7 @@
  * is optional or nullable here, so a reply missing it renders an honest line, never a guess.
  */
 
+import type { AuditOf } from '@/components/case/audit';
 import type { Envelope, FeatureCollection, AreaGeometry, IsoTime, LonLat, SourceRef } from '@/lib/api';
 
 // ---------------------------------------------------------------------------------------------
@@ -53,10 +54,7 @@ export type Headline = Envelope & {
     precision?: number | null;
     precision_ci95?: [number, number] | null;
     precision_n?: number | null;
-    audit_date?: string | null;
-    audit_model_version?: string | null;
-    audit_current?: boolean | null;
-  };
+  } & AuditOf;
   delhi?: Block & {
     city?: string;
     pm25?: number | null;

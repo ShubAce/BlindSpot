@@ -30,7 +30,12 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from blindspot.analytics import fires_stats
-from blindspot.analytics.burnscar import RULE, SERVED_VERSIONS, audit_summary
+from blindspot.analytics.burnscar import (
+    RULE,
+    SERVED_VERSIONS,
+    audit_identity,
+    audit_summary,
+)
 from blindspot.analytics.passes import (
     current_status,
     default_site,
@@ -242,9 +247,7 @@ def unseen_burns(session: Session) -> Block:
         # Which rule the audit judged, and when. audit_current is false when the scars above come
         # from a newer rule: then every statement of the precision must say it is an audit of the
         # earlier rule (audit_model_version, audit_date), not of the current one.
-        "audit_date": audit.get("date"),
-        "audit_model_version": audit.get("model_version"),
-        "audit_current": audit.get("current"),
+        **audit_identity(audit, prefix="audit_"),
         "note": "Scars from Sentinel-2 passes processed so far (see /api/scars/summary coverage); "
         "unseen = no FIRMS detection near the scar between the passes that bracket it. Treat the "
         "share as an upper bound: audited precision is shown with its 95 % interval."

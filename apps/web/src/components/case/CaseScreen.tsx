@@ -204,7 +204,14 @@ export function CaseScreen({ data }: { data: CaseFile }) {
             <AuditLine />
           </Suspense>
           {data.method?.audit?.known_lookalikes ? <p className="card__note">Known look-alikes: {data.method.audit.known_lookalikes}.</p> : null}
-          {c.hazy ? <p className="card__note">The pass before the burn was hazy, which can exaggerate the darkening.</p> : null}
+          {c.hazy ? (
+            <p className="card__note">
+              {/* an API older than haze_corrected serves two rules, and only s2burn-rules-2 does not correct haze */}
+              {(c.haze_corrected ?? (c.model_version !== 's2burn-rules-2'))
+                ? 'The pass that shows the burn was hazy: the rule corrected it for haze against the last clear pass before judging, so the values above are the corrected ones and the picture looks paler than they suggest.'
+                : 'The pass that shows the burn was hazy, so its picture is paler and the values above are less certain.'}
+            </p>
+          ) : null}
         </Card>
 
         </div>

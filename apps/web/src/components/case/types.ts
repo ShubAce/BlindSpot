@@ -7,6 +7,8 @@
 import type { BBox } from '@/lib/aoi';
 import type { Envelope, IsoTime, LonLat, PolygonGeometry, MultiPolygonGeometry } from '@/lib/api';
 
+import type { AuditOf } from './audit';
+
 export type CaseImageryPass = {
   date: string;
   datetime: IsoTime;
@@ -61,6 +63,9 @@ export type CaseProps = {
   evidence?: CaseEvidence | null;
   matched_at?: IsoTime | null;
   model_version?: string | null;
+  /** True when the rule that mapped the scar corrects a hazy pass for haze before judging it.
+   *  Added to the API on 2026-11-24: an older answer has no such key. */
+  haze_corrected?: boolean | null;
   created_at?: IsoTime | null;
   geometry?: PolygonGeometry | MultiPolygonGeometry | null;
 };
@@ -180,7 +185,8 @@ export type CaseFile = Envelope & {
   forwarded_from?: number | null;
 };
 
-/** /api/stats/headline, the block this screen reads (the audit precision of candidate unseen burns). */
+/** /api/stats/headline, the block this screen reads (the audit precision of candidate unseen burns),
+ *  with the audit's own rule and day (AuditOf: audit_current is false when it judged an earlier rule). */
 export type UnseenBurnsBlock = {
   available: boolean;
   reason?: string | null;
@@ -188,13 +194,9 @@ export type UnseenBurnsBlock = {
   precision?: number | null;
   precision_ci95?: [number, number] | null;
   precision_n?: number | null;
-  /** the audit's own rule and day; audit_current is false when it judged an earlier rule */
-  audit_date?: string | null;
-  audit_model_version?: string | null;
-  audit_current?: boolean | null;
   unseen_share?: number | null;
   note?: string | null;
-};
+} & AuditOf;
 export type HeadlineAudit = Envelope & { unseen_burns?: UnseenBurnsBlock };
 
 /** /api/geo/boundaries?level=state: the Survey of India state polygons for the locator. */

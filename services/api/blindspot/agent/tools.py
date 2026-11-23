@@ -30,6 +30,7 @@ import httpx
 from google.genai import types
 from sqlalchemy import text
 
+from blindspot.analytics.burnscar import audit_identity
 from blindspot.config import get_settings
 from blindspot.geo import IST, MET_BBOX
 from blindspot.provenance import SourceInfo, SourceRef, register_source, utcnow
@@ -683,8 +684,7 @@ def unseen_audit_block(summary: Any) -> dict[str, Any] | None:
         # the same numbers as percentages, for the answer's wording (e.g. 83%, 61%-94%)
         "precision_pct": round(unseen["precision"] * 100, 1),
         "precision_ci95_pct": [round(v * 100, 1) for v in unseen["precision_ci95"]],
-        "audited": unseen.get("audited"), "method": audit.get("method"),
-        "date": audit.get("date"), "model_version": audit.get("model_version"), "current": audit.get("current"),
+        "audited": unseen.get("audited"), "method": audit.get("method"), **audit_identity(audit),
         "reading": reading,
     }
 

@@ -15,7 +15,7 @@ from shapely import affinity
 from shapely.geometry import Point, box
 from sqlalchemy import text
 
-from blindspot.analytics.burnscar import RULE
+from blindspot.analytics.burnscar import HAZE_CORRECTED_VERSIONS, RULE
 from blindspot.db import SessionLocal, init_db
 from blindspot.jobs import sentinel as job
 from blindspot.models.sentinel import BurnCluster, HarvestCluster
@@ -238,6 +238,8 @@ def test_a_replaced_scar_link_answers_with_its_successor(client) -> None:
             session.commit()
     assert (a.status_code, b.status_code, c.status_code) == (200, 200, 200)
     assert a.json()["case"]["id"] == ids[2] and a.json()["forwarded_from"] == ids[0]
+    # the current rule corrects a hazy pass for haze; s2burn-rules-2 did not (the case page says which)
+    assert a.json()["case"]["haze_corrected"] is True and "s2burn-rules-2" not in HAZE_CORRECTED_VERSIONS
     assert b.json()["case"]["id"] == ids[2] and b.json()["forwarded_from"] == ids[1]
     assert c.json()["case"]["id"] == ids[2] and "forwarded_from" not in c.json()
     assert far.status_code == 200 and far.json()["case"]["id"] == ids[2]  # MAX_FORWARD_HOPS hops

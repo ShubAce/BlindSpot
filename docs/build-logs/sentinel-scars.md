@@ -172,8 +172,9 @@
   overlapping them within 20 days.
 - Transition: the API serves the rows of RULE.version and of s2burn-rules-2 (SERVED_VERSIONS)
   until the sentinel job has rewritten every tile (one transaction per tile, so nothing is
-  counted twice), so the map never goes blank whichever of the API deploy and the sentinel run
-  comes first. The headline lists the versions counted (model_versions).
+  counted twice), so the map never goes blank, provided the API is deployed before the first
+  sentinel run of the new rule (an older API serves only s2burn-rules-2, so every rewritten tile
+  would vanish from it until the deploy). The headline lists the versions counted (model_versions).
 ## s2burn-rules-4 (seed and grow): tried, not shipped (2026-11-24)
 - Idea: pixels that pass every strict rules-2 test (after the 2x2 opening at 20 m) are seeds. A
   pixel that passes looser tests for the same pass pair (dB8A > 0.04, dB11 > 0.04, dB12 > 0.02,

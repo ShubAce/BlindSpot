@@ -43,6 +43,11 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+# The longest any route keeps a built answer in process: the brief (and its district list), risk, the
+# boundaries GeoJSON and the slow orbit answers. infra/aws/warm.sh's SETTLE_MIN waits for twice this
+# after a job before refreshing what the job feeds (tests/test_warm_script.py checks the two agree).
+INPROCESS_TTL_S = 600
+
 _caches: dict[tuple[str, float], TTLCache[Hashable, Any]] = {}
 _key_locks: dict[tuple[str, Hashable], threading.Lock] = {}
 _lock = threading.Lock()

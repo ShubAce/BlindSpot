@@ -24,12 +24,13 @@ from typing import Any, Literal
 import orjson
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 from sse_starlette import EventSourceResponse, ServerSentEvent
 
 from blindspot.agent import runner
 from blindspot.api import SessionDep, respond
+from blindspot.api.routers.scars import MAX_FORWARD_HOPS
 from blindspot.config import get_settings
 from blindspot.db import table_exists
 from blindspot.models.agent import AgentRun
@@ -222,17 +223,24 @@ def _case_named(row: AgentRun) -> int | None:
     return int(m.group(1)) if m else None
 
 
+# The ids whose case page still opens: a stored scar, or one the sentinel job replaced whose
+# burn_cluster_forward chain reaches a stored scar within MAX_FORWARD_HOPS, as GET /api/scars/{id}
+# follows it (scars._forwarded), for all the ids at once.
+_CASES_OPEN = text("""
+    WITH RECURSIVE chain(asked, id, depth) AS (
+        SELECT t.id, t.id, 0 FROM unnest(CAST(:ids AS bigint[])) AS t(id)
+        UNION ALL
+        SELECT c.asked, f.new_id, c.depth + 1 FROM chain c JOIN burn_cluster_forward f ON f.old_id = c.id
+         WHERE c.depth < :hops AND NOT EXISTS (SELECT 1 FROM burn_cluster b WHERE b.id = c.id))
+    SELECT DISTINCT c.asked FROM chain c JOIN burn_cluster b ON b.id = c.id""")
+
+
 def _cases_gone(session: Session, ids: set[int]) -> set[int]:
-    """Of these case ids, those no longer a burn scar nor forwarded to one (burn_cluster_forward): a
-    season rebuild replaced them, and their case page is a 404."""
-    if not ids or not table_exists(session, "burn_cluster"):
+    """Of these case ids, those whose case page is a 404: no longer a burn scar, and not forwarded to
+    one (a season rebuild replaced them, and no chain of replacements ends at a stored scar)."""
+    if not ids or not table_exists(session, "burn_cluster", "burn_cluster_forward"):
         return set()
-    params = {"ids": list(ids)}
-    alive = set(session.execute(text("SELECT id FROM burn_cluster WHERE id = ANY(:ids)"), params).scalars())
-    if table_exists(session, "burn_cluster_forward"):
-        alive |= set(session.execute(text("SELECT old_id FROM burn_cluster_forward WHERE old_id = ANY(:ids)"),
-                                     params).scalars())
-    return ids - alive
+    return ids - set(session.execute(_CASES_OPEN, {"ids": list(ids), "hops": MAX_FORWARD_HOPS}).scalars())
 
 
 @router.get("/examples")
@@ -244,7 +252,8 @@ def examples(  # noqa: ANN201
     left out: its figures describe a scar nobody can open."""
     limit = min(max(limit, 1), 20)
     ids = session.execute(_EXAMPLES_SQL, {"limit": limit + 10, "lang": lang}).scalars().all()
-    rows = [row for i in ids if (row := session.get(AgentRun, i)) is not None]
+    found = {row.id: row for row in session.scalars(select(AgentRun).where(AgentRun.id.in_(ids)))}
+    rows = [found[i] for i in ids if i in found]  # newest first, as listed
     named = {row.id: case for row in rows if (case := _case_named(row)) is not None}
     if gone := _cases_gone(session, set(named.values())):
         rows = [row for row in rows if named.get(row.id) not in gone]

@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
+from blindspot.analytics.burnscar import audit_older_words
 from blindspot.geo import IST
 
 REL_TOL = 0.015  # 1.5%: unit conversions and float noise
@@ -792,16 +793,13 @@ def older_audit_sentence(lang: str, facts: HonestyFacts, cite: str = "") -> str:
     in `lang`, when the audit judged an earlier rule than the scars' own; "" otherwise."""
     if not _audit_not_current(facts):
         return ""
-    rule, day = facts.audit_rule, None
+    day = None
     if m := _ISO_DATE.match(facts.audit_date or ""):
         y, mo, d = int(m[1]), int(m[2]), int(m[3])
         if 1 <= mo <= 12:
             day = f"{d} {_MONTH_NAMES.get(lang, _MONTH_NAMES['en'])[mo - 1]} {y}"
-    if lang == "hi":
-        return f" यह जाँच{f' {day} को' if day else ''} पिछले नियम {rule} की थी, मौजूदा नियम की नहीं{cite}।"
-    if lang == "pa":
-        return f" ਇਹ ਜਾਂਚ{f' {day} ਨੂੰ' if day else ''} ਪਿਛਲੇ ਨਿਯਮ {rule} ਦੀ ਸੀ, ਮੌਜੂਦਾ ਨਿਯਮ ਦੀ ਨਹੀਂ{cite}।"
-    return f" That audit{f', of {day},' if day else ''} judged the earlier rule {rule}, not the current one{cite}."
+    words = audit_older_words(lang, facts.audit_rule, day)  # the brief's CSV says the same
+    return f" {words[:1].upper()}{words[1:]}{cite}{'।' if lang in ('hi', 'pa') else '.'}"
 
 
 def unseen_sentence(lang: str, facts: HonestyFacts) -> str | None:

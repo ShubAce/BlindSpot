@@ -121,9 +121,13 @@ RULE = BurnRule()
 # change the sentinel job rewrites the rows tile by tile: a rebuilt tile's whole scope (tile and
 # stage) is replaced in one transaction (jobs/sentinel.py store_tile), so a tile holds one version at
 # a time. Serving the previous version too keeps the tiles not rewritten yet on the map, instead of
-# blank, and counts nothing twice, whichever of the API deploy and the sentinel run comes first.
+# blank, and counts nothing twice. This needs the API deployed before the first sentinel run of a new
+# rule: an older API serves only its own version, so a rewritten tile would vanish from it.
 # The previous version can go once no row of it is left.
 SERVED_VERSIONS: tuple[str, ...] = (RULE.version, "s2burn-rules-2")
+# The rule versions that correct a smoke-hazy pass for haze before judging it (normalise_haze): a
+# hazy scar's case file says which way its values were read (GET /api/scars/{id} haze_corrected).
+HAZE_CORRECTED_VERSIONS: tuple[str, ...] = (RULE.version,) if RULE.haze_norm else ()
 
 # Visual audit of the stored clusters (validation record, not input data). On 2026-10-31 the sentinel
 # module rendered pre/post true-colour and SWIR (B12-B8A-B4) chips straight from the Sentinel-2 COGs
@@ -168,6 +172,25 @@ AUDIT: dict[str, Any] = {
 }
 
 
+# Said beside the audit precision when the audit judged an earlier rule than the scars' own
+# (audit_summary() "current" False), in each language of the brief's CSV and the bulletin: {on} is
+# the audit's day in that language's phrase ("on", {day} in the caller's date style) and {rule} the
+# rule it judged. Each caller adds its own lead and end (api/routers/brief.py csv_header,
+# agent/verifier.py older_audit_sentence).
+AUDIT_OLDER: dict[str, dict[str, str]] = {
+    "en": {"words": "that audit{on} judged the earlier rule {rule}, not the current one", "on": ", of {day},"},
+    "hi": {"words": "यह जाँच{on} पिछले नियम {rule} की थी, मौजूदा नियम की नहीं", "on": " {day} को"},
+    "pa": {"words": "ਇਹ ਜਾਂਚ{on} ਪਿਛਲੇ ਨਿਯਮ {rule} ਦੀ ਸੀ, ਮੌਜੂਦਾ ਨਿਯਮ ਦੀ ਨਹੀਂ", "on": " {day} ਨੂੰ"},
+}
+
+
+def audit_older_words(lang: str, rule: object, day: object) -> str:
+    """AUDIT_OLDER in `lang` (English for any other) for the rule the audit judged and its day, as
+    the caller writes dates; day None leaves the day out."""
+    t = AUDIT_OLDER.get(lang, AUDIT_OLDER["en"])
+    return t["words"].format(on="" if day is None else t["on"].format(day=day), rule=rule)
+
+
 def wilson_interval(k: int, n: int, z: float = 1.96) -> tuple[float, float] | None:
     """95 % Wilson score interval for a proportion k/n (well behaved at k = n, unlike k/n +- 2se)."""
     if n <= 0:
@@ -194,6 +217,16 @@ def audit_summary() -> dict[str, Any]:
                               "recall_same_window_ci95": wilson_interval(r["scar_same_window"], r["viirs_detections"])}
     out["current"] = AUDIT["model_version"] == RULE.version
     return out
+
+
+AUDIT_IDENTITY = ("date", "model_version", "current")
+
+
+def audit_identity(audit: dict[str, Any], prefix: str = "") -> dict[str, Any]:
+    """Which rule an audit (audit_summary()) judged, and when: its date, model_version and current
+    (False when it judged an earlier rule than RULE: every statement of its precision must then say
+    so), each key with `prefix` (the headline's "audit_")."""
+    return {f"{prefix}{k}": audit.get(k) for k in AUDIT_IDENTITY}
 
 
 # --- indices ------------------------------------------------------------------------------------
@@ -271,17 +304,10 @@ STATE_FIELDS: dict[str, Any] = {
     "last_ndvi": np.float16,  # from the last clear pass that was not smoke-hazy
     "ndvi_day": np.uint16,  # ...and its day: haze lowers NDVI, so hazy passes never set it
     "last_nbr": np.float16,
-    # Every band of the last pass that was not hazy: the haze reference. haze_check compares blue
-    # and SWIR-2 with it (blue rises under smoke, SWIR-2 barely moves); normalise_haze all nine.
-    "clear_b02": np.float16,
-    "clear_b03": np.float16,
-    "clear_b04": np.float16,
-    "clear_b06": np.float16,
-    "clear_b07": np.float16,
-    "clear_b08": np.float16,
-    "clear_b8a": np.float16,
-    "clear_b11": np.float16,
-    "clear_b12": np.float16,
+    # Every band of the last pass that was not hazy (clear_b02 ... clear_b12): the haze reference.
+    # haze_check compares blue and SWIR-2 with it (blue rises under smoke, SWIR-2 barely moves);
+    # normalise_haze all nine.
+    **{f"clear_{b.lower()}": np.float16 for b in NORM_BANDS},
     "harv_after": np.uint16,  # last clear day with standing crop before the harvest
     "harv_before": np.uint16,  # first clear day showing it harvested (0 = not seen harvested)
     "burn_day": np.uint16,  # pass on which a burn was detected (0 = never)
@@ -379,7 +405,15 @@ def haze_check(
     return bool(rise is not None and rise > rule.haze_b02_rise), (round(rise, 4) if rise is not None else None)
 
 
-def _cell_weights(n: int, cell: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def _cell_px(rule: BurnRule, res_m: int) -> int:
+    """The haze correction's cell (norm_cell_m) in pixels at a resolution."""
+    return max(1, round(rule.norm_cell_m / res_m))
+
+
+Weights = tuple[np.ndarray, np.ndarray, np.ndarray]  # _cell_weights along one axis
+
+
+def _cell_weights(n: int, cell: int) -> Weights:
     """Bilinear interpolation between cell centres along one axis of n pixels: for each pixel the
     two cells it lies between and the weight of the second (clamped to the outer cells)."""
     starts = np.arange(0, n, cell)
@@ -390,9 +424,9 @@ def _cell_weights(n: int, cell: int) -> tuple[np.ndarray, np.ndarray, np.ndarray
     return i0, i1, (frac - i0).astype(np.float32)
 
 
-def _interpolate(grid: np.ndarray, shape: tuple[int, int], cell: int) -> np.ndarray:
-    r0, r1, wr = _cell_weights(shape[0], cell)
-    c0, c1, wc = _cell_weights(shape[1], cell)
+def _interpolate(grid: np.ndarray, rows_w: Weights, cols_w: Weights) -> np.ndarray:
+    r0, r1, wr = rows_w
+    c0, c1, wc = cols_w
     rows = grid[r0] * (1 - wr)[:, None] + grid[r1] * wr[:, None]
     return (rows[:, c0] * (1 - wc)[None, :] + rows[:, c1] * wc[None, :]).astype(np.float32)
 
@@ -426,7 +460,7 @@ def normalise_haze(
     unchanged pixels or an offset beyond norm_max_offset (a bad fit) takes the median of the fitted
     cells; with fewer than norm_min_cells fitted cells the pass is used as it is. Returns (offset
     grid per band, cells x cells, or None for "use the pass raw"; stats)."""
-    cell = max(1, round(rule.norm_cell_m / res_m))
+    cell = _cell_px(rule, res_m)
     n_r, n_c = math.ceil(valid.shape[0] / cell), math.ceil(valid.shape[1] / cell)
     ref = {b: a[f"clear_{b.lower()}"] for b in NORM_BANDS}
     # every band read now and on the reference: one missing value would make a band's median, and
@@ -473,10 +507,14 @@ def normalise_haze(
 def apply_haze_offsets(refl: dict[str, np.ndarray], grid: dict[str, np.ndarray], res_m: int,
                        rule: BurnRule = RULE) -> dict[str, np.ndarray]:
     """The pass minus its haze offsets (interpolated between cell centres), floored at norm_floor."""
-    cell = max(1, round(rule.norm_cell_m / res_m))
+    cell = _cell_px(rule, res_m)
+    weights: dict[tuple[int, ...], tuple[Weights, Weights]] = {}  # by band shape: once for a pass's bands
     out = dict(refl)
     for b, g in grid.items():
-        out[b] = np.maximum(refl[b] - _interpolate(g, refl[b].shape, cell), np.float32(rule.norm_floor))
+        shape = refl[b].shape
+        if (w := weights.get(shape)) is None:
+            w = weights[shape] = (_cell_weights(shape[0], cell), _cell_weights(shape[1], cell))
+        out[b] = np.maximum(refl[b] - _interpolate(g, *w), np.float32(rule.norm_floor))
     return out  # np.maximum keeps NaN (no data) as NaN
 
 
@@ -597,7 +635,7 @@ def apply_pass(
         a["ndvi_day"][valid] = day
     if not hazy:
         for b in NORM_BANDS:
-            a[f"clear_{b.lower()}"][valid] = refl[b][valid]
+            np.copyto(a[f"clear_{b.lower()}"], refl[b], casting="same_kind", where=valid)
     stats.update(burn_px=int(burn.sum()), harvested_px=int(harvested_now.sum()),
                  tilled_px=int(tilled_now.sum()))
     return PassResult(True, None, stats, burn, pre_day, pre_item, post_item, evidence, hazy)

@@ -1,4 +1,4 @@
-import { auditOlderText } from '@/components/case/audit';
+import { auditBrackets } from '@/components/case/audit';
 import { LoadFailed } from '@/components/pwa/LoadFailed';
 import { REFERENCE_SITE } from '@/lib/aoi';
 import { dateIST, metricText, number, percent } from '@/lib/format';
@@ -53,8 +53,6 @@ export async function HeroFigure() {
   if (!u?.available || u.unseen_share == null) {
     return <p className={s.honest}>{u?.reason ?? 'No burn scar has been checked against the fire alerts yet, so there is no unseen share to show.'}</p>;
   }
-  const ci = u.precision_ci95;
-  const older = auditOlderText(u); // an audit of an earlier rule says so
   return (
     <>
       <p className={s.figure}>
@@ -65,7 +63,7 @@ export async function HeroFigure() {
       </p>
       <p className={s.figureAudit}>
         {u.precision != null
-          ? `Audited precision ${percent(u.precision)} (95% CI ${ci ? `${percent(ci[0])}–${percent(ci[1])}` : 'not given'}${u.precision_n != null ? `, n = ${number(u.precision_n)}` : ''}${older ? `; ${older}` : ''}). Some candidates are tilled or flooded fields, so read the share as an upper bound.`
+          ? `Audited precision ${percent(u.precision)}${auditBrackets(u, { n: number, ciMissing: 'not given' })}. Some candidates are tilled or flooded fields, so read the share as an upper bound.`
           : 'This share has not been audited yet: read it as an upper bound.'}
       </p>
     </>

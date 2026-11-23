@@ -45,9 +45,15 @@ from sqlalchemy.orm import Session
 from starlette.responses import Response
 
 from blindspot.analytics import risk as risk_model
-from blindspot.analytics.burnscar import RULE, SERVED_VERSIONS, audit_summary
+from blindspot.analytics.burnscar import (
+    RULE,
+    SERVED_VERSIONS,
+    audit_identity,
+    audit_older_words,
+    audit_summary,
+)
 from blindspot.api import SessionDep, respond
-from blindspot.api.cache import cached_route, get_or_build
+from blindspot.api.cache import INPROCESS_TTL_S, cached_route, get_or_build
 from blindspot.geo import IST
 from blindspot.models.risk import latest_backtest_summary, latest_run
 from blindspot.provenance import SourceRef, latest_refs
@@ -62,7 +68,7 @@ SOURCE_KEYS = ["stac_e84", "s2_cog", "worldcover", "firms", "boundaries", "openm
 TOP_SHARE = risk_model.BANDS[2][0]  # 0.10: the "top 1%", "top 1-5%" and "top 5-10%" bands of GET /api/risk
 VILLAGE_KM = 3.0  # jobs/sentinel.py VILLAGE_MAX_KM (not imported: that module loads rasterio)
 WEB_BASE_URL = "https://www.blindspotin.tech"  # the public website; /case/<id> is a scar's case file
-CACHE_TTL_S = 600  # the scars and the ranks change once a day: keep a built answer 10 minutes per instance
+CACHE_TTL_S = INPROCESS_TTL_S  # the scars and ranks change once a day: a built answer is kept 10 min per instance
 MAX_AGE_S = 300  # browsers; the CDN keeps an answer until the DAILY clock ticks (api/cache.py CDN_RULES)
 RANK_NOT_PROBABILITY = "A rank says where to look first; it is not the chance that a field will burn."
 
@@ -163,8 +169,7 @@ def candidate_unseen_audit() -> dict[str, Any]:
     lo, hi = unseen["precision_ci95"]
     return {
         "precision": unseen["precision"], "precision_ci95": [lo, hi], "audited": unseen["audited"],
-        "method": audit.get("method"), "date": audit.get("date"), "current": audit.get("current"),
-        "model_version": audit.get("model_version"),
+        "method": audit.get("method"), **audit_identity(audit),
         "reading": "precision = share of audited candidate unseen burns that were real burns; so every "
                    "count and area of candidate unseen burns is an upper bound",
     }
@@ -503,12 +508,6 @@ CSV_AUDIT: dict[str, str] = {
     "hi": "ऊपरी सीमा: {n} संभावित मामलों की जाँच में {p} सचमुच जले हुए निकले, 95% CI {lo}-{hi}",
     "pa": "ਉਪਰਲੀ ਹੱਦ: {n} ਸੰਭਾਵੀ ਮਾਮਲਿਆਂ ਦੀ ਜਾਂਚ ਵਿੱਚ {p} ਸੱਚਮੁੱਚ ਸੜੇ ਹੋਏ ਨਿਕਲੇ, 95% CI {lo}-{hi}",
 }
-# Added to CSV_AUDIT when the audit judged an earlier rule than the scars' own (audit "current" false).
-CSV_AUDIT_OLDER: dict[str, str] = {
-    "en": "; that audit, of {date}, judged the earlier rule {rule}, not the current one",
-    "hi": "; यह जाँच {date} को पिछले नियम {rule} की थी, मौजूदा नियम की नहीं",
-    "pa": "; ਇਹ ਜਾਂਚ {date} ਨੂੰ ਪਿਛਲੇ ਨਿਯਮ {rule} ਦੀ ਸੀ, ਮੌਜੂਦਾ ਨਿਯਮ ਦੀ ਨਹੀਂ",
-}
 # Excel and LibreOffice run a cell that starts with one of these as a formula (CSV injection).
 FORMULA_START = ("=", "+", "-", "@", "\t", "\r")
 UNNAMED: dict[str, str] = {
@@ -530,8 +529,8 @@ def csv_header(lang: Lang, audit: dict[str, Any], win: Window) -> list[str]:
     the count and area columns."""
     lo, hi = audit["precision_ci95"]
     qualification = CSV_AUDIT[lang].format(n=audit["audited"], p=_pct(audit["precision"]), lo=_pct(lo), hi=_pct(hi))
-    if audit.get("current") is False:
-        qualification += CSV_AUDIT_OLDER[lang].format(date=audit.get("date"), rule=audit.get("model_version"))
+    if audit.get("current") is False:  # an audit of an earlier rule, named with its day as it is stored
+        qualification += "; " + audit_older_words(lang, audit.get("model_version"), str(audit.get("date")))
     return [cell.format(first=win.first, last=win.last, audit=qualification) for cell in CSV_HEADER[lang]]
 
 

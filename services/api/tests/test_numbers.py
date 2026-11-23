@@ -38,7 +38,8 @@ def test_headline_scar_areas_keep_two_decimals(monkeypatch: pytest.MonkeyPatch) 
     # GET /api/scars/summary (0.01) gives 911,372.48 and the live map 9,11,372.
     monkeypatch.setattr(headline, "latest_refs", lambda *_a, **_k: [])
     sums = {"clusters": 455825, "area_ha": 911372.4812, "unseen_clusters": 369194, "unseen_area_ha": 669500.8449,
-            "checked_area_ha": 911372.4812, "first_pass": None, "last_pass": None, "districts": 46}
+            "checked_area_ha": 911372.4812, "first_pass": None, "last_pass": None, "districts": 46,
+            "versions": [headline.RULE.version]}
     block, _ = headline.unseen_burns(_Session(sums))  # type: ignore[arg-type]
     assert block["area_ha"] == 911372.48 and block["checked_area_ha"] == 911372.48
     assert block["unseen_area_ha"] == 669500.84

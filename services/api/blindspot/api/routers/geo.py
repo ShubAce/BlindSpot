@@ -30,6 +30,7 @@ from starlette.responses import Response
 
 from blindspot.api import BBoxDep, SessionDep, respond
 from blindspot.api.cache import (
+    INPROCESS_TTL_S,
     cached_route,
     canonical_key,
     code_version,
@@ -134,7 +135,7 @@ _STATE_FILTER = """
 
 
 @router.get("/boundaries")
-@cached_route(ttl=600)  # 1.4 MB of GeoJSON: keep the serialised bytes, not just the payload
+@cached_route(ttl=INPROCESS_TTL_S)  # 1.4 MB of GeoJSON: keep the serialised bytes, not just the payload
 def boundaries(
     session: SessionDep,
     bbox: BBoxDep,

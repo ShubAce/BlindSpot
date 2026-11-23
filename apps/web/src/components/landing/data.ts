@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { cache } from 'react';
+
 import { PATHS } from '@/lib/api';
 import { REFERENCE_SITE } from '@/lib/aoi';
 import { serverGet, type ApiResult } from '@/lib/api-server';
@@ -71,9 +73,10 @@ export type SlipScope = { passes: string[] } & ({ kind: 'pass'; matched: number 
  * The slips' list: the newest pass (the UTC day of the newest list's first scar) at the same
  * confidence, largest first (`order=area`), so a cut list keeps the pass's largest scars. An answer
  * that does not echo `order: 'area'` was listed newest first; the newest list then stands in, and
- * its scope says what it is.
+ * its scope says what it is. Worked out once per page render (React cache): the showcase's sections
+ * and its case files all ask for it.
  */
-export async function getSlipList(): Promise<{ list: ApiResult<ScarList>; scope: SlipScope }> {
+export const getSlipList = cache(async (): Promise<{ list: ApiResult<ScarList>; scope: SlipScope }> => {
   const newest = await getUnseenList();
   const rows = newest.ok ? newest.data.features.features : [];
   if (rows.length) {
@@ -84,7 +87,7 @@ export async function getSlipList(): Promise<{ list: ApiResult<ScarList>; scope:
     }
   }
   return { list: newest, scope: { kind: 'newest', passes: passesOf(rows), returned: rows.length } };
-}
+});
 
 /** The IST dates of the listed scars' passes, each once. */
 const passesOf = (rows: ScarList['features']['features']) => [...new Set(rows.map((f) => dateIST(f.properties.burn_before)))];

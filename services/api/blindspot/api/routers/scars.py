@@ -27,7 +27,12 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from blindspot.analytics.burnscar import RULE, SERVED_VERSIONS, audit_summary
+from blindspot.analytics.burnscar import (
+    HAZE_CORRECTED_VERSIONS,
+    RULE,
+    SERVED_VERSIONS,
+    audit_summary,
+)
 from blindspot.api import BBoxDep, SessionDep, respond
 from blindspot.api.cache import (
     cached_route,
@@ -235,20 +240,22 @@ def scars(
                                order),
         live_sources=lambda: _sources(session),
         guard=limit > GUARD_LIMIT and not _website_family(bbox, since, until, district, unseen, limit,
-                                                          min_confidence))
+                                                          min_confidence, order))
 
 
 # The live map's list (data.ts SCAR_QUERY) with one replay day or one clicked district: a family
 # the website walks through (Play steps a day every 1.4 s), so it is never refused as novel. Its
 # keys are bounded: `until` up to today (later dates are the plain list), real district names.
+# Newest first only: the website never asks for these largest first, which sorts the whole selection.
 WEBSITE_LIST = {"limit": 2500, "min_confidence": 0.5}
 
 
 def _website_family(
     bbox: tuple[float, float, float, float] | None, since: dt.date | None, until: dt.date | None,
-    district: str | None, unseen: bool | None, limit: int, min_confidence: float | None,
+    district: str | None, unseen: bool | None, limit: int, min_confidence: float | None, order: str,
 ) -> bool:
-    return (limit == WEBSITE_LIST["limit"] and min_confidence == WEBSITE_LIST["min_confidence"]
+    return (order == "newest"
+            and limit == WEBSITE_LIST["limit"] and min_confidence == WEBSITE_LIST["min_confidence"]
             and tuple(bbox or ()) == tuple(parse_bbox(None)) and since is None and unseen is None
             and not (until and district))
 
@@ -782,6 +789,8 @@ def scar(scar_id: int, session: SessionDep) -> ORJSONResponse:
                                          "ndvi_pre", "ndvi_post")},
         "matched_at": row["matched_at"],
         "model_version": row["model_version"],
+        # addition: whether that rule corrected a hazy pass for haze before judging it (with `hazy`)
+        "haze_corrected": row["model_version"] in HAZE_CORRECTED_VERSIONS,
         "created_at": row["created_at"],
     }
     bbox = _chip_bbox(geometry, row["lat"])

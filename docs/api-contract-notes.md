@@ -394,7 +394,9 @@ There is no `hours` parameter. A pass counts when the site lies inside the instr
   left out, and `with_development_sample` `{audited, burnt, precision, precision_ci95}` the pooled
   figure, for the record only.
 - **GET /api/scars/{id}** returns the case file:
-  - `case` holds the properties plus `geometry`.
+  - `case` holds the properties plus `geometry`. `case.haze_corrected` (added 2026-11-24) is true
+    when the scar's rule (`case.model_version`) corrects a smoke-hazy pass for haze before judging
+    it (s2burn-rules-4h) and false for s2burn-rules-2: with `hazy`, it says how the values were read.
   - `imagery: {bbox, pre: {date, datetime, item_id, collection, cloud_pct, truecolor_url,
     swir_url, nbr_url}, post: {...}}`.
   - `fires_nearby: [{id, source, satellite, acq_utc, lat, lon, confidence, frp_mw, distance_m,
