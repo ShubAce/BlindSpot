@@ -404,8 +404,10 @@ def normalise_haze(
     """Per-band offsets that bring a hazy pass to the radiometry of the last clear pass.
 
     Smoke and smog add path radiance, strongly in blue, less in red and near infrared, little in
-    short-wave infrared. Seen through haze a burnt field darkens less in B8A and looks brighter
-    (TBI), so it fails the burn tests. The reference is each pixel's view on the last pass that
+    short-wave infrared. Seen through haze a burnt field looks brighter (TBI) and less charred
+    (BAIS2, through B04) in the visible bands, so it fails the char test; its NIR darkening changes
+    little (the fitted B8A offset was <= 0.009 in 31 of the 32 hazy block-passes of the evaluation,
+    0.022 in one). The reference is each pixel's view on the last pass that
     haze_check called clear (clear_*), never a corrected view, so corrections do not chain. Per
     cell of norm_cell_m (~5 km; haze is patchy within a 20 km block):
       1. unchanged ground (pseudo-invariant pixels): clear now and with SWIR-2, SWIR-1 and NIR
@@ -427,8 +429,11 @@ def normalise_haze(
     cell = max(1, round(rule.norm_cell_m / res_m))
     n_r, n_c = math.ceil(valid.shape[0] / cell), math.ceil(valid.shape[1] / cell)
     ref = {b: a[f"clear_{b.lower()}"] for b in NORM_BANDS}
+    # every band read now and on the reference: one missing value would make a band's median, and
+    # through minimum.accumulate every longer band's offset, NaN
+    finite = np.logical_and.reduce([np.isfinite(refl[b]) & np.isfinite(ref[b]) for b in NORM_BANDS])
     with np.errstate(invalid="ignore"):
-        stable = (valid & np.isfinite(ref["B02"])
+        stable = (valid & finite
                   & (np.abs(refl["B12"] - ref["B12"]) < rule.haze_stable_b12)
                   & (np.abs(refl["B11"] - ref["B11"]) < rule.norm_stable_b11)
                   & (np.abs(refl["B8A"] - ref["B8A"]) < rule.norm_stable_b8a))
@@ -560,9 +565,10 @@ def apply_pass(
         ndvi_day = a["ndvi_day"].astype(np.int32)
         ndvi_gap = np.where(ndvi_day > 0, day - ndvi_day, 10_000)
         comparable = valid & (ndvi_day > 0) & (ndvi_gap <= harvest.max_gap_days)
-        # A burn seen since the NDVI reference (on a hazy pass, which leaves the NDVI memory alone)
+        # A burn seen after the NDVI reference (on a hazy pass, which leaves the NDVI memory alone)
         # explains the NDVI drop: it is not a harvest, and the burnt field is not unburnt residue.
-        comparable &= ~((burn_day > 0) & (burn_day >= ndvi_day))
+        # (A burn on the reference pass itself is already in the reference NDVI.)
+        comparable &= ~((burn_day > 0) & (burn_day > ndvi_day))
         harvested_now = harvested_between(pre_ndvi, post_ndvi, pre_b11, refl["B11"], comparable, harvest)
         a["harv_after"][harvested_now] = a["ndvi_day"][harvested_now]
         a["harv_before"][harvested_now] = day
