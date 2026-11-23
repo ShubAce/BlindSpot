@@ -814,9 +814,11 @@ def _replace_rows(session: Session, model: type[BurnCluster | HarvestCluster], s
 
     A stored row inside the scope that is the same thing as a new row (IDENTITY: for a scar its
     tile, stage, window and outline; otherwise every column the run computes, i.e. every key of
-    `rows` but fetch_id) keeps its id, so links to it keep working, and its fire verdict, place
-    names and risk score. If the columns the run computes came out the same, the row is not
-    touched; if not (a new confidence formula or rule version), those columns are updated in place.
+    `rows` but fetch_id) keeps its id, so links to it keep working, and what later steps wrote onto
+    it (a scar's fire verdict and place names; a harvested field's place names and risk score). If
+    the columns the run computes came out the same, the row is not touched; if not (a new
+    confidence formula or rule version), those columns and fetch_id are updated in place, and
+    created_at keeps the time the row was first stored.
     Stored rows that nothing matched are deleted; new rows that nothing matched are named in a
     temporary copy of the table (same columns, defaults and id sequence), so each is written once,
     then inserted. (Naming rows after they landed wrote every new row three more times.)

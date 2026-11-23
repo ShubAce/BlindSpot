@@ -112,8 +112,9 @@ RULE = BurnRule()
 # a3, was the development sample: its one false positive (#2906, a flooded field) is what the
 # look-alike filter (BurnRule.keeps) was designed on, and a3 was then re-scored under that filter, so
 # its 5 remaining candidate unseen clusters (all burnt) cannot test the rule; with them it read
-# 20/23. (a3's 4 FIRMS-confirmed clusters had no false positive for the filter to remove, so the
-# FIRMS-confirmed count is unchanged.)
+# 20/23. (a3's 4 FIRMS-confirmed clusters, all burnt, had no false positive for the filter to remove,
+# so the FIRMS-confirmed count keeps them: 10/12. The held-out samples alone give 6/8: h1 4/4,
+# f1 1/2, g1 1/2.)
 AUDIT: dict[str, Any] = {
     "date": "2026-10-31",
     "model_version": "s2burn-rules-2",
