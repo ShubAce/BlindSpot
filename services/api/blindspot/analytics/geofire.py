@@ -29,9 +29,9 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Iterable, Sequence
-from itertools import pairwise
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
+from itertools import pairwise
 from typing import Any
 
 import numpy as np
@@ -724,6 +724,11 @@ def ist_minutes(t: datetime) -> float:
     return local.hour * 60 + local.minute + local.second / 60
 
 
+def ist_date(t: datetime) -> date:
+    """The IST calendar day of a moment, whatever time zone the datetime carries."""
+    return (t.astimezone(UTC) + IST_OFFSET).date()
+
+
 def merge_intervals(intervals: Iterable[tuple[int, int]]) -> list[tuple[int, int]]:
     """Merge overlapping [start, end] minute-of-day intervals."""
     out: list[list[int]] = []
@@ -814,7 +819,7 @@ def outside_shares(
     total = sum(count for _, count in slots)
     by_day: dict[Any, list[PolarPass]] = {}
     for p in passes:
-        by_day.setdefault((p.start + IST_OFFSET).date(), []).append(p)
+        by_day.setdefault(ist_date(p.start), []).append(p)
     out = []
     for pad in pads:
         union = window_spans(polar_windows(passes, pad))
@@ -823,7 +828,7 @@ def outside_shares(
         for t, count in slots:
             m = ist_minutes(t)
             outside_union += count * (1 - scan_overlap(m, union))
-            outside_day += count * (1 - scan_overlap(m, day_spans.get((t + IST_OFFSET).date(), [])))
+            outside_day += count * (1 - scan_overlap(m, day_spans.get(ist_date(t), [])))
         out.append({
             "pad_min": pad,
             "union": round(outside_union / total, 4) if total else None,

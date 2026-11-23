@@ -12,7 +12,7 @@ Fixtures under tests/fixtures/geostationary are real recordings:
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta, timezone
 from pathlib import Path
 
 import numpy as np
@@ -252,6 +252,11 @@ def test_window_accounting_adds_up() -> None:
     unions = [r["union"] for r in shares]
     assert unions == sorted(unions, reverse=True)
     assert all(r["per_day"] >= r["union"] for r in shares)
+    # The same moments carried in IST (as a non-UTC database session returns them) group the same.
+    ist = timezone(gf.IST_OFFSET)
+    assert gf.ist_date(datetime(2026, 11, 17, 20, 0, tzinfo=ist)) == date(2026, 11, 17)
+    in_ist = [(s.astimezone(ist), c) for s, c in slots]
+    assert gf.outside_shares(in_ist, [p, other_day], (0, 5, 10, 15)) == shares
 
 
 def test_diurnal_helpers() -> None:
@@ -339,6 +344,33 @@ def test_endpoints_follow_the_contract(stored) -> None:
         assert missing.status_code == 404
 
 
+def test_endpoints_answer_before_the_job_made_the_static_tables(
+    stored, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Production runs the API with INIT_DB_ON_STARTUP=false and only the jobs create tables, so
+    right after a deploy the static-source tables can be missing: the endpoints still answer."""
+    from blindspot.api.main import create_app
+    from blindspot.config import get_settings
+
+    monkeypatch.setenv("INIT_DB_ON_STARTUP", "0")
+    get_settings.cache_clear()
+    with session_scope() as session:
+        session.execute(text("ALTER TABLE geo_fire_static_pixel RENAME TO geo_fire_static_pixel_x"))
+    try:
+        with TestClient(create_app()) as client:
+            r = client.get("/api/geostationary/diurnal", params={"days": 7})
+            assert r.status_code == 200
+            assert r.json()["static_sources"]["pixels_flagged"] is None
+            r = client.get("/api/geostationary/latest", params={"include_static": True})
+            assert r.status_code == 200 and r.json()["fires"]["features"]
+    finally:
+        with session_scope() as session:
+            session.execute(
+                text("ALTER TABLE geo_fire_static_pixel_x RENAME TO geo_fire_static_pixel")
+            )
+        get_settings.cache_clear()
+
+
 # --- persistent heat sources ----------------------------------------------------------------------
 
 HISTORY_ALG = "test-history"  # GK-2A detections of earlier nights, as any algorithm version stored them
@@ -377,19 +409,21 @@ def static_setup(scan: gk2a.Scan, polys: dict):
             area=session.execute(text(
                 "SELECT ST_AsEWKT(ST_Multi(ST_Buffer(ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)"
                 "::geography, 400)::geometry))"), {"lon": lon, "lat": lat}).scalar_one(),
-            lat=lat, lon=lon, nights=5, night_detections=9, first_night=datetime(2026, 10, 1).date(),
-            last_night=datetime(2026, 10, 28).date(), computed_at=NOW,
+            lat=lat, lon=lon, nights=5, night_detections=9, first_night=date(2026, 10, 1),
+            last_night=date(2026, 10, 28), computed_at=NOW,
         ))  # fmt: skip
         hist = []
         for name, times in {
-            "plant": [datetime(2026, 10, 27, 20, 0), datetime(2026, 10, 28, 19, 30)],  # 01:30, 01:00 IST
-            "evening": [datetime(2026, 10, d, 13, 30) for d in (26, 27, 28)],  # 19:00 IST
-            "once": [datetime(2026, 10, 28, 20, 0), datetime(2026, 10, 28, 20, 10)],
+            "plant": [datetime(2026, 10, 27, 20, 0, tzinfo=UTC),
+                      datetime(2026, 10, 28, 19, 30, tzinfo=UTC)],  # 01:30, 01:00 IST
+            "evening": [datetime(2026, 10, d, 13, 30, tzinfo=UTC) for d in (26, 27, 28)],  # 19:00 IST
+            "once": [datetime(2026, 10, 28, 20, 0, tzinfo=UTC),
+                     datetime(2026, 10, 28, 20, 10, tzinfo=UTC)],
         }.items():
             r, c = rc[name]
             i, j = r - w.row0, c - w.col0
             hist += [
-                _history_pixel(r, c, t.replace(tzinfo=UTC), float(geom.lon[i, j]), float(geom.lat[i, j]))
+                _history_pixel(r, c, t, float(geom.lon[i, j]), float(geom.lat[i, j]))
                 for t in times
             ]
         session.add_all(hist)
@@ -405,7 +439,7 @@ def static_setup(scan: gk2a.Scan, polys: dict):
 def test_static_mask_flags_plants_not_evening_fires(scan: gk2a.Scan, polys: dict, static_setup) -> None:
     with session_scope() as session:
         ev = job.load_static_evidence(session, NOW)
-    assert ev.as_of_night == datetime(2026, 10, 30).date()
+    assert ev.as_of_night == date(2026, 10, 30)
     mask = job.StaticMasks(ev).for_scan(scan, static_setup["plain"].geom)
     assert set(mask.pixels[static_setup["plant"]]) == {"gk2a_night"}
     assert mask.pixels[static_setup["plant"]]["gk2a_night"]["nights"] == 2

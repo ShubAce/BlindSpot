@@ -134,11 +134,34 @@ def _validation(session: Session) -> dict[str, Any]:
     }
 
 
+def _static_tables_ready(session: Session) -> bool:
+    """Whether the job has created the static-source tables yet. Production runs the API with
+    INIT_DB_ON_STARTUP=false and only the jobs run init_db, so right after a deploy they can be
+    missing; the endpoints then answer with nothing flagged instead of failing."""
+    return bool(
+        session.execute(
+            text(
+                "SELECT to_regclass('geo_fire_static') IS NOT NULL "
+                "AND to_regclass('geo_fire_static_pixel') IS NOT NULL"
+            )
+        ).scalar_one()
+    )
+
+
 def _static_sources(
     session: Session, since: datetime, include: bool
 ) -> tuple[dict[datetime, dict[str, int]], dict[str, Any]]:
     """Fire pixels found on flagged persistent heat sources per slot and state, and the block that
     says what was left out (or, with include, added back)."""
+    if not _static_tables_ready(session):
+        return {}, {
+            "rule": gf.STATIC_RULE,
+            "included": include,
+            "pixels_flagged": None,
+            "pixels_flagged_by_rule": {},
+            "pixel_hours": None,
+            "reason": "persistent heat sources not built yet (job geostationary)",
+        }
     rows = session.execute(
         select(GeoFireStaticPixel.slot_utc, GeoFireStaticPixel.state, func.count())
         .where(
@@ -199,8 +222,11 @@ def diurnal(
                 SimpleNamespace(
                     t_utc=s.t_utc,
                     count=s.count + sum(extra.values()),
-                    count_pb=(s.count_pb or 0) + extra.get("Punjab", 0),
-                    count_hr=(s.count_hr or 0) + extra.get("Haryana", 0),
+                    # a state's count stays None (unknown) unless flagged pixels are added to it
+                    count_pb=((s.count_pb or 0) + extra["Punjab"])
+                    if "Punjab" in extra else s.count_pb,
+                    count_hr=((s.count_hr or 0) + extra["Haryana"])
+                    if "Haryana" in extra else s.count_hr,
                     count_static=sum(static.get(s.slot_utc, {}).values()),
                     clear_frac=s.clear_frac,
                 )
@@ -330,11 +356,13 @@ def _interpretation(p: dict[str, Any]) -> list[str]:
             "counts are not reliable."
         )
     if p.get("share_outside_polar_windows") is not None:
-        shares = [x for b in p.get("outside_share_by_pad") or [] for x in (b["union"], b["per_day"])
-                  if x is not None]  # fmt: skip
+        # Pads under 10 minutes are left out of the spread: with none, a pass's ~2-minute detection
+        # span is compared with 10-minute scans and nearly everything falls outside by construction.
+        shares = [x for b in p.get("outside_share_by_pad") or [] if b["pad_min"] >= 10
+                  for x in (b["union"], b["per_day"]) if x is not None]  # fmt: skip
         spread = (
-            f" ({_pct(min(shares))}-{_pct(max(shares))} with windows padded 0-15 minutes or "
-            "taken day by day)"
+            f" ({_pct(min(shares))}-{_pct(max(shares))} with windows padded 10-15 minutes, on one "
+            "clock or day by day)"
             if shares else ""
         )
         out.append(
@@ -366,7 +394,11 @@ def latest(
         bool, Query(description="also the pixels flagged as persistent heat sources")
     ] = False,
 ) -> Any:
-    """The newest analysed GK-2A scan (or the one asked for) and its fire pixels as GeoJSON."""
+    """The newest analysed GK-2A scan (or the one asked for) and its fire pixels as GeoJSON.
+
+    The scan's counts are as stored, for every confidence: count* leave flagged heat sources out
+    and count_static is what the fire test still found on them. min_confidence and include_static
+    change only the features (include_static adds the flagged pixels, with static=true)."""
     query = select(GeoFireSlot).where(
         GeoFireSlot.algorithm == gf.ALGORITHM_VERSION, GeoFireSlot.status == "ok"
     )
@@ -408,7 +440,7 @@ def latest(
         )
 
     features = features_of("geo_fire_pixel", "'static', false")
-    if include_static:
+    if include_static and _static_tables_ready(session):
         features += features_of("geo_fire_static_pixel", "'static', true, 'static_rules', rules")
     count_static = int((row.stats or {}).get("static_fires") or 0)
     ref = ref_for_fetch(session, row.fetch_id)
