@@ -55,8 +55,10 @@ nothing else. Files are chip_001.png ... in shuffled order; the key goes to a se
 
 Run from services/api:
   uv run python scripts/burn_haze_eval.py replay <out> [W1 ...] [--db URL] [--cache DIR]
-  uv run python scripts/burn_haze_eval.py chips <out> <chips_dir> <key_json>
+      [--shared-cache DIR ...] [--res-cache DIR]
+  uv run python scripts/burn_haze_eval.py chips <out> <chips_dir> <key_json> [same cache options]
   uv run python scripts/burn_haze_eval.py summary <out>
+  uv run python scripts/burn_haze_eval.py links <out>    # case links across the rule change
 """
 
 from __future__ import annotations
@@ -97,9 +99,10 @@ CAND = RULE
 BASE = dataclasses.replace(RULE, haze_norm=False, pixel_version="s2burn-rules-1", version="s2burn-rules-2")
 RULES = {"base": BASE, "cand": CAND}
 DEFAULT_DB = "postgresql+psycopg://blindspot:blindspot@localhost:5434/blindspot_eval"
-SCRATCH = Path(r"C:/Users/shubh/AppData/Local/Temp/claude/4e86b8c1d039525b/f34d730e-7696-47d0-946a-e4f2c89a45cf/scratchpad")
-SHARED_CACHES = [SCRATCH / "burnscars" / "cache"]  # read-only: 20 m production blocks, <tile>/r_c/<day>.npz
-RES_CACHE = SCRATCH / "res" / "cache"  # read-only: 20 m windows of the 43REN cases (burn_res_replay.py)
+# Read-only caches of earlier replays, reused instead of reading the scenes again (set by main from
+# --shared-cache and --res-cache):
+SHARED_CACHES: list[Path] = []  # 20 m production blocks, <tile>/r<row>_c<col>/<day>.npz
+RES_CACHE: Path | None = None  # 20 m windows of the 43REN cases (burn_res_replay.py); the 40 m windows need it
 START, END = "2026-10-01", "2026-11-22T23:59:59"
 PRE, POST = dt.date(2026, 11, 17), dt.date(2026, 11, 22)
 VISIBLE = {"bais2_min": 0.70, "tbi_max": 0.40, "d_b12": 0.02, "d_b8a": 0.04}  # as burn_res_replay.VISIBLE
@@ -341,6 +344,10 @@ def replay_window(w: Win, out: Path, cache: Path, areas: dict[str, Any]) -> dict
         "kept_clusters_anchor_in_window": {k: sum(inner_box.contains(job._anchor(c["geom"])) for c in kept[k])
                                            for k in RULES},
         "hazy_block_passes": len(norm_log), "normalised_block_passes": sum(bool(x.get("applied")) for x in norm_log),
+        # applied with a non-zero offset somewhere: a pass whose every fitted cell was too hazy is
+        # "applied" with zero offsets, i.e. judged raw
+        "corrected_block_passes": sum(bool(x.get("applied")) and (x.get("b02_offset_max") or 0) > 0
+                                      for x in norm_log),
         "normalisation": norm_log,
         "timing": {k: (round(v, 2) if isinstance(v, float) else v) for k, v in timing.items()},
     }
@@ -399,6 +406,8 @@ def visible_check(w: Win, grid: stac.TileGrid, inner: tuple[float, ...], wshape:
                     dst[k][drs, dcs] = src[k][rs, cs].astype(np.float32)
         scope20 = np.isfinite(post["valid"])
     else:  # 40 m stage: the 20 m reads cached by burn_res_replay.py over the case's outer window
+        if RES_CACHE is None:
+            raise SystemExit(f"{w.name} is a 40 m window: give --res-cache (burn_res_replay.py's 20 m reads)")
         key = next(p for p in (RES_CACHE / w.tile / "20m").iterdir()
                    if box(*[float(v) for v in p.name[1:].split("_")]).contains(box(*inner)))
         ox0, _, _, oy1 = (float(v) for v in key.name[1:].split("_"))
@@ -462,6 +471,58 @@ def replay(args: argparse.Namespace) -> None:
             replay_window(w, args.out, cache, areas)
 
 
+def links(args: argparse.Namespace) -> None:
+    """Case links across the rule change, from the replays' clusters (all blocks of each window). A
+    rules-2 scar keeps its id when a rules-4h scar has its identity (pre and post pass, outline:
+    jobs/sentinel.py IDENTITY); else jobs/sentinel.py _FORWARD_SQL forwards it to the rules-4h scar
+    of the same post pass that overlaps it most, else (since the fallback) to one of another post
+    pass within rearm_days covering at least FORWARD_MOVED_SHARE of it; else its link answers 404."""
+    out: dict[str, Any] = {"forward_moved_share": job.FORWARD_MOVED_SHARE, "rearm_days": RULE.rearm_days}
+    total: dict[str, int] = defaultdict(int)
+    for w in WINDOWS:
+        p = args.out / w.name / "clusters.json"
+        if not p.exists():
+            continue
+        cl = json.loads(p.read_text())["clusters"]
+        base = [c for c in cl if c["rule"] == "base"]
+        cand = [c for c in cl if c["rule"] == "cand"]
+        geoms = [shapely.from_wkt(c["geom"]) for c in cand]
+        tree = shapely.STRtree(geoms)
+        same_id = {(c["pre"], c["post"], c["geom"]) for c in cand}
+        n = {"rules2_scars": len(base), "kept_id": 0, "forwarded_same_pass": 0, "forwarded_moved_pass": 0,
+             "lost_moved_below_share": 0, "lost_no_overlap_within_rearm": 0}
+        for b in base:
+            if (b["pre"], b["post"], b["geom"]) in same_id:
+                n["kept_id"] += 1
+                continue
+            g = shapely.from_wkt(b["geom"])
+            post = dt.date.fromisoformat(b["post"])
+            same = moved = 0.0
+            for i in tree.query(g):
+                share = geoms[i].intersection(g).area / g.area if g.area else 0.0
+                days = abs((dt.date.fromisoformat(cand[i]["post"]) - post).days)
+                if days == 0:
+                    same = max(same, share)
+                elif days <= RULE.rearm_days:
+                    moved = max(moved, share)
+            if same > 0:
+                n["forwarded_same_pass"] += 1
+            elif moved >= job.FORWARD_MOVED_SHARE:
+                n["forwarded_moved_pass"] += 1
+            elif moved > 0:
+                n["lost_moved_below_share"] += 1
+            else:
+                n["lost_no_overlap_within_rearm"] += 1
+        n["lost_before_fallback"] = len(base) - n["kept_id"] - n["forwarded_same_pass"]
+        n["lost_after_fallback"] = n["lost_before_fallback"] - n["forwarded_moved_pass"]
+        out[w.name] = n
+        for k, v in n.items():
+            total[k] += v
+    out["total"] = dict(total)
+    (args.out / "links.json").write_text(json.dumps(out, indent=1))
+    print(json.dumps(out, indent=1))
+
+
 def summary(args: argparse.Namespace) -> None:
     rows = []
     by_res: dict[int, dict[str, float]] = defaultdict(lambda: defaultdict(float))
@@ -472,7 +533,8 @@ def summary(args: argparse.Namespace) -> None:
         r = json.loads(p.read_text())
         rows.append({k: r.get(k) for k in ("window", "tile", "res_m", "baseline_ha", "candidate_ha", "added_ha",
                                            "removed_ha", "added_share_of_baseline", "added_pieces_ge_min_size",
-                                           "hazy_block_passes", "normalised_block_passes")}
+                                           "hazy_block_passes", "normalised_block_passes",
+                                           "corrected_block_passes")}
                     | {"meets_10pct": (r["added_share_of_baseline"] or 0) >= 0.10,
                        "visible_17_22": r.get("visible_17_22")})
         t = r["timing"]
@@ -718,14 +780,23 @@ def main() -> None:
     r.add_argument("--cache", type=Path, default=None)
     s = sub.add_parser("summary")
     s.add_argument("out", type=Path)
+    lk = sub.add_parser("links")
+    lk.add_argument("out", type=Path)
     c = sub.add_parser("chips")
     c.add_argument("out", type=Path)
     c.add_argument("chips_dir", type=Path)
     c.add_argument("key", type=Path)
     c.add_argument("--db", default=DEFAULT_DB)
     c.add_argument("--cache", type=Path, default=None)
+    for p in (r, c):
+        p.add_argument("--shared-cache", type=Path, action="append", default=[],
+                       help="a read-only cache of 20 m block reads (<tile>/r<row>_c<col>/<day>.npz); repeatable")
+        p.add_argument("--res-cache", type=Path, default=None,
+                       help="burn_res_replay.py's read-only cache of the 43REN case windows (40 m windows)")
     args = ap.parse_args()
-    {"replay": replay, "summary": summary, "chips": chips}[args.cmd](args)
+    global SHARED_CACHES, RES_CACHE
+    SHARED_CACHES, RES_CACHE = list(getattr(args, "shared_cache", [])), getattr(args, "res_cache", None)
+    {"replay": replay, "summary": summary, "chips": chips, "links": links}[args.cmd](args)
 
 
 if __name__ == "__main__":
