@@ -815,7 +815,11 @@ def _fill_backtest_factors(session: Session, history: History) -> None:
     factors depend only on where it lies and on t0, so they are computed once per field and first
     pass, and last season's once per field, then copied to every check: the same numbers as filling
     every check. On the 22 Nov snapshot that is 2.11M (field, t0) and 619,620 fields for 2,840,905
-    checks."""
+    checks. Measured there on a desktop's Postgres 18 (scripts/risk_neighbourhood_bench.py
+    --backtest): one geography fill per first pass, as until 2026-11-23, took 4,297 s plus 70 s for
+    last season's fires; slabs of first passes on every check 651 s + 98 s; this 455 s for both, with
+    the same numbers on every check. The whole backtest() then took 773 s and held up to 4.8 GB of
+    temporary tables until its transaction ended."""
     session.execute(text("DROP TABLE IF EXISTS bt_pt, bt_fld"))
     session.execute(text("""
         CREATE TEMP TABLE bt_pt ON COMMIT DROP AS
