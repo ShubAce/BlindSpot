@@ -443,7 +443,9 @@ STATIC_RULE = (
     "include_static=true: pixels whose footprint meets a spot where FIRMS saw heat on "
     f"{STATIC_MIN_NIGHTS} or more nights (within {STATIC_RADIUS_KM * 1000:.0f} m), and pixels "
     f"where GK-2A itself saw heat between {DEEP_NIGHT_IST[0]} and {DEEP_NIGHT_IST[1]} IST on "
-    f"{STATIC_MIN_DEEP_NIGHTS} or more of the previous {STATIC_LOOKBACK_NIGHTS} nights."
+    f"{STATIC_MIN_DEEP_NIGHTS} or more of the previous {STATIC_LOOKBACK_NIGHTS} nights. The rules "
+    "aim at plants, kilns and flares; some flagged spots may be straw-bale depots, which burn crop "
+    "residue but are not field burning."
 )
 
 
