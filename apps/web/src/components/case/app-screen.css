@@ -313,8 +313,8 @@
   --photo-fire: #ea5a2e; /* the dark theme's fire: light's deeper red would sink into a burnt field */
   --photo-ring: #0c0a08;
   --photo-ground: #2b2620; /* a picture in miniature, for the key on light (below) */
-  /* The other scars in the picture, thinner than the case's own: yellow those first seen between
-     the same two passes, cyan those that had burnt by the first picture. Yellow and cyan stay apart
+  /* The other scars in the picture, thinner than the case's own: yellow those first seen burnt
+     between the case's two passes, cyan those that had burnt by the first. Yellow and cyan stay apart
      for red-green colour blindness too, and both hold on dark burnt ground, tan fields and the pale
      green of short-wave infrared over a thin dark casing. Cyan is a mark as solid as the yellow: an
      earlier burn is a detection like any other, not a miss. */
@@ -441,10 +441,10 @@
 /* The key shows each mark exactly as the pictures carry it. On dark the card is as dark as a
    picture, so the swatches sit on it as they are; on light a white outline would vanish into the
    white card, so each swatch gets a small dark tile (white 15:1, gold 6.4:1, fire 4.3:1, the other
-   scars' yellow 10.4:1 and cyan 10.2:1 on it). The
-   tile's margin is a spread shadow, not padding, so it takes no room: the key wraps exactly as on
-   dark (with padding it no longer fitted beside the switch on a phone and took a row of its own).
-   2px of it leaves the label 4px clear of the tile. */
+   scars' yellow 10.4:1 and cyan 10.2:1 on it). The tile's margin is a spread shadow, not padding,
+   so it takes no room: the key wraps exactly as on dark (with padding it no longer fitted beside
+   the switch on a phone and took a row of its own). 2px of it leaves the label 4px clear of the
+   tile. */
 :root[data-theme="light"] .evidence__swatch {
   border-radius: 2px;
   background: var(--photo-ground);

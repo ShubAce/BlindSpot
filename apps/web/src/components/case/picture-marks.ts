@@ -8,7 +8,7 @@
  * against 21), and the sentence under the pictures takes its numbers from the API's totals.
  */
 
-import { dateRangeIST, metricText, NBSP, number, plural } from '@/lib/format';
+import { dateIST, dateRangeIST, metricText, NBSP, number, plural } from '@/lib/format';
 
 import type { CaseProps, OtherScar, OtherScars } from './types';
 
@@ -69,9 +69,10 @@ export type OtherMark = { id: number; rel: 'same' | 'earlier'; d: string; title:
 const DRAWN = { earlier: 0, same: 1 } as const;
 const drawn = (s: OtherScar): s is OtherScar & { relation: 'same' | 'earlier' } => s.relation === 'same' || s.relation === 'earlier';
 
-/** The other scars the pictures outline, in drawing order: the earlier burns first, then those of
- *  the same two passes over them; within each the larger first, so a small field lying on a large
- *  one stays clickable. Scars first seen after the pictures are not drawn: they burnt in neither. */
+/** The other scars the pictures outline, in drawing order: the earlier burns first, then those
+ *  first seen between the two pictures over them; within each the larger first, so a small field
+ *  lying on a large one stays clickable. Scars first seen after the pictures are not drawn: they
+ *  burnt in neither. */
 export function otherMarks(o: OtherScars | null | undefined, bbox: BBox | null): OtherMark[] {
   if (!o?.scars || !bbox) return [];
   return o.scars
@@ -87,8 +88,19 @@ export function otherMarks(o: OtherScars | null | undefined, bbox: BBox | null):
     .filter((m) => m.d);
 }
 
-/** One plain sentence under the pictures, every number from the API's totals. */
-export function othersSentence(o: OtherScars | null | undefined, marks: number): string | null {
+/** The case's two passes: the before picture's and the after picture's. */
+export type PictureWindow = { after: string; before: string };
+
+/** The key's words for the two kinds, with the case's own dates. */
+export const othersLabels = (w: PictureWindow) => ({
+  same: `Other scars, burnt ${dateRangeIST(w.after, w.before)}`,
+  earlier: `Other scars, burnt by ${dateIST(w.after)}`,
+});
+
+/** One plain sentence under the pictures, every number from the API's totals and the dates from
+ *  the case's two passes. "First seen burnt between" and "had burnt by" say what the rule knows: a
+ *  scar's window runs from the last clear pass that saw it unburnt to the first that saw it burnt. */
+export function othersSentence(o: OtherScars | null | undefined, marks: number, w: PictureWindow): string | null {
   if (!o?.totals) return null;
   const same = o.totals.same ?? { scars: 0, area_ha: 0 };
   const earlier = o.totals.earlier ?? { scars: 0, area_ha: 0 };
@@ -96,15 +108,17 @@ export function othersSentence(o: OtherScars | null | undefined, marks: number):
   const shown = same.scars + earlier.scars;
   const cut = o.min_confidence != null ? `with confidence ${number(o.min_confidence, { decimals: 1 })} or more` : null;
   const parts: string[] = [];
-  if (same.scars) parts.push(`${plural(same.scars, 'other burn scar', 'other burn scars')} from the same two passes (${areaText(same.area_ha)})`);
+  if (same.scars) {
+    parts.push(`${plural(same.scars, 'other burn scar', 'other burn scars')} first seen burnt between ${dateIST(w.after)} and ${dateIST(w.before)} (${areaText(same.area_ha)})`);
+  }
   if (earlier.scars) {
     const what = same.scars ? number(earlier.scars) : plural(earlier.scars, 'other burn scar', 'other burn scars');
-    parts.push(`${what} that burnt before the first picture (${areaText(earlier.area_ha)})`);
+    parts.push(`${what} that had burnt by ${dateIST(w.after)} (${areaText(earlier.area_ha)})`);
   }
   let text = shown
     ? `Also mapped in this picture: ${parts.join(' and ')}${cut ? `, ${shown === 1 ? '' : 'all '}${cut}, as on the live map` : ''}.`
     : `No other burn scar${cut ? ` ${cut}` : ''} is mapped in this picture.`;
   if (shown && marks < shown) text += ` Only the ${number(marks)} largest are outlined.`;
-  if (later) text += ` ${later === 1 ? '1 more, first seen burnt after these pictures, is' : `${number(later)} more, first seen burnt after these pictures, are`} not drawn.`;
+  if (later) text += ` ${plural(later, 'more', 'more')}, first seen burnt after ${dateIST(w.before)}, ${later === 1 ? 'is' : 'are'} not drawn.`;
   return text;
 }

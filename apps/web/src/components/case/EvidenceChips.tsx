@@ -20,11 +20,11 @@ import type { CaseFire, CaseImageryPass, CaseProps } from './types';
  * replaced by one sentence in its frame.
  *
  * Every other scar the API stores inside the same square is outlined too, thinner and under the
- * case's own (picture-marks.ts): yellow those first seen between the same two passes, cyan those
- * that had burnt by the first picture, so the dark fields the model mapped are outlined and not only
- * this one. Each is a link to its own case file, for a pointer or a finger: inside the overlay, hidden from screen
- * readers, so out of the tab order too (a hundred links in each of four pictures would bury the
- * page's own); the sentence under the pictures gives their numbers in words.
+ * case's own (picture-marks.ts): yellow those first seen burnt between the case's two passes, cyan
+ * those that had burnt by the first, so the dark fields the model mapped are outlined and not only
+ * this one. Each is a link to its own case file, for a pointer or a finger: inside the overlay,
+ * hidden from screen readers, so out of the tab order too (a hundred links in each of four
+ * pictures would bury the page's own); the sentence under the pictures gives their numbers.
  *
  * The marks on the pictures take the --photo-* colours (app-screen.css), the same on both themes:
  * a photograph does not change with the page. The key below draws them the same way.
@@ -129,6 +129,7 @@ export function EvidenceChips({
   place,
   otherMarks = [],
   othersNote = null,
+  othersLabels = { same: 'Other scars, same days', earlier: 'Other scars, burnt earlier' },
 }: {
   bbox: BBox | null;
   pre: CaseImageryPass | null;
@@ -141,6 +142,8 @@ export function EvidenceChips({
   otherMarks?: OtherMark[];
   /** The sentence under the pictures that counts them (picture-marks.ts othersSentence). */
   othersNote?: string | null;
+  /** The key's words for the two kinds, with the case's dates (picture-marks.ts othersLabels). */
+  othersLabels?: { same: string; earlier: string };
 }) {
   const [showOutline, setShowOutline] = useState(true);
   const toggleId = useId();
@@ -201,13 +204,13 @@ export function EvidenceChips({
           {others?.same.length ? (
             <span className="evidence__keyitem">
               {keyLine('var(--photo-same)')}
-              Other scars, same two passes
+              {othersLabels.same}
             </span>
           ) : null}
           {others?.earlier.length ? (
             <span className="evidence__keyitem">
               {keyLine('var(--photo-earlier)')}
-              Other scars, burnt earlier
+              {othersLabels.earlier}
             </span>
           ) : null}
           {dots.length ? (

@@ -94,20 +94,28 @@ async function main(): Promise<number> {
   const marks = m.otherMarks(o, box);
   check('earlier drawn first, then same; larger first; later never', marks.map((k) => k.id).join() === '4,3,2,1', marks.map((k) => k.id).join());
   check('title names the case, area and window', marks[3].title === 'Case 1: 0.72 ha, burnt 17–22 Nov', marks[3].title);
-  check('older API answer: nothing drawn, no sentence', m.otherMarks(undefined, box).length === 0 && m.othersSentence(undefined, 0) === null);
+  check('older API answer: nothing drawn, no sentence', m.otherMarks(undefined, box).length === 0 && m.othersSentence(undefined, 0, { after: T0, before: T1 }) === null);
 
-  const sentence = (totals: OtherScars['totals'], drawn: number) => m.othersSentence({ min_confidence: 0.5, totals }, drawn);
+  const passes = { after: T0, before: T1 };
+  const sentence = (totals: OtherScars['totals'], drawn: number) => m.othersSentence({ min_confidence: 0.5, totals }, drawn, passes);
+  const labels = m.othersLabels(passes);
+  check('key words carry the case dates', labels.same === 'Other scars, burnt 17–22 Nov' && labels.earlier === 'Other scars, burnt by 17 Nov', JSON.stringify(labels));
+  const nov = (d: number) => `${d} Nov`;
+  const ha = (v: string) => `${v} ha`;
+  const tail = 'all with confidence 0.5 or more, as on the live map.';
   const cases: [string, string | null, string][] = [
     ['both kinds', sentence({ same: { scars: 54, area_ha: 383.68 }, earlier: { scars: 72, area_ha: 303.84 }, later: { scars: 0, area_ha: 0 } }, 126),
-      'Also mapped in this picture: 54 other burn scars from the same two passes (384 ha) and 72 that burnt before the first picture (304 ha), all with confidence 0.5 or more, as on the live map.'],
+      `Also mapped in this picture: 54 other burn scars first seen burnt between ${nov(17)} and ${nov(22)} (${ha('384')}) and 72 that had burnt by ${nov(17)} (${ha('304')}), ${tail}`],
     ['one', sentence({ same: { scars: 1, area_ha: 0.72 } }, 1),
-      'Also mapped in this picture: 1 other burn scar from the same two passes (0.72 ha), with confidence 0.5 or more, as on the live map.'],
+      `Also mapped in this picture: 1 other burn scar first seen burnt between ${nov(17)} and ${nov(22)} (${ha('0.72')}), with confidence 0.5 or more, as on the live map.`],
     ['earlier only', sentence({ same: { scars: 0, area_ha: 0 }, earlier: { scars: 12, area_ha: 49.76 } }, 12),
-      'Also mapped in this picture: 12 other burn scars that burnt before the first picture (49.8 ha), all with confidence 0.5 or more, as on the live map.'],
+      `Also mapped in this picture: 12 other burn scars that had burnt by ${nov(17)} (${ha('49.8')}), ${tail}`],
     ['none', sentence({ same: { scars: 0, area_ha: 0 }, earlier: { scars: 0, area_ha: 0 }, later: { scars: 0, area_ha: 0 } }, 0),
       'No other burn scar with confidence 0.5 or more is mapped in this picture.'],
     ['cut and later', sentence({ same: { scars: 500, area_ha: 2000 }, earlier: { scars: 260, area_ha: 900 }, later: { scars: 3, area_ha: 5 } }, 300),
-      'Also mapped in this picture: 500 other burn scars from the same two passes (2,000 ha) and 260 that burnt before the first picture (900 ha), all with confidence 0.5 or more, as on the live map. Only the 300 largest are outlined. 3 more, first seen burnt after these pictures, are not drawn.'],
+      `Also mapped in this picture: 500 other burn scars first seen burnt between ${nov(17)} and ${nov(22)} (${ha('2,000')}) and 260 that had burnt by ${nov(17)} (${ha('900')}), ${tail} Only the 300 largest are outlined. 3 more, first seen burnt after ${nov(22)}, are not drawn.`],
+    ['one later', sentence({ same: { scars: 2, area_ha: 3 }, later: { scars: 1, area_ha: 1 } }, 2),
+      `Also mapped in this picture: 2 other burn scars first seen burnt between ${nov(17)} and ${nov(22)} (${ha('3.00')}), ${tail} 1 more, first seen burnt after ${nov(22)}, is not drawn.`],
   ];
   for (const [what, got, want] of cases) check(`sentence, ${what}`, got === want, got ?? 'null');
 
@@ -125,7 +133,7 @@ async function main(): Promise<number> {
     check(`case ${data.case.id}: no path empty`, drawn.every((k) => /^M-?\d+ -?\d+[hvlz]/.test(k.d) && k.d.endsWith('z')));
     const chars = drawn.reduce((s, k) => s + k.d.length, 0);
     const vertices = (os?.scars ?? []).reduce((s, k) => s + (k.outline ? m.ringsOf(k.outline).reduce((a, r) => a + r.length, 0) : 0), 0);
-    console.log(`     ${drawn.length} paths, ${chars} characters for ${vertices} corners; ${m.othersSentence(os, drawn.length)}`);
+    console.log(`     ${drawn.length} paths, ${chars} characters for ${vertices} corners; ${m.othersSentence(os, drawn.length, { after: data.case.burn_after, before: data.case.burn_before })}`);
   }
   return failed ? 1 : 0;
 }
