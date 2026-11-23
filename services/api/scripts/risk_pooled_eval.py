@@ -15,7 +15,7 @@ tables for the whole season, minutes of CPU):
 2. Headline stability (item 3): for every day of the season, the headline the job would have shown
    that day with the data up to then, the old way (the latest pass pair alone) and the new way (every
    pair whose second pass falls in the 7 days up to the newest, pooled, shown with at least 100
-   burnt and 100 unburnt fields), with the new one's 95% interval from 30 km spatial blocks.
+   burnt and 100 unburnt field checks), with the new one's 95% interval from 30 km spatial blocks.
 3. Which order to serve (item 4): pooled AUC per ISO week (of t1) of the served composite as the
    backtest can test it, of "scar hectares nearby" alone and of the composite without timing,
    forward-chained (every week after the first is held out: nothing is fitted, so each week is
@@ -198,7 +198,6 @@ def stability(pairs: pd.DataFrame, mats: Mats, production: list[dict[str, Any]])
         return {"days": len(x), "sd": round(float(x.std(ddof=1)), 4), "min": round(float(x.min()), 3),
                 "max": round(float(x.max()), 3), "mean_abs_daily_change": round(float(x.diff().abs().mean()), 4)}
 
-    prod = [r["auc"] for r in production if r.get("auc") is not None]
     widths = df["new_ci95"].dropna().map(lambda c: c[1] - c[0]) if "new_ci95" in df else pd.Series(dtype=float)
     return {
         "series": series,
@@ -207,9 +206,11 @@ def stability(pairs: pd.DataFrame, mats: Mats, production: list[dict[str, Any]])
                           "days_not_shown": int(df["new_auc"].isna().sum()) if "new_auc" in df else len(df),
                           "median_ci95_width": round(float(widths.median()), 4) if len(widths) else None},
         "production_served_headlines": {
-            "runs": production, "sd": round(float(np.std(prod, ddof=1)), 4) if len(prod) > 1 else None,
-            "min": min(prod) if prod else None, "max": max(prod) if prod else None,
-            "note": "the headline each production run of the risk job reported (job_run.result), as served",
+            "runs": production, **served_spread(production, "latest_pair"),
+            "recent_pooled": served_spread(production, "recent"),
+            "note": ("the headline each production run of the risk job reported (job_run.result), as served: "
+                     "sd/min/max over the runs that served the latest pair (before 2026-11-23), recent_pooled "
+                     "over the runs that serve the pooled week"),
         },
     }
 
@@ -284,16 +285,33 @@ def _rnd(v: Any) -> Any:
 
 
 def production_headlines() -> list[dict[str, Any]]:
+    """The headline each production risk run stored in job_run.result.backtest. Runs before
+    2026-11-23 stored the latest pair (top-level auc: kind "latest_pair"); later runs store the pooled
+    week under recent (kind "recent"; burnt/unburnt are field checks)."""
     with engine.connect() as conn:
         rows = conn.execute(text("""
             SELECT started_at, result -> 'backtest' FROM job_run
-            WHERE name = 'risk' AND ok AND result -> 'backtest' ? 'auc' ORDER BY started_at
+            WHERE name = 'risk' AND ok
+              AND (result -> 'backtest' ? 'auc' OR result -> 'backtest' -> 'recent' ? 'auc')
+            ORDER BY started_at
         """)).all()
     out = []
     for started, b in rows:
-        out.append({"run": started.isoformat(), "tile": b.get("tile"), "auc": b.get("auc"),
-                    "burnt": b.get("burnt"), "unburnt": b.get("unburnt")})
+        if isinstance(b.get("recent"), dict):
+            r = b["recent"]
+            out.append({"run": started.isoformat(), "kind": "recent", "auc": r.get("auc"), "pairs": r.get("pairs"),
+                        "tiles": r.get("tiles"), "burnt": r.get("burnt"), "unburnt": r.get("unburnt")})
+        else:
+            out.append({"run": started.isoformat(), "kind": "latest_pair", "tile": b.get("tile"), "auc": b.get("auc"),
+                        "burnt": b.get("burnt"), "unburnt": b.get("unburnt")})
     return out
+
+
+def served_spread(production: list[dict[str, Any]], kind: str) -> dict[str, Any]:
+    """SD, min and max of the AUCs that production runs of one kind served."""
+    aucs = [r["auc"] for r in production if r.get("kind") == kind and r.get("auc") is not None]
+    return {"n_runs": len(aucs), "sd": round(float(np.std(aucs, ddof=1)), 4) if len(aucs) > 1 else None,
+            "min": min(aucs) if aucs else None, "max": max(aucs) if aucs else None}
 
 
 def main() -> None:
