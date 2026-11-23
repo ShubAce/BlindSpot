@@ -314,8 +314,11 @@ def test_partial_r_controls_each_series_at_its_own_hour():
     log_vent = np.sin(2 * np.pi * hours / 24.0) + np.convolve(rng.normal(0, 0.6, n + 23), np.ones(24) / 24**0.5, "valid")
     obs = 150.0 - 40.0 * log_vent + rng.normal(0, 4.0, n)  # its own hour's ventilation, plus noise
     model = -np.r_[log_vent[3:], np.full(3, np.nan)]  # model(t) = -log_vent(t + 3)
-    res = tj.lagged_correlations(model, obs, control=log_vent)
-    assert res["by_lag"][3]["r"] > 0.9  # it tracks the observations 3 h ahead...
+    lags = {"min_lag": -job.VALIDATION_LAG_H, "max_lag": job.VALIDATION_LAG_H}  # the job's whole scan
+    res = tj.lagged_correlations(model, obs, control=log_vent, **lags)
+    by_lag = {e["lag_h"]: e for e in res["by_lag"]}
+    assert sorted(by_lag) == list(range(-12, 13))
+    assert by_lag[3]["r"] > 0.9  # it tracks the observations 3 h ahead...
     assert all(e["partial_r"] is not None and abs(e["partial_r"]) < 0.15 for e in res["by_lag"])  # ...and adds nothing
     ok = np.isfinite(model[:-3])
     old = np.corrcoef(tj._residual(model[:-3][ok], log_vent[:-3][ok]), tj._residual(obs[3:][ok], log_vent[:-3][ok]))[0, 1]
