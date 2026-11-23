@@ -62,6 +62,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import itertools
 import json
 import math
 import sys
@@ -412,6 +413,12 @@ def first_failure(d: dict[str, np.ndarray], res: int, day: int) -> np.ndarray:
     return out
 
 
+def _ndimage_dilate(mask: np.ndarray, px: int) -> np.ndarray:
+    from scipy import ndimage
+
+    return ndimage.binary_dilation(mask, structure=np.ones((3, 3), bool), iterations=px)
+
+
 def diagnose(args: argparse.Namespace) -> None:
     from sqlalchemy import text
 
@@ -462,6 +469,10 @@ def diagnose(args: argparse.Namespace) -> None:
         return round(float(mask.sum()) * 0.04, 2)
 
     outside = visible & ~any_scar
+    near_scar = _ndimage_dilate(any_scar, 2)
+    looks = char_look & d20["post_valid"] & region
+    dark_before = looks & ~any_scar & ~(darkened & d20["pre_valid"])
+    cand40_ever = upsample(z["d40_burn_day"] > 0, shape20) | upsample(z["d40_burn"], shape20)
     # 40 m: each 20 m pixel takes its 40 m parent's test results.
     d40["scope"] = z["scope40"]
     d20["scope"] = z["scope20"]
@@ -510,12 +521,19 @@ def diagnose(args: argparse.Namespace) -> None:
                                          if rearm40.any() else None),
         },
         "outside_20m_would_map_ha": ha(outside & cand20 & d20["burn"] & (oc20 == 4)),
+        "outside_near_a_stored_scar_ha": {
+            "within 40 m of a stored scar (field edges, strips)": ha(outside & near_scar),
+            "farther (fields of their own)": ha(outside & ~near_scar),
+        },
         "char_looking_on_post_pass_ha": {
-            "all (BAIS2/TBI only, clear, cropland)": ha(char_look & d20["post_valid"] & region),
-            "inside any stored scar": ha(char_look & d20["post_valid"] & region & any_scar),
+            "all (BAIS2/TBI only, clear, cropland)": ha(looks),
+            "inside the case's own scar": ha(looks & m_own),
+            "inside another scar of the same window": ha(looks & ~m_own & m_same),
+            "inside an earlier window's scar (burnt before the pre pass)": ha(looks & ~m_own & ~m_same & m_earlier),
             "outside, darkened since the pre pass (= visibly charred)": ha(outside),
-            "outside, not darkened since the pre pass (dark before it)": ha(
-                char_look & d20["post_valid"] & region & ~any_scar & ~(darkened & d20["pre_valid"])),
+            "outside, not darkened since the pre pass (dark before it)": ha(dark_before),
+            "of which ever a 40 m burn candidate this season (cluster dropped)": ha(dark_before & cand40_ever),
+            "of which mapped by the 20 m replay this season": ha(dark_before & z["season20"]),
         },
         "stored_scars_in_box_ha": ha(any_scar & region),
         "replay_season_vs_stored_40m": {
@@ -525,6 +543,134 @@ def diagnose(args: argparse.Namespace) -> None:
     }
     print(json.dumps(report, indent=1))
     (out_dir / f"diagnosis_{args.case_id}.json").write_text(json.dumps(report, indent=1))
+
+
+# --- runtime estimate for bar (c) ------------------------------------------------------------------
+
+
+def _ts(value: str) -> dt.datetime:
+    return dt.datetime.fromisoformat(value)
+
+
+def stage_blocks(db_url: str, hotspots: dict[tuple[str, str], tuple[str, ...]],
+                 grids: dict[str, stac.TileGrid]) -> dict[tuple[str, str], int]:
+    """(stage, tile) -> production blocks read (1024 px windows meeting the stage area in the tile's
+    square), for tiles the stage covers by >= MIN_STAGE_OVERLAP_M2, as run_sentinel/process_tile."""
+    saved = job.HOTSPOT_DISTRICTS
+    job.HOTSPOT_DISTRICTS = hotspots
+    try:
+        with db_session(db_url) as session:
+            areas, _ = job.stage_geometries(session)
+    finally:
+        job.HOTSPOT_DISTRICTS = saved
+    out = {}
+    for stage in job.STAGES:
+        for tile, g20 in grids.items():
+            grid = stac.TileGrid(g20.tile, g20.epsg, stage.res, g20.x0, g20.y0, int(g20.width * 20 / stage.res),
+                                 int(g20.height * 20 / stage.res), g20.core)
+            area_utm = job._from_lonlat(areas[stage.name], grid.epsg).intersection(box(*grid.core))
+            if area_utm.area < job.MIN_STAGE_OVERLAP_M2:
+                continue
+            shapely.prepare(area_utm)
+            out[(stage.name, tile)] = sum(area_utm.intersects(box(*grid.window_bounds(w)))
+                                          for w in grid.blocks(job.BLOCK_PX))
+    return out
+
+
+def runtime(args: argparse.Namespace) -> None:
+    """Bar (c): the daily tile loop now and with the chosen Haryana districts at 20 m (see the
+    docstring). Production figures come from `prod`, a JSON export of job_run 1999 (22 Nov) and
+    1556 (17 Nov), the s2_cog fetch times of run 1999, and pass days per tile from s2_scene."""
+    prod = json.loads(args.prod.read_text())
+    run22, run17 = prod["runs"]["1999"], prod["runs"]["1556"]
+    fits = {}
+    for res, stages in ((20, ("hotspots",)), (40, ("punjab", "haryana"))):
+        rows = [t for t in run22["tiles"] if t["stage"] in stages]
+        x = np.array([[t["blocks"], t["blocks"] * t["passes"]] for t in rows], float)
+        coef, *_ = np.linalg.lstsq(x, np.array([t["seconds"] for t in rows]), rcond=None)
+        fits[res] = (float(coef[0]), float(coef[1]))
+    fetches = prod["fetches_1999"]
+    gaps = [(_ts(b["started_at"]) - _ts(a["finished_at"])).total_seconds()
+            for a, b in itertools.pairwise(fetches)]
+    store_s = float(np.mean(gaps))  # storing a tile: from its read's end to the next tile's start
+    catalogue_s = (_ts(fetches[0]["started_at"]) - _ts(run22["started_at"])).total_seconds()
+    loop22_s = (_ts(fetches[-1]["finished_at"]) - _ts(fetches[0]["started_at"])).total_seconds() + store_s
+    done22 = {(t["stage"], t["tile"]) for t in run22["tiles"]}
+    both = [(t17, t22) for t17 in run17["tiles"] for t22 in run22["tiles"]
+            if t17["stage"] == t22["stage"] == "haryana" and t17["tile"] == t22["tile"]]
+    ratio = sum(b["seconds"] for _, b in both) / sum(a["seconds"] for a, _ in both)
+    skipped = [t for t in run17["tiles"] if t["stage"] == "haryana" and (t["stage"], t["tile"]) not in done22]
+    skipped_s = sum(t["seconds"] * ratio + store_s for t in skipped)
+    baseline_s = catalogue_s + loop22_s + skipped_s
+
+    scenes, _ = stac.search_scenes(mapping(box(73.8, 27.6, 77.7, 32.6)), dt.datetime(2026, 11, 1, tzinfo=dt.UTC),
+                                   dt.datetime(2026, 11, 22, 23, 59, tzinfo=dt.UTC))
+    grids: dict[str, stac.TileGrid] = {}
+    for s in scenes:
+        grids.setdefault(s.mgrs_tile, stac.TileGrid.from_scene(s, 20))
+    passes = prod["pass_days"]
+    # Run 1999 (22 Nov) ran with the 11 hotspot districts of before 23 Nov (the first 11 entries):
+    # counting its blocks with that list checks the block counter against what production read.
+    then = stage_blocks(args.db, dict(list(job.HOTSPOT_DISTRICTS.items())[:11]), grids)
+    ran = {(t["stage"], t["tile"]): t["blocks"] for t in run22["tiles"] + skipped}
+    check = {f"{k[0]}:{k[1]}": [then.get(k), v] for k, v in ran.items() if then.get(k) != v}
+    check.update({f"{k[0]}:{k[1]}": [n, None] for k, n in then.items() if k not in ran})
+    now = stage_blocks(args.db, job.HOTSPOT_DISTRICTS, grids)
+
+    def extra(old: dict, new: dict) -> tuple[dict[str, float], list]:
+        """Minutes added going from blocks `old` to `new` (per pass factor), and what changed."""
+        out = {1.0: 0.0, 1.25: 0.0}
+        changed = []
+        for key in sorted(set(old) | set(new)):
+            stage, tile = key
+            a, b = fits[next(s.res for s in job.STAGES if s.name == stage)]
+            delta = new.get(key, 0) - old.get(key, 0)
+            if not delta:
+                continue
+            store = store_s * ((key in new) - (key in old))
+            for f in out:
+                out[f] += delta * (a + b * passes[tile] * f) + store
+            changed.append([stage, tile, old.get(key, 0), new.get(key, 0), passes[tile]])
+        return {str(f): round(v / 60, 1) for f, v in out.items()}, changed
+
+    main_extra, main_changed = extra(then, now)
+    configs = {}
+    for k in args.top:
+        chosen = args.districts[:k]
+        new = stage_blocks(args.db, {**job.HOTSPOT_DISTRICTS, **{("Haryana", d): (d.lower(),) for d in chosen}}, grids)
+        more, changed = extra(now, new)
+        configs[f"top{k}"] = {"districts": chosen, "changed_stage_tile_blocks_now_new_passes": changed,
+                              "extra_min": more}
+
+    def scaled(f: float) -> float:
+        """The baseline with f times the passes: each tile's modelled b x block-passes share grows."""
+        total = catalogue_s + store_s * (len(run22["tiles"]) + len(skipped))
+        for t, mult in [(t, 1.0) for t in run22["tiles"]] + [(t, ratio) for t in skipped]:
+            a, b = fits[20 if t["stage"] == "hotspots" else 40]
+            model = a * t["blocks"] + b * t["blocks"] * t["passes"]
+            grown = a * t["blocks"] + b * t["blocks"] * t["passes"] * f
+            total += t["seconds"] * mult * (grown / model if model > 0 else 1.0)
+        return total
+
+    run_config = {"1.0": round(baseline_s / 60, 1), "1.25": round(scaled(1.25) / 60, 1)}
+    # main today: run 1999's list plus the seven Punjab districts moved to 20 m on 23 Nov
+    base = {f: round(v + main_extra[f], 1) for f, v in run_config.items()}
+    report = {
+        "fits_s_per_block_and_per_block_pass": {f"{r}m": [round(v, 3) for v in c] for r, c in fits.items()},
+        "store_s_per_tile": round(store_s, 1), "catalogue_s": round(catalogue_s, 1),
+        "loop_22nov_actual_min": round(loop22_s / 60, 1), "haryana_ratio_22_over_17": round(ratio, 3),
+        "skipped_haryana_tiles_22nov": [t["tile"] for t in skipped], "skipped_est_min": round(skipped_s / 60, 1),
+        "loop_min_run_1999_config": run_config, "block_count_mismatches_vs_production": check,
+        "main_23nov_punjab_move": {"extra_min": main_extra, "changed": main_changed},
+        "baseline_loop_min_main": base,
+        "configs": {k: {**v, "loop_min_at_pass_factor": {f: round(base[f] + v["extra_min"][f], 1) for f in base},
+                        "bar_c_pass": bool(base["1.0"] + v["extra_min"]["1.0"] <= 80
+                                           and base["1.25"] + v["extra_min"]["1.25"] <= 100)}
+                    for k, v in configs.items()},
+    }
+    print(json.dumps(report, indent=1))
+    if args.out_json:
+        args.out_json.write_text(json.dumps(report, indent=1))
 
 
 def main() -> None:
@@ -549,8 +695,15 @@ def main() -> None:
     d.add_argument("--db", default=DEFAULT_DB)
     d.add_argument("--diag-pre", default="2026-11-17")
     d.add_argument("--diag-post", default="2026-11-22")
+    t = sub.add_parser("runtime")
+    t.add_argument("prod", type=Path, help="JSON export of the production runs (see runtime())")
+    t.add_argument("--db", default=DEFAULT_DB)
+    t.add_argument("--districts", nargs="+", default=["Fatehabad", "Sirsa", "Kaithal", "Jind", "Karnal", "Hisar",
+                                                         "Kurukshetra", "Bhiwani", "Hansi"])
+    t.add_argument("--top", type=int, nargs="+", default=[5, 7, 9])
+    t.add_argument("--out-json", type=Path, default=None)
     args = ap.parse_args()
-    {"replay": replay, "diagnose": diagnose}[args.cmd](args)
+    {"replay": replay, "diagnose": diagnose, "runtime": runtime}[args.cmd](args)
 
 
 if __name__ == "__main__":
