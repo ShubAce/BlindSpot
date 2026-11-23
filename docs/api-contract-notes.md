@@ -133,8 +133,8 @@ Cached for 60 s.
  },
  "unseen_burns": {
   "available": true, "label": "candidate unseen burns",
-  "clusters": 67854, "area_ha": 104476.3, "unseen_clusters": 59465, "unseen_area_ha": 86303.0,
-  "checked_area_ha": 104476.3, "unseen_share": 0.8261, "districts": 38,
+  "clusters": 67854, "area_ha": 104476.28, "unseen_clusters": 59465, "unseen_area_ha": 86303.0,
+  "checked_area_ha": 104476.28, "unseen_share": 0.8261, "districts": 38,
   "first_pass": "2026-10-02T05:40:36.219000Z", "last_pass": "2026-10-30T05:40:52.298000Z",
   "model_version": "s2burn-rules-2",
   "precision": 0.833, "precision_ci95": [0.608, 0.942], "precision_n": 18,
@@ -188,6 +188,8 @@ Notes for the UI:
 - `unseen_burns`: always show `precision` with `precision_ci95` and `precision_n` next to
   `unseen_share`.
   - `unseen_share` is null when no scar has been checked against FIRMS yet.
+  - `area_ha`, `unseen_area_ha` and `checked_area_ha` are in ha to 0.01, as in `/api/scars/summary`
+    (to 0.1 until 2026-11-23), so the two give the same total.
   - `first_pass` / `last_pass` are the Sentinel-2 passes the totals cover. They grow as the
     6-hourly sentinel job processes more tiles.
 - `delhi`:
