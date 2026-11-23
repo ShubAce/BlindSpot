@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Iterable, Sequence
+from itertools import pairwise
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -621,11 +622,15 @@ def compare_pass(
     return PassComparison(**m.counts(), strong_frp_mw=strong_frp_mw)
 
 
-# Where a polar sensor "could see": a region pixel it viewed at most this far off nadir (scan angle
-# at the satellite). Beyond it pixels grow fast (MODIS: 1.9 km along the scan at 40 deg, 4.8 km at
-# 55 deg), so small fires there are below the polar sensor's own detection limit and a GK-2A pixel
-# without a polar detection says more about the reference than about GK-2A. Measured on 15-22 Nov
-# 2026: GK-2A pixels unconfirmed by MODIS were 1-5% at 0-40 deg, 10-19% at 40-50 and 94% at 50-55.
+# --- evaluation only: validation where the polar sensor "could see" ---------------------------------
+# COVERED_MAX_SCAN_DEG, SCAN_ANGLE_BINS, scan_angle_counts and bootstrap_rates serve the evaluation
+# scripts (scripts/gk2a_eval_coverage.py, gk2a_eval_background.py); the job and the API do not use
+# them. A "covered" rate counts only region pixels the polar sensor viewed at most this far off nadir
+# (scan angle at the satellite), where its pixels are small (MODIS: 1.9 km along the scan at 40 deg,
+# 4.8 km at 55 deg). It failed its pre-registered bar, so the site does not publish it: the MODIS
+# unconfirmed share is not flat inside 0-40 deg. Season replay, 27 Oct-22 Nov 2026 (189 passes,
+# `uv run python scripts/gk2a_eval_coverage.py --scans ...`): 3.6% (27/755) at 0-20 deg, 1.3%
+# (5/378) at 20-30, 10.0% (58/579) at 30-40, 37.8% at 40-45, 43.6% at 45-50, 93.0% at 50-55.
 COVERED_MAX_SCAN_DEG = {"MODIS": 40.0, "VIIRS": 50.0}
 SCAN_ANGLE_BINS = (0.0, 20.0, 30.0, 40.0, 45.0, 50.0, 55.0, 90.0)  # the last: the swath edge on
 
@@ -636,7 +641,7 @@ def scan_angle_counts(
     """The comparison's counts in bins of the polar sensor's scan angle at each pixel."""
     out = []
     with np.errstate(invalid="ignore"):
-        for lo, hi in zip(bins[:-1], bins[1:], strict=True):
+        for lo, hi in pairwise(bins):
             c = match.counts((scan_deg >= lo) & (scan_deg < hi))
             out.append({"lo": lo, "hi": hi, **{k: c[k] for k in (
                 "geo_pixels", "geo_hits", "ref_pixels", "ref_hits")}})  # fmt: skip

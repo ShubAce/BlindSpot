@@ -7,9 +7,7 @@ India's Punjab or Haryana polygons (boundary table, ISO 3166-2 IN-PB / IN-HR; th
 holds Pakistan's Punjab), and store:
 - geo_fire_slot: one row per scan (the diurnal record), geo_fire_pixel: the fire pixels;
 - geo_fire_validation: GK-2A against every polar pass that has a GK-2A scan within 6 minutes,
-  on the GK-2A grid (fire_detection rows, or FIRMS' keyless CSVs if that table has none), and
-  geo_fire_validation_coverage: the same passes counted only where the polar sensor viewed the
-  ground within geofire.COVERED_MAX_SCAN_DEG (its scan angle from the orbital elements);
+  on the GK-2A grid (fire_detection rows, or FIRMS' keyless CSVs if that table has none);
 - geo_fire_static: pixels flagged as persistent heat sources, rebuilt each run before any scan is
   analysed (geofire.STATIC_RULE); the fire test leaves them out of fire and of every background, and
   what it still finds on them goes to geo_fire_static_pixel, apart from the counts.
@@ -38,7 +36,6 @@ from sqlalchemy.orm import Session
 
 from blindspot.analytics import geofire as gf
 from blindspot.analytics.fires_stats import night_of
-from blindspot.analytics.passes import OrbitElements, load_orbits, pass_scan_angles
 from blindspot.db import session_scope
 from blindspot.geo import AOI_BBOX, point_ewkt
 from blindspot.http import FetchError, SourceUnavailable
@@ -49,7 +46,6 @@ from blindspot.models.geofires import (
     GeoFireStatic,
     GeoFireStaticPixel,
     GeoFireValidation,
-    GeoFireValidationCoverage,
 )
 from blindspot.provenance import utcnow
 from blindspot.sources import gk2a
@@ -687,14 +683,11 @@ def validate_range(
     loader: Callable[[datetime], gk2a.Scan | None] = _load_for_validation,
 ) -> dict[str, Any]:
     """Compare GK-2A with every polar pass that started in [start, end]; replaces those rows.
-    GK-2A pixels on persistent heat sources are left out, as in the stored record. Each pass is
-    also counted where the polar sensor could see (geo_fire_validation_coverage), when its
-    satellite's orbital elements are stored."""
+    GK-2A pixels on persistent heat sources are left out, as in the stored record."""
     with session_scope() as session:
         polys = region_polygons(session)
         static = StaticMasks(load_static_evidence(session, utcnow()))
         ref = polar_reference(session, start - timedelta(minutes=30), end)
-        orbits = {o.name: o for o in load_orbits(session)}
     if not len(ref):
         ref = _firms_csv_reference(polys)
     passes = [
@@ -705,7 +698,6 @@ def validate_range(
         if start <= p.start <= end
     ]
     rows: list[dict[str, Any]] = []
-    coverage: list[dict[str, Any]] = []
     no_scan = 0
     for p in passes:
         nearest = _nearest_slot(p.mid)
@@ -729,15 +721,10 @@ def validate_range(
         )
         nav, w = a.scan.navigation, a.scan.window
         rr, cc = nav.to_rowcol(ref.lon[sel], ref.lat[sel])
-        match = gf.match_pass(
+        cmp = gf.compare_pass(
             a.result.fire, a.result.clear, a.geom.region,
             rr - w.row0, cc - w.col0, ref.frp_mw[sel], STRONG_FRP_MW,
         )  # fmt: skip
-        cmp = match.counts()
-        regime = "day" if sza is not None and sza < 90 else "night"
-        orbit = orbits.get(p.satellite)
-        if orbit is not None and orbit.instrument == p.instrument:
-            coverage.append(_coverage_row(p, regime, a, match, orbit))
         n_region = int(a.geom.region.sum())
         clear = (
             float((a.result.clear & a.geom.region).sum() / n_region)
@@ -753,62 +740,36 @@ def validate_range(
                 "pass_end_utc": p.end,
                 "slot_utc": slot,
                 "dt_min": round((a.t_utc - p.mid).total_seconds() / 60, 2),
-                "regime": regime,
+                "regime": "day" if sza is not None and sza < 90 else "night",
                 "sza_deg": sza,
                 "clear_frac": round(clear, 4) if clear is not None else None,
                 "n_detections": int(sel.sum()),
-                **cmp,
+                "ref_pixels": cmp.ref_pixels,
+                "ref_hits": cmp.ref_hits,
+                "ref_pixels_strong": cmp.ref_pixels_strong,
+                "ref_hits_strong": cmp.ref_hits_strong,
+                "ref_pixels_clear": cmp.ref_pixels_clear,
+                "geo_pixels": cmp.geo_pixels,
+                "geo_hits": cmp.geo_hits,
                 "strong_frp_mw": STRONG_FRP_MW,
                 "reference": ref.source,
             }
         )
     with session_scope() as session:
-        for table in (GeoFireValidation, GeoFireValidationCoverage):
-            session.execute(
-                delete(table).where(
-                    table.algorithm == gf.ALGORITHM_VERSION,
-                    table.pass_start_utc.between(start, end),
-                )
+        session.execute(
+            delete(GeoFireValidation).where(
+                GeoFireValidation.algorithm == gf.ALGORITHM_VERSION,
+                GeoFireValidation.pass_start_utc.between(start, end),
             )
+        )
         if rows:
             session.execute(insert(GeoFireValidation).on_conflict_do_nothing(), rows)
-        if coverage:
-            session.execute(insert(GeoFireValidationCoverage).on_conflict_do_nothing(), coverage)
-    covered = gf.pooled_rates(coverage)
     return {
         "reference": ref.source,
         "passes": len(passes),
         "compared": len(rows),
         "no_gk2a_scan": no_scan,
         **{k: v for k, v in gf.pooled_rates(rows).items() if k != "passes"},
-        "covered": {k: covered[k] for k in ("passes", "hit_rate", "false_alarm_rate", "n_geo")},
-    }
-
-
-def _coverage_row(
-    p: gf.PolarPass, regime: str, a: Analysis, match: gf.PassMatch, orbit: OrbitElements
-) -> dict[str, Any]:
-    """The comparison counted where the polar sensor could see, and by its scan angle."""
-    region = a.geom.region
-    scan_deg = np.full(region.shape, np.nan)
-    ii, jj = np.nonzero(region)
-    _, scan_deg[ii, jj] = pass_scan_angles(orbit.satrec(), p.mid, a.geom.lat[ii, jj],
-                                           a.geom.lon[ii, jj])  # fmt: skip
-    max_deg = gf.COVERED_MAX_SCAN_DEG[p.instrument]
-    with np.errstate(invalid="ignore"):
-        covered = region & (scan_deg <= max_deg)
-    return {
-        "algorithm": gf.ALGORITHM_VERSION,
-        "satellite": p.satellite,
-        "instrument": p.instrument,
-        "pass_start_utc": p.start,
-        "regime": regime,
-        "max_scan_deg": max_deg,
-        "tle_epoch": orbit.epoch,
-        "region_pixels": int(region.sum()),
-        "covered_pixels": int(covered.sum()),
-        **match.counts(covered),
-        "by_scan_angle": gf.scan_angle_counts(match, scan_deg),
     }
 
 
