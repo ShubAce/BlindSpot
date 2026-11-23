@@ -76,8 +76,13 @@ def main() -> int:
             "r_vent": c["ventilation_only"]["lag0"]["r"], "r_cams": c["cams_baseline"]["lag0"]["r"],
             "hours_observed": c["hours_observed"],
         }
+    # The seed the run used: newer code stores it (monte_carlo.seed, from the window); the code of
+    # 1d192d0 stored none and drew it from the clock, by this formula.
+    stored = (summary.get("monte_carlo") or {}).get("seed")
     out = {
-        "code": job.__file__, "offset_s": args.offset, "seed": int(run_at.timestamp()) % 1_000_003,
+        "code": job.__file__, "offset_s": args.offset,
+        "seed": stored if stored is not None else int(run_at.timestamp()) % 1_000_003,
+        "seed_source": "stored by the run" if stored is not None else "clock formula of 1d192d0",
         "t0": row[2].isoformat(), "hours": row[3], "period": summary["period"], "inputs": summary["inputs"],
         "headline": summary["headline"], "median_r": summary["median_r_smoke_per_km_mixing_depth"],
         "median_r_cams": summary["median_r_cams"], "median_r_vent": summary["median_r_ventilation_only"],

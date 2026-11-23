@@ -84,7 +84,10 @@ def city_metrics(entry: dict[str, Any]) -> dict[str, Any]:
         shift = placebos["day_shift"]
         out["r_placebo_day_shift_mean"] = shift.get("mean_r")
         out["r_placebo_day_shift_max"] = shift.get("max_r")
+        out["r_model_same_hours_as_day_shift"] = shift.get("model_mean_r_same_hours")
+        out["day_shift_model_higher"] = [shift.get("model_higher"), shift.get("compared")]
         out["day_shift"] = shift.get("by_shift")
+        out["placebo_summary"] = entry.get("placebo_summary")
     return out
 
 
@@ -92,11 +95,15 @@ def run_metrics(summary: dict[str, Any], series: list[dict[str, Any]]) -> dict[s
     cities = {e["city"]: city_metrics(e) for e in summary["cities"]}
     return {
         "headline": summary.get("headline"),
+        "headline_city": summary.get("headline_city"),
+        "headline_text": summary.get("headline_text"),
         "median_r": summary.get("median_r_smoke_per_km_mixing_depth"),
         "median_r_cams": summary.get("median_r_cams"),
         "median_r_ventilation_only": summary.get("median_r_ventilation_only"),
         "median_r_placebo_constant_smoke": summary.get("median_r_placebo_constant_smoke"),
         "median_r_placebo_day_shift": summary.get("median_r_placebo_day_shift"),
+        "median_r_model_same_hours_as_day_shift": summary.get("median_r_model_same_hours_as_day_shift"),
+        "day_shift_model_higher": summary.get("day_shift_model_higher"),
         "placebo_comparison": summary.get("placebo_comparison"),
         "monte_carlo": summary.get("monte_carlo"),
         "inputs": summary.get("inputs"),
@@ -121,7 +128,8 @@ def spread(runs: list[dict[str, Any]]) -> dict[str, Any]:
     med = [r["median_r"] for r in runs]
     out["median_r"] = {"values": med, "sd": sd(med)}
     out["city_r_sd"] = {c: sd([r["cities"][c]["r"] for r in runs]) for c in runs[0]["cities"]}
-    for key in ("median_r_placebo_constant_smoke", "median_r_placebo_day_shift"):
+    for key in ("median_r_placebo_constant_smoke", "median_r_placebo_day_shift",
+                "median_r_model_same_hours_as_day_shift"):
         if runs[0].get(key) is not None:
             out[key] = {"values": [r[key] for r in runs], "sd": sd([r[key] for r in runs])}
     if "Delhi" in runs[0]["series"]:
@@ -209,8 +217,10 @@ def main() -> int:
     }
     first = runs[0]
     print(json.dumps({"window": result["window"], "production_seed": {
-        k: first[k] for k in ("headline", "median_r", "median_r_cams", "median_r_ventilation_only",
-                              "median_r_placebo_constant_smoke", "median_r_placebo_day_shift")},
+        k: first[k] for k in ("headline", "headline_text", "median_r", "median_r_cams",
+                              "median_r_ventilation_only", "median_r_placebo_constant_smoke",
+                              "median_r_placebo_day_shift", "median_r_model_same_hours_as_day_shift",
+                              "day_shift_model_higher", "placebo_comparison")},
         "delhi": {k: v for k, v in (first["cities"].get("Delhi") or {}).items() if k != "day_shift"},
         "spread": {k: v for k, v in result["spread"].items() if k != "city_r_sd"}}, indent=1, default=str))
     if args.out:

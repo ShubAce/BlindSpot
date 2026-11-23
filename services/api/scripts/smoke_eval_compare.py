@@ -71,6 +71,28 @@ def before_rows(paths: list[Path], hours: tuple[datetime, datetime] | None) -> N
               f"median r {_mean_sd(med)}")
 
 
+def paired_day_shift(run: dict[str, Any]) -> dict[str, Any]:
+    """The day-shift placebo against the model on the same hours, from each city's saved by_shift
+    entries, as the job computes it: per city the mean over shifts of the placebo's r and of the
+    model's r on that shift's hours (rounded to 3 decimals), then medians and counts over cities."""
+    per_city = {}
+    for name, c in run["cities"].items():
+        scored = [e for e in c.get("day_shift") or [] if e["r"] is not None]
+        if scored:
+            per_city[name] = (round(float(np.mean([e["r_model_same_hours"] for e in scored])), 3),
+                              round(float(np.mean([e["r"] for e in scored])), 3),
+                              sum(e["r_model_same_hours"] > e["r"] for e in scored), len(scored))
+    vals = list(per_city.values())
+    delhi = per_city.get("Delhi")
+    return {
+        "median_model": round(float(np.median([v[0] for v in vals])), 3) if vals else None,
+        "median_placebo": round(float(np.median([v[1] for v in vals])), 3) if vals else None,
+        "cities": f"{sum(v[0] > v[1] for v in vals)} of {len(vals)}",
+        "shifts": f"{sum(v[2] for v in vals)} of {sum(v[3] for v in vals)}",
+        "delhi": None if delhi is None else f"{delhi[0]} vs placebo {delhi[1]} (higher in {delhi[2]} of {delhi[3]} shifts)",
+    }
+
+
 def eval_rows(name: str, path: Path) -> dict[str, Any]:
     res = json.loads(path.read_text(encoding="utf-8"))
     runs = res["runs"]
@@ -89,6 +111,13 @@ def eval_rows(name: str, path: Path) -> dict[str, Any]:
               f"{d0.get('r_placebo_constant_smoke')}, best lag {d0.get('best_lag_h_placebo_constant_smoke')} h); "
               f"day shift median {f['median_r_placebo_day_shift']} (Delhi mean {d0.get('r_placebo_day_shift_mean')}, "
               f"max {d0.get('r_placebo_day_shift_max')})")
+    if any(c.get("day_shift") for c in f["cities"].values()):
+        p = [paired_day_shift(r) for r in runs]
+        print(f"  day shift paired (same hours), window seed: median model {p[0]['median_model']} vs "
+              f"placebo {p[0]['median_placebo']}; model higher in {p[0]['cities']} cities and "
+              f"{p[0]['shifts']} shifts; Delhi model {p[0]['delhi']}")
+        print(f"  over {len(runs)} seeds: median model {[x['median_model'] for x in p]} vs placebo "
+              f"{[x['median_placebo'] for x in p]}; cities higher {[x['cities'] for x in p]}")
     print(f"  over {len(runs)} seeds: Delhi r {_mean_sd([x.get('r') for x in d])}; median r "
           f"{_mean_sd([r['median_r'] for r in runs])}; Delhi partial {_mean_sd([x.get('partial_r') for x in d])}; "
           f"n_eff {[x.get('n_eff') for x in d]}; best lags {[x.get('best_lag_h') for x in d]}; "
