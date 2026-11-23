@@ -233,8 +233,13 @@ install -m 644 /tmp/bs/ops/blindspot-api.service /etc/systemd/system/
 install -m 644 /tmp/bs/ops/nginx-api-cache.conf /etc/nginx/conf.d/blindspot-api-cache.conf
 NGINX_CACHE=/var/cache/nginx/blindspot  # proxy_cache_path in nginx-api-cache.conf
 install -d -m 750 -o www-data -g www-data "$NGINX_CACHE"
+# The warm timer refills this cache, and refreshes the answers a daily job feeds about 25 to 35
+# minutes after it ends (warm.sh, through the cache's 127.0.0.1:8002 door): shipped with the cache's
+# configuration.
+install -m 755 /tmp/bs/ops/warm.sh /usr/local/sbin/blindspot-warm
+install -m 644 /tmp/bs/ops/blindspot-warm.service /tmp/bs/ops/blindspot-warm.timer /etc/systemd/system/
 nginx -t -q
-systemctl daemon-reload && systemctl enable --quiet blindspot-api nginx
+systemctl daemon-reload && systemctl enable --quiet blindspot-api nginx blindspot-warm.timer
 # The API (127.0.0.1:8001) first, so :8000 is free for the cache in front of it. /api/health is
 # never cached, so a 200 through the cache means both are up (502 while uvicorn starts is retried).
 systemctl restart blindspot-api

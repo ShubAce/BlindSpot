@@ -457,6 +457,9 @@ def district_brief(session: Session, name: str, days: int, limit: int | None = N
         "villages_order": "largest candidate unseen area first; one row per village and sub-district",
         "watchlist": watchlist[:limit],
         "watchlist_total": len(watchlist),
+        # of them, rows of a named village (the others gather a sub-district's fields with no census
+        # village within 3 km), so a page can count villages as totals.villages does
+        "watchlist_villages": sum(1 for w in watchlist if w["village"]),
         # rows (named villages, and a sub-district's fields with no census village close by) with at
         # least one field in the top tenth; they come first, so watchlist[:this] are all of them
         "watchlist_in_top_tenth": sum(1 for w in watchlist if w["in_top_tenth"]),

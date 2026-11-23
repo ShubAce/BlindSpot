@@ -8,7 +8,7 @@ import { dateTimeIST, metricText, MISSING, NBSP, number } from '@/lib/format';
 import { CsvButtons } from './CsvDownload';
 import { BarCell, BriefScope, LongerWindows, NotesCard, RowLine, SourcesFoot } from './parts';
 import { PrintButton } from './PrintButton';
-import { auditSentence, count, csvHref, districtHref, ha, haText, indexHref, passDate, plural, rankingSentence, ROW_LIMIT, strengthLabel, windowWords } from './read';
+import { auditSentence, count, csvHref, districtHref, ha, haText, indexHref, passDate, places, plural, rankingSentence, ROW_LIMIT, strengthLabel, windowWords } from './read';
 import type { BriefVillage, BriefWatchRow, DistrictBriefResponse } from './types';
 
 /**
@@ -47,13 +47,13 @@ export function DistrictBrief({ data, days, watchAll = false }: { data: District
 
   const burnt =
     w && t.unseen_clusters > 0
-      ? `${count(t.unseen_clusters)} candidate unseen ${plural(t.unseen_clusters, 'burn')} covering ${metricText('area_ha', t.unseen_area_ha)} in ${count(t.villages)} ${plural(t.villages, 'village')}, in ${windowWords(w)}.`
+      ? `${count(t.unseen_clusters)} candidate unseen ${plural(t.unseen_clusters, 'burn')} covering ${metricText('area_ha', t.unseen_area_ha)} in ${places(t.villages, data.villages_total)}, in ${windowWords(w)}.`
       : w
         ? `No candidate unseen burns in ${windowWords(w)}.`
         : `No burn scar is mapped yet${data.reason ? `: ${data.reason}` : '.'}`;
   const watched =
     t.top_tenth_fields > 0
-      ? ` ${count(t.top_tenth_fields)} harvested ${plural(t.top_tenth_fields, 'field')} in ${count(t.top_tenth_villages)} ${plural(t.top_tenth_villages, 'village')} rank in the top tenth for the next burn.`
+      ? ` ${count(t.top_tenth_fields)} harvested ${plural(t.top_tenth_fields, 'field')} in ${places(t.top_tenth_villages, data.watchlist_in_top_tenth)} rank in the top tenth for the next burn.`
       : t.harvested_fields > 0
         ? ` None of its ${count(t.harvested_fields)} harvested fields ranks in the top tenth for the next burn.`
         : '';
@@ -173,7 +173,7 @@ function VillagesCard({ data, villages, days }: { data: DistrictBriefResponse; v
       id="br-villages"
       title="Villages with candidate unseen burns"
       sub="Largest candidate unseen area first. A village’s map link and case file open its largest burn."
-      aside={total > villages.length ? `The ${count(villages.length)} largest of ${count(total)}; the CSV has all ${count(total)}` : `${count(total)} ${plural(total, 'village')}`}
+      aside={total > villages.length ? `The ${count(villages.length)} largest of ${places(data.totals.villages, total)}; the CSV has all ${count(total)}` : places(data.totals.villages, total)}
     >
       {/* the CSV lists the villages with candidate unseen burns: with none, it would be a header only */}
       {total > 0 ? (
@@ -274,6 +274,9 @@ function WatchlistCard({ data, watch, days, watchAll }: { data: DistrictBriefRes
   const rest = watch.filter((r) => !r.in_top_tenth);
   const total = data.watchlist_total ?? watch.length;
   const inTop = data.watchlist_in_top_tenth ?? top.length;
+  // named villages and the sub-district rows apart, as the district's totals count them (an older API
+  // without watchlist_villages: every row a village, as before)
+  const watchPlaces = places(data.watchlist_villages ?? total, total);
   const pill = strengthLabel(rel);
   const ranked = risk?.fields_ranked != null ? number(risk.fields_ranked) : null;
   const runAt = risk?.as_of ? dateTimeIST(risk.as_of, { suffix: true }) : null;
@@ -346,7 +349,7 @@ function WatchlistCard({ data, watch, days, watchAll }: { data: DistrictBriefRes
       sub={`Harvested fields whose straw was still lying on the latest clear pass, grouped by village and ordered by the burn-risk run${runAt ? ` of ${runAt}` : ''}.`}
       aside={
         <>
-          <span>{cut ? `The first ${count(watch.length)} of ${count(total)} villages` : `${watchAll && total > ROW_LIMIT ? 'All ' : ''}${count(total)} ${plural(total, 'village')}`}</span>
+          <span>{cut ? `The first ${count(watch.length)} of ${watchPlaces}` : `${watchAll && total > ROW_LIMIT ? 'All ' : ''}${watchPlaces}`}</span>
           {toggle ? (
             <Link className="br-textlink br-asidelink" href={`${districtHref(data.district, days, !watchAll)}#br-watch-title`} prefetch={false} data-print="hide">
               {toggle}
@@ -397,7 +400,7 @@ function WatchlistCard({ data, watch, days, watchAll }: { data: DistrictBriefRes
               <tbody>
                 <tr className="br-grouprow">
                   <th colSpan={8} scope="rowgroup">
-                    {`In the top tenth: ${count(inTop)} ${plural(inTop, 'village has', 'villages have')} fields among the run’s highest-ranked tenth`}
+                    {`In the top tenth: ${places(data.totals.top_tenth_villages, inTop)} ${inTop === 1 ? 'has' : 'have'} fields among the run’s highest-ranked tenth`}
                   </th>
                 </tr>
                 {top.map((r, i) => row(r, i + 1))}

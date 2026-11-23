@@ -462,6 +462,23 @@ def test_ask_streams_sse_and_the_run_is_readable(created: list[str], monkeypatch
         _give_recorded_citations(run_id)
         examples = client.get("/api/agent/examples?limit=20").json()
         assert run_id in [x["id"] for x in examples["examples"]] and "sources" in examples
+        # an answer about a burn scar no longer in the data (a season rebuild) is left out, unless the
+        # scar was forwarded to the one that replaced it (its case page still opens)
+        gone = 987654321987
+        with session_scope() as session:
+            session.execute(text("UPDATE agent_run SET question = :q WHERE id = :i"),
+                            {"q": f"Tell me about burn scar case {gone} near Nowhere", "i": run_id})
+        examples = client.get("/api/agent/examples?limit=20").json()
+        assert run_id not in [x["id"] for x in examples["examples"]]
+        with session_scope() as session:
+            session.execute(text("INSERT INTO burn_cluster_forward (old_id, new_id, overlap_share) "
+                                 "VALUES (:o, :n, 1.0)"), {"o": gone, "n": gone + 1})
+        try:
+            examples = client.get("/api/agent/examples?limit=20").json()
+            assert run_id in [x["id"] for x in examples["examples"]]
+        finally:
+            with session_scope() as session:
+                session.execute(text("DELETE FROM burn_cluster_forward WHERE old_id = :o"), {"o": gone})
         # a run from before the honesty check (no honesty block) is never a verified example
         with session_scope() as session:
             session.execute(text("UPDATE agent_run SET verification = verification - 'honesty' WHERE id = :i"),

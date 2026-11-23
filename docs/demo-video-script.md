@@ -1,6 +1,6 @@
 # Demo video: script and shot list (up to 5 min, with a 3-minute cut)
 
-For the team recording the Forge'26 demo. Record the live site, https://blindspot-web-five.vercel.app, at 1440 x 900
+For the team recording the Forge'26 demo. Record the live site, https://www.blindspotin.tech, at 1440 x 900
 or full screen at 1920 x 1080, in a clean browser profile (no bookmarks bar, no extensions), with the system clock in
 IST. Speak at about 130 words a minute. The full narration is about 620 words, 4 min 50 s.
 
@@ -41,7 +41,7 @@ time you record. Never say a number that is not on screen in that shot.
 | 7 | 3:05-3:25 | **Bulletin** in the bar | Switch English, Hindi, Punjabi. Press **Listen** on the Hindi bulletin for three seconds. | "Every morning a bulletin in English, Hindi and Punjabi, written by Gemini under the same number checks, and read aloud on any device with the voice." |
 | 8 | 3:25-3:55 | **Method** in the bar, the section "How the investigator is checked" | Hold on the record and the diagram of the checks; then scroll to the validation table. | "We publish how often each part is right, including where it is weak. The investigator's own record, read live: *(read from screen)*. The smoke index and the burn-risk ranking are marked as not yet robust, with their numbers." |
 | 9 | 3:55-4:30 | Any page, then the theme switch, then offline | Switch to the light theme with the sun/moon button in the bar and back. Turn Wi-Fi off. Open `/live` and `/brief/patiala` again: point at the notice at the bottom. Open a page you never visited: the offline screen lists the saved pages. Turn Wi-Fi on: the page refreshes by itself. | "Built for a live demo on venue Wi-Fi: dark or light, and if the connection drops, every page you have opened keeps working from the last data this browser saw, and says how old it is. When it comes back, the page refreshes by itself." |
-| 10 ★ | 4:30-4:50 | Back to the landing first screen | Hold. | "Everything is live data from NASA, ESA, the Korean weather satellite and India's own monitors, refreshed by scheduled jobs and served on free tiers. The code is open. BlindSpot: look between the passes." |
+| 10 ★ | 4:30-4:50 | Back to the landing first screen | Hold. | "Everything is live data from NASA, ESA, the Korean weather satellite and India's own monitors, refreshed by scheduled jobs and served from one small server. The code is open. BlindSpot: look between the passes." |
 
 The 3-minute cut is shots 1, 2, 3, 4, 6 and 10: about 3 minutes. If it runs over, drop the Print preview from shot 6
 and the Listen moment from shot 4.

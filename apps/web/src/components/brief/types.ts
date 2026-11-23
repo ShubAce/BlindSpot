@@ -150,6 +150,8 @@ export type DistrictBriefResponse = Envelope & {
   villages_order?: string;
   watchlist: BriefWatchRow[];
   watchlist_total: number;
+  /** Rows of the watchlist that are named villages (absent from an API older than 2026-11-24). */
+  watchlist_villages?: number;
   watchlist_in_top_tenth: number;
   watchlist_order?: string;
   candidate_unseen_audit: BriefAudit | null;

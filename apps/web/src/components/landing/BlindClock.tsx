@@ -63,7 +63,9 @@ export function BlindClock({ model, live, meta }: { model: ClockModel; live: Liv
   } else if (watching) {
     liveLine = `${watching.satellite} is over ${meta.site} now${ticking ? `, for ${countdown(watching.end - now)} more` : ''}.`;
   } else if (next) {
-    liveLine = `No fire satellite over ${meta.site} now. Next: ${next.satellite} at ${timeIST(next.start)} IST${ticking ? `, in ${countdown(next.start - now)}` : ''}.`;
+    // "in view from": the start of its window, as the table lists it; the live map and the lab give
+    // the same pass by its closest approach, a few minutes later ("passes at")
+    liveLine = `No fire satellite over ${meta.site} now. Next: ${next.satellite}, in view from ${timeIST(next.start)} IST${ticking ? `, in ${countdown(next.start - now)}` : ''}.`;
   } else {
     liveLine = `No fire satellite pass over ${meta.site} falls in the next day of the pass list.`;
   }

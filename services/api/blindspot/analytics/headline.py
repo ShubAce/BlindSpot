@@ -219,14 +219,16 @@ def unseen_burns(session: Session) -> Block:
     audit = audit_summary()
     unseen = audit["candidate_unseen"]
     checked = float(row["checked_area_ha"])
+    # Areas to 0.01 ha, as GET /api/scars/summary gives them: rounded to 0.1 first, 911,372.48 ha
+    # became 911,372.5 and then "9,11,373" on a page, beside the summary's "9,11,372".
     block: dict[str, Any] = {
         "available": row["clusters"] > 0,
         "label": "candidate unseen burns",
         "clusters": row["clusters"],
-        "area_ha": round(float(row["area_ha"]), 1),
+        "area_ha": round(float(row["area_ha"]), 2),
         "unseen_clusters": row["unseen_clusters"],
-        "unseen_area_ha": round(float(row["unseen_area_ha"]), 1),
-        "checked_area_ha": round(checked, 1),
+        "unseen_area_ha": round(float(row["unseen_area_ha"]), 2),
+        "checked_area_ha": round(checked, 2),
         "unseen_share": round(float(row["unseen_area_ha"]) / checked, 4) if checked else None,
         "districts": row["districts"],
         "first_pass": row["first_pass"],

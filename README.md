@@ -40,9 +40,10 @@ time farmers burn, not how much they burn.
    Punjab. The predicted pass times match FIRMS acquisition times to within a minute at the median, and all within
    three minutes.
 3. **The evening fires, measured.** GK-2A scans the region every 10 minutes. BlindSpot finds its fire pixels and
-   reports the burning that happens outside the hours in which a polar satellite reported a fire (16:30-20:41 IST
-   in the last days: none at all), validated against VIIRS and MODIS. The share outside those hours depends on the
-   margin allowed around each pass.
+   reports the burning that happens outside the hours in which a polar satellite reported a fire (in the three days
+   to 23 November 2026, none reported one from 16:53 to 20:35 IST, a span that held 49% of GK-2A's fire activity;
+   the site shows the current span), validated against VIIRS and MODIS. The share outside those hours depends on
+   the margin allowed around each pass.
 4. **Where help should go next.** Fields that are harvested but not yet burnt are ranked by burn risk (time since
    harvest, dryness, local burning history, neighbourhood), so that seeders can reach them first.
 5. **Where the smoke goes.** A particle model driven by two weather models runs forward from fires and scars, and
@@ -65,17 +66,17 @@ time farmers burn, not how much they burn.
 
 ## Measured so far
 
-As of 31 October 2026 unless a row names its own window. The site's `/method` page shows the current values, read
-live from the API.
+Read from the live API on 23 November 2026 (the endpoint is named in each row; the investigator row as of 01:23 IST
+on 24 November), except the precision audit of 31 October 2026. The site's `/method` page shows the current values, read live from the API.
 
 | Check                                                                                       | Result                                                                                     |
 | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| Predicted pass times vs FIRMS acquisition times (1,428 detections, 3 days)                  | median error 0.5 min; all within 3 min                                                     |
-| Candidate unseen burns that are real burns (visual audit of random Sentinel-2 chip samples) | precision 83%, 95% CI 61–94%, n = 18 (held-out samples; 87%, n = 23 with the first sample, which shaped the look-alike filter) |
-| Smoke model vs measured PM2.5 (16 cities, 17–22 Nov 2026; evaluation on a copy of production data, scored after a 48 h spin-up) | median r = 0.11 (Delhi 0.06), below the CAMS model (0.40), ventilation alone (0.33) and 1/BLH alone (0.29); against its own smoke moved 1–3 days, on the same hours, it ties or is slightly above (0.22 vs 0.21); no sign of skill at timing smoke that week; about 10 independent hours per city |
-| Burn-risk ranking vs the burns that followed (risk-v3, 213 pass pairs)                      | AUC 0.57 (95% CI 0.50–0.65; 0.5 is chance): weak, about what burning nearby predicts alone; the top tenth burnt 1.4× as often as average |
+| Predicted pass times vs FIRMS acquisition times (516 detections, 20–23 Nov 2026; `/api/orbits/validation`) | median error 0.3 min; 95% within 1.8 min; all within 3 min |
+| Candidate unseen burns that are real burns (visual audit of random Sentinel-2 chip samples, 31 Oct 2026) | precision 83%, 95% CI 61–94%, n = 18 (held-out samples; 87%, n = 23 with the first sample, which shaped the look-alike filter) |
+| Smoke model vs measured PM2.5 (16 cities, 18–23 Nov 2026, scored after a 48 h spin-up; `/api/smoke/validation`) | median r = 0.30 (Delhi 0.36), below the CAMS model (0.45), ventilation alone (0.42) and 1/BLH alone (0.36); against its own smoke moved 1–3 days, on the same hours, 0.32 vs 0.26 (higher in 9 of 16 cities); about 10 independent hours per city (6 to 19), so no single city's r is robust |
+| Burn-risk ranking vs the burns that followed (risk-v3, 426 pass pairs on 19 tiles, 3 Oct–22 Nov 2026; `/api/risk`) | AUC 0.632 (95% CI 0.571–0.692; 0.5 is chance): modest, and not clearly ahead of ranking by burning nearby alone (AUC 0.639) or by scar hectares nearby in the last 7 days (0.632); the top tenth burnt 1.63× as often as average (95% CI 1.31–2.01; 20.8% against 12.8%); over the last 7 days of passes, pooled, AUC 0.569 (95% CI 0.532–0.612; burning nearby alone 0.572) |
 | GK-2A fire pixels vs MODIS on Aqua, afternoon passes (gk2a-ctx-3, static heat sources left out; 24 Oct–23 Nov 2026, 27 Aqua passes; read 23 Nov 2026 from `/api/geostationary/diurnal`) | 74% of MODIS's strong fire pixels detected (809 of 1,094); 26% of GK-2A's fire pixels unconfirmed (712 of 2,696). Pixels within one pass are not independent, so with 27 passes these are rough (a bootstrap over passes on the previous version gave 66–79% and 9–48%) |
-| Investigator answers, last 30 days (read 1 Nov 2026, 14:37 IST; `/api/agent/stats`)          | 299 of 300 figures matched the tool outputs before display, in 23 answers; 1 answer corrected after its first draft, then passed |
+| Investigator answers, last 30 days (26 Oct–24 Nov 2026 IST, as of 01:23 IST on 24 Nov; `/api/agent/stats`) | 873 of 874 figures matched the tool outputs before display, in 66 answers (24 asked on the site, 42 by the daily job); 1 answer corrected after its first draft, then passed. Daily bulletins: 1,334 of 1,335 figures matched |
 
 ## Architecture
 

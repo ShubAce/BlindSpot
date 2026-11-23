@@ -190,7 +190,7 @@ export function CaseSummary({ drawn }: { drawn: LiveScarsResponse | undefined })
                     : explaining
                       ? `${number(explaining)} explain it`
                       : p.nearest_fire_m != null
-                        ? `None in reach; nearest ${metricText('km', p.nearest_fire_m / 1000)}`
+                        ? `None in reach; nearest ${metricText('near_km', p.nearest_fire_m / 1000)}`
                         : 'None in reach'}
                 </dd>
               </div>
