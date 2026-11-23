@@ -23,6 +23,9 @@ To attribute a change, each flag puts one earlier behaviour back:
   --equal-particles  the same number of particles per source (3 to 40) instead of by tonnes
   --keep-static      release smoke from persistent industrial heat sources too
 and --particles N changes the hindcast's particle budget per member (VALIDATION_PARTICLES).
+--score-from-h N scores only the hours from N h after the first scored hour on, with the same
+hindcast start: two runs with different spin-ups can then be compared on the same later hours.
+The output keeps each city's hourly smoke and measured PM2.5 for comparisons made afterwards.
 """
 
 from __future__ import annotations
@@ -53,6 +56,7 @@ def parse_args() -> argparse.Namespace:
     ap.add_argument("--equal-particles", action="store_true")
     ap.add_argument("--keep-static", action="store_true")
     ap.add_argument("--particles", type=int)
+    ap.add_argument("--score-from-h", type=float, default=0.0)
     ap.add_argument("--out", type=Path)
     return ap.parse_args()
 
@@ -98,6 +102,8 @@ def run_metrics(summary: dict[str, Any], series: list[dict[str, Any]]) -> dict[s
         "inputs": summary.get("inputs"),
         "cities": cities,
         "series": {s["city"]: [p["smoke_per_km_mixing_depth"] for p in s["series"]] for s in series},
+        "pm25_obs": {s["city"]: [p["pm25_obs"] for p in s["series"]] for s in series},
+        "hours": [p["t"].isoformat() for p in series[0]["series"]] if series else [],
     }
 
 
@@ -161,7 +167,7 @@ def main() -> int:
     if args.particles:
         job.VALIDATION_PARTICLES = args.particles
 
-    run_at = datetime.fromisoformat(args.run_at.replace("Z", "+00:00"))
+    run_at = datetime.fromisoformat(args.run_at)
     started = time.perf_counter()
     with session_scope() as session:
         inp = job.load_validation_inputs(session, run_at)
@@ -169,6 +175,10 @@ def main() -> int:
     if isinstance(inp, dict):
         print(json.dumps(inp, default=str))
         return 1
+    if args.score_from_h:  # same hindcast start, fewer scored hours
+        inp.t_score += args.score_from_h * 3600.0
+        if inp.t_score >= inp.t_end:
+            sys.exit("--score-from-h leaves no scored hour")
     load_s = time.perf_counter() - started
     base = job.validation_seed(inp.t0, inp.t_end)
     runs = []
@@ -187,7 +197,7 @@ def main() -> int:
     result = {
         "run_at": run_at.isoformat(),
         "flags": {k: getattr(args, k) for k in ("ceil_labels", "no_spinup", "spinup_h", "equal_particles",
-                                                "keep_static", "particles")},
+                                                "keep_static", "particles", "score_from_h")},
         "window": {"hindcast_from": datetime.fromtimestamp(inp.t0, tz=run_at.tzinfo).isoformat(),
                    "scored_from": datetime.fromtimestamp(inp.t_score, tz=run_at.tzinfo).isoformat(),
                    "scored_to": datetime.fromtimestamp(inp.t_end, tz=run_at.tzinfo).isoformat(),
