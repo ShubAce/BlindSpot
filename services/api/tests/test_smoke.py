@@ -21,8 +21,7 @@ import orjson
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import delete
-from test_met import fixture_grid, meta_fixture
-from test_met import stored_runs  # noqa: F401  (a fixture: the met job on the recorded grids)
+from test_met import fixture_grid, meta_fixture, stored_runs  # noqa: F401
 
 from blindspot.analytics import trajectory as tj
 from blindspot.db import init_db, session_scope
@@ -644,7 +643,7 @@ def test_smoke_routes(recorded_runs, monkeypatch):
         smoke_router._cache.clear()
 
 
-def test_smoke_validate_job_on_the_database(stored_runs, monkeypatch):
+def test_smoke_validate_job_on_the_database(stored_runs, monkeypatch):  # noqa: F811  (the met job's fixture)
     """The job path end to end: the met job stores the recorded grids, then smoke_validate reads
     them back (load_validation_inputs), writes its smoke_run row and stored answer, and GET
     /api/smoke/validation serves it. Cities, fires and PM2.5 are the recorded inputs the other
