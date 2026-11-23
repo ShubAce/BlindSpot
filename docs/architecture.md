@@ -180,7 +180,7 @@ rules passed, corrected or rewrote runs, from every stored run.
 - Rate limits respected: FIRMS 5000 tx / 10 min, Open-Meteo free tier, CelesTrak caching (≥ 2 h), OpenAQ key.
 - API responses cached in-process for 30 s to 10 min (10 min: the brief, risk and boundaries answers and the slow
   orbit answers), then by the nginx cache in front of the API until the job that feeds them next runs (`s-maxage`
-  on a job clock, `services/api/blindspot/api/cache.py`). About 15 to 25 minutes after a daily job ends, once the
+  on a job clock, `services/api/blindspot/api/cache.py`). About 25 to 35 minutes after a daily job ends, once the
   in-process copies built before it have expired, the warm timer refreshes the answers it feeds
   (`infra/aws/warm.sh`), so every page shows the same counts. Imagery cached on disk forever.
 - Agent: per-IP rate limit, model fallback on 429/503, cached answers for identical questions within 10 min.

@@ -233,7 +233,7 @@ install -m 644 /tmp/bs/ops/blindspot-api.service /etc/systemd/system/
 install -m 644 /tmp/bs/ops/nginx-api-cache.conf /etc/nginx/conf.d/blindspot-api-cache.conf
 NGINX_CACHE=/var/cache/nginx/blindspot  # proxy_cache_path in nginx-api-cache.conf
 install -d -m 750 -o www-data -g www-data "$NGINX_CACHE"
-# The warm timer refills this cache, and refreshes the answers a daily job feeds about 15 to 25
+# The warm timer refills this cache, and refreshes the answers a daily job feeds about 25 to 35
 # minutes after it ends (warm.sh, through the cache's 127.0.0.1:8002 door): shipped with the cache's
 # configuration.
 install -m 755 /tmp/bs/ops/warm.sh /usr/local/sbin/blindspot-warm

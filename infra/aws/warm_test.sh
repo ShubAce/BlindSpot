@@ -47,10 +47,11 @@ temp_store="$headline.0000000012"
 cp "$headline" "$temp_store"
 
 cat > "$tmp/psql.sh" <<'EOF'
-# fake psql: the SQL must ask for successful runs that finished at least 15 minutes ago (the API's
-# in-process caches keep an answer up to 10); the rows come from $FAKE_ROWS
+# fake psql: the SQL must ask for successful runs that finished at least 25 minutes ago (an answer
+# the API built on another in-process answer can live 20) and at most 115; rows from $FAKE_ROWS
 grep -q "FROM job_run WHERE ok" <<< "$WARM_SQL" || { echo "unexpected SQL" >&2; exit 2; }
-grep -qF "finished_at <= now() - interval '15 minutes'" <<< "$WARM_SQL" || { echo "no settle time" >&2; exit 2; }
+grep -qF "finished_at <= now() - interval '25 minutes'" <<< "$WARM_SQL" || { echo "no settle time" >&2; exit 2; }
+grep -qF "finished_at > now() - interval '115 minutes'" <<< "$WARM_SQL" || { echo "no look-back" >&2; exit 2; }
 printf '%b' "${FAKE_ROWS:-}"
 EOF
 
@@ -77,12 +78,15 @@ has "$out" "5 answers refreshed, 3 purged, 0 failed" "dry run"
 [ ! -e "$state/handled-job-runs" ] || fail "dry run wrote the state"
 ok "dry run after sentinel: 5 refreshed, case file, CSV, odd key and the other Origin's copy listed for deletion, a temp file of a store in progress left alone"
 
-# 2. The refresh cap: over it, answers are purged instead (newest first are refreshed).
+# 2. The refresh cap: over it, answers are purged instead (newest first are refreshed). Over the time
+#    budget (a slow API), they are kept as they are, every copy: no reader is left without one.
 out=$(run '101 sentinel\n' WARM_DRY_RUN=1 WARM_REFRESH_MAX=2)
 has "$out" "2 answers refreshed, 6 purged, 0 failed" "cap"
 out=$(run '101 sentinel\n' WARM_DRY_RUN=1 WARM_REFRESH_BUDGET_S=0)
-has "$out" "0 answers refreshed, 8 purged, 0 failed" "time budget"
-ok "refresh cap and time budget"
+has "$out" "0 answers refreshed, 3 purged, 0 failed" "time budget"
+has "$out" "time budget of 0 s spent: 5 answers kept as they are" "time budget"
+hasnt "$out" "would delete $headline_other" "time budget (the other Origin's copy is kept too)"
+ok "refresh cap (purged) and time budget (kept)"
 
 # 3. For real, with a stand-in refresh door that logs what it is asked.
 py=""

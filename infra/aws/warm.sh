@@ -16,7 +16,10 @@
 #        within REFRESH_BUDGET_S;
 #      - purged: case files, CSVs, any answer over that cap, and copies of a refreshed answer kept for
 #        a request with another Origin (the API varies on Origin) are deleted. The next request that
-#        needs one builds it again, once (proxy_cache_lock).
+#        needs one builds it again, once (proxy_cache_lock);
+#      - kept: once REFRESH_BUDGET_S is spent (a slow API), the answers not reached yet stay as they
+#        are until their clock's next tick. Deleting them would leave their next readers waiting on
+#        the same slow API, with no stale copy to fall back on.
 #    The hourly and six-hourly jobs are left to their clocks, which tick within the hour.
 # 2. Request the main pages. An answer still within its cache time comes straight from the cache; an
 #    expired one is refreshed in the background while the old copy is served; one not cached yet is
@@ -39,9 +42,12 @@ API_HOST=api.blindspotin.tech        # the Host Caddy passes on, so a refresh lo
 # A job run is handled once it finished at least SETTLE_MIN ago: the API keeps a built answer in
 # process for up to 600 s after its build (cached_route on /api/brief and /api/risk, the boundaries
 # GeoJSON, the slow orbit answers), so a refresh any sooner could fetch an answer built from the data
-# before the job and store it as new until the next clock point. 15 minutes leaves 5 for a slow build.
-SETTLE_MIN=15
-LOOKBACK_MIN=105                     # runs that finished this recently are looked at (handled ones skipped)
+# before the job and store it as new until the next clock point. The brief's answers are built on a
+# district list that is itself kept 600 s (brief.known_districts, which names the newest pass), so one
+# built up to 600 s after the job from a list made before it lives until 20 minutes after the job.
+# 25 minutes leaves 5 for a slow build. A job's answers are refreshed 25 to 35 minutes after it ends.
+SETTLE_MIN=25
+LOOKBACK_MIN=115                     # runs that finished this recently are looked at (handled ones skipped)
 REFRESH_MAX=${WARM_REFRESH_MAX:-60}  # answers refreshed per run; the rest are purged
 REFRESH_BUDGET_S=${WARM_REFRESH_BUDGET_S:-480}  # and no refresh starts after this long (a slow API)
 
@@ -147,17 +153,22 @@ if [ "${#jobs[@]}" -gt 0 ] && [ -d "$CACHE" ]; then
 
   refreshed=0
   failed=0
+  kept=0
   started=$SECONDS
   for key in "${ordered[@]}"; do
     p=${primary_of[$key]}
-    for f in ${files_of[$key]}; do [ "$f" = "$p" ] || remove "$f"; done
-    # over the cap or the time budget: purged, built again when next read (the timer's next run and
-    # the pages are not held up behind a slow API)
-    if [ "$refreshed" -ge "$REFRESH_MAX" ] || [ $((SECONDS - started)) -ge "$REFRESH_BUDGET_S" ]; then
-      [ -e "$p" ] && remove "$p"
+    if [ "$refreshed" -ge "$REFRESH_MAX" ]; then  # over the cap: purged, built again when next read
+      for f in ${files_of[$key]}; do remove "$f"; done
       purged=$((purged + 1))
       continue
     fi
+    # over the time budget: kept as they are, every copy (the timer's next run and the pages are not
+    # held up behind a slow API, and its readers keep a copy while it is slow)
+    if [ $((SECONDS - started)) -ge "$REFRESH_BUDGET_S" ]; then
+      kept=$((kept + 1))
+      continue
+    fi
+    for f in ${files_of[$key]}; do [ "$f" = "$p" ] || remove "$f"; done
     if [ "$DRY" = 1 ]; then
       echo "warm: would refresh $key"
       refreshed=$((refreshed + 1))
@@ -170,11 +181,16 @@ if [ "${#jobs[@]}" -gt 0 ] && [ -d "$CACHE" ]; then
     fi
   done
   log "after ${!jobs[*]}: ${refreshed} answers refreshed, ${purged} purged, ${failed} failed"
+  if [ "$kept" -gt 0 ]; then
+    log "time budget of ${REFRESH_BUDGET_S} s spent: ${kept} answers kept as they are until their clock's next tick"
+  fi
 fi
 
 # Remember what was handled (the look-back window keeps the file small). A dry run changes nothing.
 if [ "$DRY" != 1 ] && [ "$db_ok" = 1 ]; then
-  mkdir -p "$STATE_DIR" && printf '%s\n' "${seen_ids[@]}" > "$handled_file.tmp" && mv -f "$handled_file.tmp" "$handled_file"
+  { mkdir -p "$STATE_DIR" && printf '%s\n' "${seen_ids[@]}" > "$handled_file.tmp" \
+      && mv -f "$handled_file.tmp" "$handled_file"; } 2>/dev/null \
+    || log "could not write $handled_file: the runs above are handled again by the next run"
 fi
 
 # --- 3. the pages -------------------------------------------------------------------------------
