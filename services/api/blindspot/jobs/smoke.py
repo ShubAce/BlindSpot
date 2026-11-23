@@ -4,7 +4,9 @@ Runs after every successful `met` (architecture.md section 6):
 1. Wind: the newest boundary-layer mean wind of each ensemble member (best_match, gfs_seamless).
    SYNTHESIS: two models and a cone, never one path as truth.
 2. Forward run: particles from every FIRMS detection of the last 24 h in the wind grid (released at
-   detection time, weighted by fire radiative power) and from candidate unseen burn scars
+   detection time, weighted by fire radiative power), except those at persistent industrial heat
+   sources (fire_static_site: kilns, factories, flares; the rule the crop-fire counts use, so the
+   back runs' exposure leaves them out too), and from candidate unseen burn scars
    (Sentinel-2 scars no FIRMS detection explains; weighted by area, released across their burn
    window with the evening-peaked profile ISRO SAC found), followed until 48 h after now. A city's
    smoke index = tonnes of burnt residue whose smoke is within 30 km of it.
@@ -13,8 +15,9 @@ Runs after every successful `met` (architecture.md section 6):
    the two-model cone and a verdict hint.
 4. One transaction writes the forward row and one back row per city; older rows lose their trails.
 
-Inputs come from tables other modules fill (fire_detection, burn_cluster, boundary, place). Each is
-read only if it exists; a missing input is reported in the run, never replaced by a made-up one.
+Inputs come from tables other modules fill (fire_detection, fire_static_site, burn_cluster,
+boundary, place). Each is read only if it exists; a missing input is reported in the run, never
+replaced by a made-up one.
 """
 
 from __future__ import annotations
