@@ -18,17 +18,20 @@ such as "and yesterday?" means nothing without its context, so it is not answere
 
 from __future__ import annotations
 
+import re
 from typing import Any, Literal
 
 import orjson
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 from sse_starlette import EventSourceResponse, ServerSentEvent
 
 from blindspot.agent import runner
 from blindspot.api import SessionDep, respond
 from blindspot.config import get_settings
+from blindspot.db import table_exists
 from blindspot.models.agent import AgentRun
 from blindspot.models.client_quota import client_address, shared_limits_enabled
 from blindspot.provenance import SourceRef, latest_refs, ref_for_fetch
@@ -210,15 +213,42 @@ _EXAMPLES_SQL = text(
 )
 
 
+_CASE_IN_QUESTION = re.compile(r"\bcase (\d{1,18})\b", re.IGNORECASE)
+
+
+def _case_named(row: AgentRun) -> int | None:
+    """The burn scar a question asks about ("Tell me about burn scar case 4723594 ..."), if any."""
+    m = _CASE_IN_QUESTION.search(row.question or "")
+    return int(m.group(1)) if m else None
+
+
+def _cases_gone(session: Session, ids: set[int]) -> set[int]:
+    """Of these case ids, those no longer a burn scar nor forwarded to one (burn_cluster_forward): a
+    season rebuild replaced them, and their case page is a 404."""
+    if not ids or not table_exists(session, "burn_cluster"):
+        return set()
+    params = {"ids": list(ids)}
+    alive = set(session.execute(text("SELECT id FROM burn_cluster WHERE id = ANY(:ids)"), params).scalars())
+    if table_exists(session, "burn_cluster_forward"):
+        alive |= set(session.execute(text("SELECT old_id FROM burn_cluster_forward WHERE old_id = ANY(:ids)"),
+                                     params).scalars())
+    return ids - alive
+
+
 @router.get("/examples")
 def examples(  # noqa: ANN201
     session: SessionDep, limit: int = 6, lang: Literal["en", "hi", "pa"] | None = None
 ):
     """Recent investigations whose every number passed verification (newest first, one per
-    distinct question)."""
+    distinct question). An answer about a burn scar that is no longer in the data (no case page) is
+    left out: its figures describe a scar nobody can open."""
     limit = min(max(limit, 1), 20)
-    ids = session.execute(_EXAMPLES_SQL, {"limit": limit, "lang": lang}).scalars().all()
+    ids = session.execute(_EXAMPLES_SQL, {"limit": limit + 10, "lang": lang}).scalars().all()
     rows = [row for i in ids if (row := session.get(AgentRun, i)) is not None]
+    named = {row.id: case for row in rows if (case := _case_named(row)) is not None}
+    if gone := _cases_gone(session, set(named.values())):
+        rows = [row for row in rows if named.get(row.id) not in gone]
+    rows = rows[:limit]
     sources: list[SourceRef] = []
     seen: set[tuple[Any, ...]] = set()
     for row in rows:

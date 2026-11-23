@@ -535,8 +535,12 @@ evidence, each with its qualification in every answer: candidate unseen burns (u
   subdistrict, unseen_clusters, unseen_area_ha, newest_pass, lat, lon, case_ids, maps_url,
   case_url}], villages_total, villages_order, watchlist: [{village, subdistrict, fields, area_ha,
   top_tenth_fields, top_tenth_area_ha, in_top_tenth, best_rank, lat, lon, field_ids, maps_url}],
-  watchlist_total, watchlist_in_top_tenth, watchlist_order, candidate_unseen_audit, risk_run,
-  ranking_reliability, notes, links, reason}`.
+  watchlist_total, watchlist_villages, watchlist_in_top_tenth, watchlist_order,
+  candidate_unseen_audit, risk_run, ranking_reliability, notes, links, reason}`.
+  - Village counts: `totals.villages` and `totals.top_tenth_villages` count named villages;
+    `villages_total`, `watchlist_total` and `watchlist_in_top_tenth` count rows, which include
+    unnamed ones (`village: null`). `watchlist_villages` (addition, 2026-11-24) is the named rows
+    of the watchlist. A page that shows both says how many rows are unnamed places.
   - `totals` always cover every village (`limit` cuts only the lists) and equal the district's
     row in `GET /api/brief`.
   - A village's point (`lat`, `lon`, `maps_url`) is its largest candidate unseen burn; `case_ids`
@@ -935,7 +939,8 @@ done         {"type":"done","run_id":"97c49cde-...","duration_ms":8228,"ok":true
 - **GET /api/agent/examples** (`limit` 1..20, `lang`) returns `{examples: [run without
   events]}`. It lists only verified runs that cite sources, and never a follow-up ("and
   yesterday?" means nothing without its thread). Each example carries the same three thread
-  fields.
+  fields. Since 2026-11-24 a run whose question names a burn scar case that is no longer in the
+  data and not forwarded (`burn_cluster_forward`) is left out: its case page is a 404.
 - **GET /api/agent/stats** (addition, 2026-11-01; `days` 1..365, default 30, IST days with today
   included) counts how the guardrails did, from every stored run of the window (`agent_run`),
   never from the model's opinion of itself. Returns `{days, window: {from_utc, to_utc,
