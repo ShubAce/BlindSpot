@@ -154,6 +154,20 @@ def get_session() -> Iterator[Session]:
         yield session
 
 
+def table_exists(session: Session, *names: str) -> bool:
+    """True when every named table exists in the public schema. to_regclass gives NULL for a
+    missing table instead of an error, so asking never aborts the session's transaction."""
+    return bool(
+        session.execute(
+            text(
+                "SELECT NOT EXISTS (SELECT 1 FROM unnest(CAST(:names AS text[])) AS t(name) "
+                "WHERE to_regclass('public.' || name) IS NULL)"
+            ),
+            {"names": list(names)},
+        ).scalar_one()
+    )
+
+
 def init_db() -> None:
     """Create the PostGIS extension and every missing table. Safe to run any number of times.
 

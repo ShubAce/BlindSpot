@@ -603,6 +603,7 @@ def wilson_interval(successes: int, n: int, z: float = 1.96) -> tuple[float, flo
 
 BLOCK_KM = 30.0  # bootstrap block side (the critique asked for 25-50 km; 50 km is reported as a check)
 POOLED_REPS = 2000
+POOLED_SEED = 20261123  # fixed, so the same fields always give the same intervals
 
 
 def block_ids(x: Any, y: Any, block_km: float = BLOCK_KM) -> tuple[Any, int]:
@@ -644,7 +645,7 @@ def concordance_by_block(pair: Any, label: Any, block: Any, score: Any, n_blocks
     return c, n
 
 
-def block_weights(k: int, reps: int = POOLED_REPS, seed: int = 20261123) -> Any:
+def block_weights(k: int, reps: int = POOLED_REPS, seed: int = POOLED_SEED) -> Any:
     """`reps` resamples of k blocks with replacement, as how many times each block was drawn."""
     import numpy as np
 
@@ -654,7 +655,7 @@ def block_weights(k: int, reps: int = POOLED_REPS, seed: int = 20261123) -> Any:
 
 
 def block_ratio_bootstrap(block: Any, k: int, hits: Any, picked: Any, burnt: Any, fields: Any,
-                          reps: int = POOLED_REPS, seed: int = 20261123) -> dict[str, Any]:
+                          reps: int = POOLED_REPS, seed: int = POOLED_SEED) -> dict[str, Any]:
     """The top tenth's burnt share (sum of hits / sum of picked), the base rate (burnt / fields) and
     their ratio, the lift, pooled over every pair, with 95% intervals from the same block resamples
     as block_draws()."""
@@ -680,7 +681,7 @@ def block_ratio_bootstrap(block: Any, k: int, hits: Any, picked: Any, burnt: Any
 
 
 def block_draws(cs: dict[str, Any], n: Any, reps: int = POOLED_REPS,
-                seed: int = 20261123) -> tuple[dict[str, float | None], dict[str, Any]]:
+                seed: int = POOLED_SEED) -> tuple[dict[str, float | None], dict[str, Any]]:
     """({name: pooled AUC}, {name: the AUC in each of `reps` resamples of whole blocks}) for every C
     in `cs` (all over the same fields, hence the same N and the same resamples)."""
     import numpy as np
@@ -701,7 +702,7 @@ def block_draws(cs: dict[str, Any], n: Any, reps: int = POOLED_REPS,
 
 
 def pooled_block_bootstrap(cs: dict[str, Any], n: Any, against: str | None = None, reps: int = POOLED_REPS,
-                           seed: int = 20261123) -> dict[str, dict[str, Any]]:
+                           seed: int = POOLED_SEED) -> dict[str, dict[str, Any]]:
     """Pooled AUC of each score in `cs` ({name: C}, all over the same fields and the same N) with a
     95% percentile interval from `reps` resamples of whole blocks with replacement; with `against`,
     also the paired difference (score - against) and its interval on the same resamples, which is

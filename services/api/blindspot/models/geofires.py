@@ -165,8 +165,6 @@ class GeoFireStaticPixel(_FirePixelColumns, Base):
         UniqueConstraint(
             "slot_utc", "algorithm", "row", "col", name="uq_geo_fire_static_pixel"
         ),
-        Index("ix_geo_fire_static_pixel_slot", "slot_utc"),
-        Index("ix_geo_fire_static_pixel_t", "t_utc"),
     )
 
 

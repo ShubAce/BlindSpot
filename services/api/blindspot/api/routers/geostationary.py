@@ -28,6 +28,7 @@ from sqlalchemy.orm import Session
 from blindspot.analytics import geofire as gf
 from blindspot.api import SessionDep, respond
 from blindspot.api.cache import cached_route
+from blindspot.db import table_exists
 from blindspot.models.geofires import (
     GeoFireSlot,
     GeoFireStatic,
@@ -138,14 +139,7 @@ def _static_tables_ready(session: Session) -> bool:
     """Whether the job has created the static-source tables yet. Production runs the API with
     INIT_DB_ON_STARTUP=false and only the jobs run init_db, so right after a deploy they can be
     missing; the endpoints then answer with nothing flagged instead of failing."""
-    return bool(
-        session.execute(
-            text(
-                "SELECT to_regclass('public.geo_fire_static') IS NOT NULL "
-                "AND to_regclass('public.geo_fire_static_pixel') IS NOT NULL"
-            )
-        ).scalar_one()
-    )
+    return table_exists(session, "geo_fire_static", "geo_fire_static_pixel")
 
 
 def _static_sources(

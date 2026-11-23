@@ -157,7 +157,7 @@ def test_excluded_pixels_leave_the_background_and_are_reported_apart() -> None:
     res = gf.detect_fires(bt38, bt11, sza, area, exclude=exclude)
     assert res.fire[20, 20]
     assert not (res.fire & exclude).any()
-    assert res.excluded_fire is not None and res.excluded_fire[exclude].all()
+    assert res.excluded_fire[exclude].all()
     assert res.stats["excluded_fires"] == int(exclude.sum())
     assert (res.confidence[exclude] >= 1).all()  # kept for audit with the confidence they earned
     assert res.stats["fires"] == 1
@@ -165,7 +165,7 @@ def test_excluded_pixels_leave_the_background_and_are_reported_apart() -> None:
 
     # Without the mask the block is one big fire and the pixel is just part of it.
     plain = gf.detect_fires(bt38, bt11, sza, area)
-    assert plain.fire[block].all() and plain.excluded_fire is not None
+    assert plain.fire[block].all()
     assert not plain.excluded_fire.any()
 
 
@@ -230,8 +230,10 @@ def test_window_accounting_adds_up() -> None:
     windows = gf.polar_windows([p], pad_minutes=15)
     assert (windows[0]["start"], windows[0]["end"]) == ("16:32", "17:04")
     end = windows[0]["end_min"]
-    assert gf.inside_windows(end - 1, windows) and not gf.inside_windows(end, windows)
     spans = gf.window_spans(windows)
+    # Half-open windows: the 10 minutes up to the window's end are all inside it, the 10 minutes
+    # from its end all outside, and a scan centred on the end counts half.
+    assert gf.scan_overlap(end - 5, spans) == 1.0 and gf.scan_overlap(end + 5, spans) == 0.0
     assert gf.scan_overlap(end, spans) == pytest.approx(0.5)
     assert gf.scan_overlap(16 * 60 + 47, spans) == 1.0 and gf.scan_overlap(19 * 60, spans) == 0.0
     # scans every 10 minutes, one exactly on the window's end, counts like an evening peak
@@ -253,7 +255,7 @@ def test_window_accounting_adds_up() -> None:
     assert unions == sorted(unions, reverse=True)
     assert all(r["per_day"] >= r["union"] for r in shares)
     # The same moments carried in IST (as a non-UTC database session returns them) group the same.
-    ist = timezone(gf.IST_OFFSET)
+    ist = timezone(timedelta(hours=5, minutes=30))
     assert gf.ist_date(datetime(2026, 11, 17, 20, 0, tzinfo=ist)) == date(2026, 11, 17)
     in_ist = [(s.astimezone(ist), c) for s, c in slots]
     assert gf.outside_shares(in_ist, [p, other_day], (0, 5, 10, 15)) == shares
@@ -265,8 +267,9 @@ def test_diurnal_helpers() -> None:
     p = gf.PolarPass("Aqua", "MODIS", t, t + timedelta(minutes=2), 10, 1.0, 100.0)
     windows = gf.polar_windows([p], pad_minutes=15)
     assert windows[0]["start"] == "16:00" and windows[0]["end"] == "16:32"
-    assert gf.inside_windows(16 * 60 + 20, windows)
-    assert not gf.inside_windows(18 * 60, windows)
+    spans = gf.window_spans(windows)
+    assert gf.scan_overlap(16 * 60 + 20, spans) == 1.0
+    assert gf.scan_overlap(18 * 60, spans) == 0.0
     hours = gf.hourly_means([(t, 4), (t + timedelta(minutes=10), 6)])
     assert hours[16]["mean_count"] == 5.0 and hours[16]["scans"] == 2
 
@@ -466,7 +469,7 @@ def test_static_pixels_are_stored_apart_and_left_out_of_counts(
     sr, sc = static_setup["site"]
     i, j = sr - scan.window.row0, sc - scan.window.col0
     assert plain.result.fire[i, j] and not a.result.fire[i, j]
-    assert a.result.excluded_fire is not None and a.result.excluded_fire[i, j]
+    assert a.result.excluded_fire[i, j]
     with session_scope() as session:
         n = job.store_analysis(session, a)
         assert job.store_static_mask(session, a.static, NOW) == len(a.static.pixels)

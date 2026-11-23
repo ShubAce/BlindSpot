@@ -131,10 +131,8 @@ def fill_neighbourhood(session: Session, table: str, t_end: datetime | None, whe
     has_fires, has_burns = _exists(session, "fire_detection"), _exists(session, "burn_cluster")
     utm = model.UTM_EPSG
     span = timedelta(days=days)
-    # The fires module flags spots hot on 3+ nights (kilns, industry) as static_source: not crop fires.
-    static = "AND NOT static_source" if has_fires and "static_source" in _columns(session, "fire_detection") else ""
     fires_sql = (f"SELECT ST_Transform(geom, {utm}) AS g, acq_utc AS t FROM fire_detection "
-                 f"WHERE acq_utc > :a AND acq_utc <= :b AND confidence <> 'low' {static}"
+                 "WHERE acq_utc > :a AND acq_utc <= :b AND confidence <> 'low'"
                  if has_fires else "SELECT CAST(NULL AS geometry) AS g, CAST(NULL AS timestamptz) AS t WHERE FALSE")
     burns_sql = (f"SELECT ST_Transform(geom, {utm}) AS g, burn_before AS t, area_ha, unseen FROM burn_cluster "
                  "WHERE burn_before > :a AND burn_before <= :b" if has_burns else
@@ -889,7 +887,6 @@ def _load_pairs(session: Session, windows: list[Any], scope: str | None, timing_
         FROM bt_win w JOIN harvest_cluster x ON x.mgrs_tile = w.tile {same_scope}
              AND x.harvested_before <= w.t0 + :tol AND x.last_seen_unburnt >= w.t1 - :tol
     """), {"tol": tol})
-    session.execute(text("CREATE INDEX ON bt (t0)"))
     session.execute(text("ANALYZE bt"))
 
 
@@ -996,7 +993,7 @@ def _headline(session: Session, pair: dict[str, Any], history_ok: bool, timing: 
         "villages": _village_level([r[6] for r in rows], [float(r[7] or 0) for r in rows], full, labels,
                                    [r[9] for r in rows]),
         "why_this_pair": ("the latest pass pair, kept for its detail; one pair is one tile's luck, so the "
-                          "headline is `recent`, the pairs of the last 7 days pooled"),
+                          f"headline is `recent`, the pairs of the last {RECENT_DAYS} days pooled"),
     }
 
 
@@ -1066,13 +1063,14 @@ def _pooled_rows(session: Session, pairs: list[int] | None = None) -> pd.DataFra
 
 
 def _top_tenth_weights(pair: np.ndarray, score: np.ndarray) -> np.ndarray:
-    """Each field's share of its pair's top 10% (k = round(n / 10), as _pair_metrics): 1 above the cut,
-    the expected share of the remaining places for fields tied at the cut, else 0 (precision_at_k)."""
+    """Each field's share of its pair's top 10% (k = round(n * TOP_SHARE), as _pair_metrics): 1 above
+    the cut, the expected share of the remaining places for fields tied at the cut, else 0
+    (precision_at_k)."""
     out = np.zeros(len(pair))
     order = np.argsort(pair, kind="stable")
     for rows in np.split(order, np.flatnonzero(np.diff(pair[order])) + 1):
         s = score[rows]
-        k = max(1, (len(rows) + 5) // 10)  # round half up, as Postgres rounds n * 0.1
+        k = max(1, math.floor(len(rows) * TOP_SHARE + 0.5))  # round half up, as Postgres rounds n * TOP_SHARE
         cut = np.sort(s)[::-1][k - 1]
         above, tied = s > cut, s == cut
         out[rows] = np.where(above, 1.0, np.where(tied, (k - above.sum()) / tied.sum(), 0.0))
@@ -1219,9 +1217,9 @@ def _day(value: Any) -> str:
 # The rankings the headline is compared with, in words; location_only is a rival, not a placebo (see
 # PLACEBOS_ARE), so only observation_only above 0.5 says something about the labels.
 RIVAL_WORDS = {
-    "fires_7d_only": "ranking by fire alerts nearby in the last 7 days alone",
+    "fires_7d_only": f"ranking by fire alerts nearby in the last {model.NEIGHBOUR_DAYS} days alone",
     "neighbourhood_only": "ranking by burning nearby (fire alerts and unseen scars) alone",
-    "burned_ha_7d_only": "ranking by scar hectares nearby in the last 7 days alone",
+    "burned_ha_7d_only": f"ranking by scar hectares nearby in the last {model.NEIGHBOUR_DAYS} days alone",
     "history_only": "ranking by last season's fires nearby alone",
     "timing_only": "ranking by harvest timing alone",
     "location_only": f"ranking by how much burnt this season in the field's {LOCATION_CELL_KM:g} km square alone",

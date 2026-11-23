@@ -1354,7 +1354,7 @@ def validation_scores(
         lag0 = entry["smoke_per_km_mixing_depth"]["lag0"]
         entry["summary"] = tj.describe_r(lag0.get("r"), lag0.get("n_eff"))
         entry["placebo_summary"] = tj.describe_placebos(
-            lag0.get("r"), entry["placebos"]["constant_smoke"]["lag0"].get("r"), entry["placebos"]["day_shift"])
+            lag0.get("r"), _lag0_r(entry["placebos"], "constant_smoke"), entry["placebos"]["day_shift"])
         results.append(entry)
         series_out.append({
             "city": city.name,
@@ -1372,7 +1372,7 @@ def validation_scores(
     rs = [r for r in (_lag0_r(e, "smoke_per_km_mixing_depth") for e in results) if r is not None]
     cams_rs = [r for r in (_lag0_r(e, "cams_baseline") for e in results) if r is not None]
     vent_rs = [r for r in (_lag0_r(e, "ventilation_only") for e in results) if r is not None]
-    const_rs = [r for r in (e["placebos"]["constant_smoke"]["lag0"].get("r") for e in results) if r is not None]
+    const_rs = [r for r in (_lag0_r(e["placebos"], "constant_smoke") for e in results) if r is not None]
     # The day-shifted copies cover fewer hours than the window, so each city's copies are compared
     # with the model's r on the same hours (model_mean_r_same_hours), never with its lag-0 r.
     shifts = [e["placebos"]["day_shift"] for e in results if e["placebos"]["day_shift"]["mean_r"] is not None]
@@ -1488,7 +1488,7 @@ def smoke_validate() -> dict[str, Any]:
             "best_lag": delhi["smoke_per_km_mixing_depth"]["best_lag"],
             "r_ventilation_only": _lag0_r(delhi, "ventilation_only"),
             "r_cams": _lag0_r(delhi, "cams_baseline"),
-            "r_placebo_constant_smoke": delhi["placebos"]["constant_smoke"]["lag0"].get("r"),
+            "r_placebo_constant_smoke": _lag0_r(delhi["placebos"], "constant_smoke"),
             "r_placebo_day_shift_mean": delhi["placebos"]["day_shift"]["mean_r"],
             "r_model_same_hours_as_day_shift": delhi["placebos"]["day_shift"]["model_mean_r_same_hours"],
             "summary": delhi["summary"],

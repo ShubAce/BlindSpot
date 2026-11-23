@@ -67,9 +67,6 @@ STRONG_FRP_MW = (
     30.0  # a polar pixel this strong (summed FRP) "should" be visible to GK-2A
 )
 CACHE_KEEP_DAYS = 8
-STATIC_LOOKBACK_NIGHTS = gf.STATIC_LOOKBACK_NIGHTS  # the persistent-heat-source rule, gf.STATIC_RULE
-STATIC_MIN_DEEP_NIGHTS = gf.STATIC_MIN_DEEP_NIGHTS
-DEEP_NIGHT_IST = gf.DEEP_NIGHT_IST
 
 
 # --- the region ----------------------------------------------------------------------------------
@@ -197,24 +194,25 @@ def load_static_evidence(session: Session, now: datetime) -> StaticEvidence:
                 SELECT "row", col, slot_utc, t_utc FROM geo_fire_static_pixel
                 WHERE slot_utc >= :since AND slot_utc < :until
             ), n AS (
-                SELECT "row", col, slot_utc, (t_utc AT TIME ZONE 'Asia/Kolkata') AS local FROM d
+                SELECT "row", col, slot_utc, local, (local - interval '12 hours')::date AS night
+                FROM (SELECT "row", col, slot_utc, (t_utc AT TIME ZONE 'Asia/Kolkata') AS local FROM d) l
             )
-            SELECT "row", col, count(DISTINCT (local - interval '12 hours')::date) AS nights,
+            SELECT "row", col, count(DISTINCT night) AS nights,
                    count(DISTINCT slot_utc) AS detections,
-                   min((local - interval '12 hours')::date) AS first_night,
-                   max((local - interval '12 hours')::date) AS last_night
+                   min(night) AS first_night,
+                   max(night) AS last_night
             FROM n
             WHERE local::time >= CAST(:deep_start AS time) OR local::time < CAST(:deep_end AS time)
             GROUP BY "row", col
-            HAVING count(DISTINCT (local - interval '12 hours')::date) >= :min_nights
+            HAVING count(DISTINCT night) >= :min_nights
             """
         ),
         {
-            "since": start - timedelta(days=STATIC_LOOKBACK_NIGHTS),
+            "since": start - timedelta(days=gf.STATIC_LOOKBACK_NIGHTS),
             "until": start,
-            "deep_start": DEEP_NIGHT_IST[0],
-            "deep_end": DEEP_NIGHT_IST[1],
-            "min_nights": STATIC_MIN_DEEP_NIGHTS,
+            "deep_start": gf.DEEP_NIGHT_IST[0],
+            "deep_end": gf.DEEP_NIGHT_IST[1],
+            "min_nights": gf.STATIC_MIN_DEEP_NIGHTS,
         },
     ).all()
     night_pixels = {
@@ -319,8 +317,8 @@ def store_static_mask(session: Session, mask: StaticMask, now: datetime) -> int:
                     "first_night": info["first_night"],
                     "last_night": info["last_night"],
                     "evidence": {"site_ids": info["site_ids"]} if rule == "firms" else
-                    {"lookback_nights": STATIC_LOOKBACK_NIGHTS,
-                     "deep_night_ist": list(DEEP_NIGHT_IST)},
+                    {"lookback_nights": gf.STATIC_LOOKBACK_NIGHTS,
+                     "deep_night_ist": list(gf.DEEP_NIGHT_IST)},
                     "footprint": footprint_ewkt(mask.geom, i, j),
                     "computed_at": now,
                 }
@@ -350,10 +348,7 @@ class Analysis:
 
     @property
     def region_static_fire(self) -> np.ndarray:
-        excluded = self.result.excluded_fire
-        if excluded is None:
-            return np.zeros(self.geom.region.shape, dtype=bool)
-        return excluded & self.geom.region
+        return self.result.excluded_fire & self.geom.region
 
 
 def analyse(
@@ -470,12 +465,13 @@ def store_analysis(session: Session, a: Analysis) -> int:
     session.execute(
         stmt.on_conflict_do_update(constraint="uq_geo_fire_slot", set_=values)
     )
-    for table in (GeoFirePixel, GeoFireStaticPixel):
-        session.execute(
-            delete(table).where(
-                table.slot_utc == a.scan.slot, table.algorithm == gf.ALGORITHM_VERSION
-            )
-        )
+    session.execute(
+        text(
+            "WITH g AS (DELETE FROM geo_fire_pixel WHERE slot_utc = :slot AND algorithm = :alg) "
+            "DELETE FROM geo_fire_static_pixel WHERE slot_utc = :slot AND algorithm = :alg"
+        ),
+        {"slot": a.scan.slot, "alg": gf.ALGORITHM_VERSION},
+    )
     pixels = _pixel_rows(a, fire, fid)
     if pixels:
         session.execute(insert(GeoFirePixel), pixels)

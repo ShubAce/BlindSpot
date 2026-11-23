@@ -30,7 +30,7 @@ from __future__ import annotations
 import warnings
 from collections.abc import Iterable, Sequence
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime
 from itertools import pairwise
 from typing import Any
 
@@ -38,6 +38,7 @@ import numpy as np
 from numpy.lib.stride_tricks import sliding_window_view
 
 from blindspot.analytics.fires_stats import STATIC_MIN_NIGHTS, STATIC_RADIUS_KM
+from blindspot.geo import IST
 
 
 def _ndimage() -> Any:
@@ -237,7 +238,7 @@ class FireTestResult:
     day_weight: np.ndarray  # 1 day ... 0 night (by solar zenith)
     # Excluded pixels (persistent heat sources) that passed every test: never fire, but kept
     # so the job can store them apart and see that a flagged source is still burning.
-    excluded_fire: np.ndarray | None = None
+    excluded_fire: np.ndarray  # bool
     stats: dict[str, Any] = field(default_factory=dict)
 
 
@@ -712,23 +713,20 @@ def bootstrap_rates(
 
 # --- diurnal record ------------------------------------------------------------------------------------
 
-IST_OFFSET = timedelta(hours=5, minutes=30)  # India has one time zone and no daylight saving
+def ist_minutes(t: datetime) -> float:
+    """Minute of the IST day with its fraction (seconds count)."""
+    local = t.astimezone(IST)
+    return local.hour * 60 + local.minute + local.second / 60
 
 
 def ist_minute_of_day(t: datetime) -> int:
-    local = t.astimezone(UTC) + IST_OFFSET
-    return local.hour * 60 + local.minute
-
-
-def ist_minutes(t: datetime) -> float:
-    """Minute of the IST day with its fraction (seconds count)."""
-    local = t.astimezone(UTC) + IST_OFFSET
-    return local.hour * 60 + local.minute + local.second / 60
+    """Whole minute of the IST day (ist_minutes without the seconds)."""
+    return int(ist_minutes(t))
 
 
 def ist_date(t: datetime) -> date:
     """The IST calendar day of a moment, whatever time zone the datetime carries."""
-    return (t.astimezone(UTC) + IST_OFFSET).date()
+    return t.astimezone(IST).date()
 
 
 def merge_intervals(intervals: Iterable[tuple[int, int]]) -> list[tuple[int, int]]:
@@ -774,12 +772,6 @@ def polar_windows(passes: Iterable[PolarPass], pad_minutes: float) -> list[dict[
             {"start": _hhmm(lo), "end": _hhmm(hi), "start_min": lo, "end_min": hi, "satellites": sats}
         )
     return windows
-
-
-def inside_windows(minute_of_day: float, windows: Sequence[dict[str, Any]]) -> bool:
-    """Whether a moment falls in a window, each window [start, end) so that a moment on a
-    boundary belongs to exactly one of a window and the gap after it."""
-    return any(w["start_min"] <= minute_of_day < w["end_min"] for w in windows)
 
 
 SCAN_MINUTES = 10  # GK-2A full-disk repeat cycle: each scan stands for 10 minutes
