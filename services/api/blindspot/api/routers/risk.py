@@ -329,8 +329,12 @@ def _backtest_summary(session: Any) -> dict[str, Any] | None:
         except (OSError, ValueError):
             return None
         report["windows_count"] = len(report.get("windows", []))
+    # `recent` is the headline (the pass pairs of the last 7 days, pooled); `latest_pair` the newest
+    # pair's own detail. A report stored before 2026-11-23 has neither, and its old single-pair
+    # "headline" is not passed on: one pair swung from 0.355 to 0.878 between runs.
     return {"computed_at": report.get("computed_at"), "model": report.get("model"),
-            "headline": report.get("headline"), "all_pairs": report.get("all_pairs"),
+            "recent": report.get("recent"), "latest_pair": report.get("latest_pair"),
+            "all_pairs": report.get("all_pairs"),
             "verdict": report.get("verdict"), "strength": report.get("strength"),
             "calibration": report.get("calibration"), "pairs_are": report.get("pairs_are"),
             "tested_order": report.get("tested_order"),

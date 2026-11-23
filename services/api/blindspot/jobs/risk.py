@@ -464,14 +464,15 @@ def risk() -> dict[str, Any]:
     try:
         with session_scope() as session:
             report = backtest(session, season, as_of)
-        if tested is not None and "headline" in report and not report.get("timing_tested"):
+        if tested is not None and "all_pairs" in report and not report.get("timing_tested"):
             report["tested_order"] = tested  # timing tested one day: the full score is then the tested one
         _store_report(report, run_id)
-        head = report.get("headline") or {}
+        recent = report.get("recent") or {}
         all_pairs = report.get("all_pairs") or {}
-        summary["backtest"] = ({**{k: head.get(k) for k in ("tile", "auc", "auc_ci95", "burnt", "unburnt")},
+        summary["backtest"] = ({"recent": {k: recent.get(k) for k in ("shown", "auc", "auc_ci95", "pairs", "tiles",
+                                                                      "burnt", "unburnt")},
                                 "all_pairs": {k: all_pairs.get(k) for k in ("pairs", "auc_weighted_mean", "auc_ci95")}}
-                               if head else report.get("reason"))
+                               if all_pairs else report.get("reason"))
     except Exception as exc:  # the scores above are saved; a backtest problem must not undo them
         log.exception("risk backtest failed")
         summary["backtest_error"] = f"{type(exc).__name__}: {exc}"[:300]
@@ -707,6 +708,30 @@ PAIRS_ARE = (
     "t1; not burnt = still harvested and unburnt on a pass at or after t1. Each field is scored with what "
     "was known at t0 (burning within 5 km in the 7 days before t0, last season's fires); rain and timing "
     "are not tested.")
+# The headline: every pass pair whose second pass falls in the RECENT_DAYS up to the newest one, on
+# every tile, pooled (analytics/risk.py, "pooled backtest"); shown only with RECENT_MIN_EACH burnt and
+# unburnt fields. It replaced "the latest pass pair" (2026-11-23), which read anything from 0.355
+# (127 burnt / 78 unburnt on one edge tile) to 0.878 between production runs.
+RECENT_DAYS = 7
+RECENT_MIN_EACH = 100
+RECENT_IS = (
+    "Every pass pair whose second pass falls in the {days} days up to the newest one, on every tile, pooled: "
+    "of all (burnt, unburnt) comparisons within a pair, the share the score orders right (ties count half), "
+    "so each pair weighs burnt x unburnt. The 95% interval resamples {km:g} km squares of land, each with all "
+    "its fields in every pair of the window, because neighbouring fields share their neighbourhood and one "
+    "waiting field enters several pairs.")
+# Placebos: orderings that know nothing about the field itself. If observation_only scores well, the labels
+# follow how fields were seen; if location_only does about as well as the score, the score adds little to
+# knowing which area burns.
+LOCATION_CELL_KM = 10.0
+OBSERVATION_DAYS = 7
+PLACEBOS_ARE = (
+    f"location_only: hectares of Sentinel-2 burn scars this season up to t0 in the field's "
+    f"{LOCATION_CELL_KM:g} km square (where the field lies, nothing about the field itself); "
+    f"observation_only: how many processed passes of the tile covered the field in the {OBSERVATION_DAYS} "
+    "days up to t0 (how it was observed, nothing about burning). An observation placebo well above 0.5 means "
+    "the labels follow how fields were seen; a location placebo close to the score means the score adds "
+    "little to knowing which area burns.")
 
 
 def backtest(session: Session, history: History, as_of: datetime) -> dict[str, Any]:
@@ -723,9 +748,10 @@ def backtest(session: Session, history: History, as_of: datetime) -> dict[str, A
     field was harvested, so burnt and unburnt fields cannot be compared on it.
     Caveat: fields harvested by t0 that were tilled or sown (not burnt) by t1 are in neither table,
     so the unburnt group only holds fields still waiting.
-    Runs in the database (temporary table bt): only per-pair counts and the headline pair's fields
-    come back. Intervals: the headline AUC by resampling its fields (optimistic: neighbouring fields
-    share their neighbourhood), the all-pairs numbers by resampling whole tiles.
+    Runs in the database (temporary table bt). The headline (`recent`) pools every pair of the last
+    7 days on every tile; its fields come back (position, score, factors, two placebos) for its
+    intervals, which resample 30 km squares of land. The per-pair numbers stay (all_pairs.auc_by_pair,
+    and `latest_pair` for the newest pair's detail); the all-pairs numbers resample whole tiles.
     """
     if not (_exists(session, "burn_cluster") and _exists(session, "harvest_cluster")):
         return {"reason": "burn_cluster / harvest_cluster do not exist yet", "windows": []}
@@ -772,11 +798,11 @@ def backtest(session: Session, history: History, as_of: datetime) -> dict[str, A
             row.update(per_pair[i], pair=i)
             done.append(row)
         report["windows"].append(row)
-    # The headline is the latest pass pair, not the best one: its unburnt fields were seen waiting
-    # at t0 and still waiting a few days later. On earlier pairs the unburnt group is fields that sat
-    # unburnt for 10-20 days (the table only keeps today's waiting fields), a different population.
+    # The headline pools the last 7 days of pairs: one pair alone is one tile's luck (0.355 one day,
+    # 0.878 another). The latest pair keeps its detail (precision at k, villages) as latest_pair.
+    report["recent"] = _recent(session, done, history_ok, timing_cols)
     latest = max(done, key=lambda r: (r["t1"], r["burnt"] + r["unburnt"]))
-    report["headline"] = _headline(session, latest, history_ok, timing_cols)
+    report["latest_pair"] = _headline(session, latest, history_ok, timing_cols)
     report["all_pairs"], report["calibration"] = _all_pairs(done)
     report["verdict"] = verdict(report)
     report["strength"] = ranking_strength(report["all_pairs"])
@@ -958,7 +984,136 @@ def _headline(session: Session, pair: dict[str, Any], history_ok: bool, timing: 
         "factors_used": (["timing"] if timing else []) + ["neighbourhood"] + (["history"] if history_ok else []),
         "villages": _village_level([r[6] for r in rows], [float(r[7] or 0) for r in rows], full, labels,
                                    [r[9] for r in rows]),
-        "why_this_pair": "the latest pass pair (the cleanest unburnt control group)",
+        "why_this_pair": ("the latest pass pair, kept for its detail; one pair is one tile's luck, so the "
+                          "headline is `recent`, the pairs of the last 7 days pooled"),
+    }
+
+
+POOLED_COLUMNS = {"pair": "int64", "label": "int64", "x": "float64", "y": "float64", "s": "float64",
+                  "fires": "int64", "events": "int64", "ha": "float64", "hist": "int64", "tv": "float64",
+                  "obs": "int64", "loc": "float64"}
+
+
+def _pooled_rows(session: Session, pairs: list[int] | None = None) -> pd.DataFrame:
+    """Every field check of these pass pairs (None: of all) in the temporary table `bt`, as the pooled
+    backtest needs it: pair, label, position (x, y in UTM 43N metres), the score `s`, the single-factor
+    baselines (fires, events = fires + candidate unseen burns, ha, hist, tv = timing) and the two
+    placebos of PLACEBOS_ARE, `loc` and `obs`. One COPY: about 50 bytes a check."""
+    cell = LOCATION_CELL_KM * 1000.0
+    utm = model.UTM_EPSG
+    session.execute(text("DROP TABLE IF EXISTS bt_cell, bt_scene"))
+    # this season's scar hectares per square, summed up to each pass (a step function of time)
+    session.execute(text(f"""
+        CREATE TEMP TABLE bt_cell ON COMMIT DROP AS
+        SELECT cx, cy, t, sum(ha) OVER (PARTITION BY cx, cy ORDER BY t) AS cum
+        FROM (SELECT CAST(floor(ST_X(c) / {cell!r}) AS int) AS cx, CAST(floor(ST_Y(c) / {cell!r}) AS int) AS cy,
+                     burn_before AS t, sum(area_ha) AS ha
+              FROM (SELECT ST_Transform(centroid, {utm}) AS c, burn_before, area_ha FROM burn_cluster) s
+              GROUP BY 1, 2, 3) g
+    """))
+    session.execute(text("CREATE INDEX ON bt_cell (cx, cy, t)"))
+    session.execute(text("ANALYZE bt_cell"))
+    if _exists(session, "s2_scene"):
+        session.execute(text("""
+            CREATE TEMP TABLE bt_scene ON COMMIT DROP AS
+            SELECT w.pair, s.geom FROM bt_win w JOIN s2_scene s ON s.mgrs_tile = w.tile AND s.status = 'processed'
+                 AND s.geom IS NOT NULL AND s.datetime > w.t0 - :days AND s.datetime <= w.t0 + interval '1 hour'
+        """), {"days": timedelta(days=OBSERVATION_DAYS)})
+    else:
+        session.execute(text("CREATE TEMP TABLE bt_scene (pair int, geom geometry) ON COMMIT DROP"))
+    session.execute(text("CREATE INDEX ON bt_scene (pair)"))
+    session.execute(text("ANALYZE bt_scene"))
+    which = "TRUE" if pairs is None else f"b.pair = ANY(ARRAY[{','.join(str(int(p)) for p in pairs) or 'NULL'}]::int[])"
+    sql = f"""
+        WITH r AS (
+            SELECT b.k, b.pair, b.label, round(ST_X(p.q)) AS x, round(ST_Y(p.q)) AS y, b.s, b.fires,
+                   b.fires + b.unseen AS events,
+                   b.ha, coalesce(b.hist, 0) AS hist, coalesce(b.tv, 0) AS tv, b.t0, b.g,
+                   CAST(floor(ST_X(p.q) / {cell!r}) AS int) AS cx, CAST(floor(ST_Y(p.q) / {cell!r}) AS int) AS cy
+            FROM bt b CROSS JOIN LATERAL (SELECT ST_Transform(CAST(b.g AS geometry), {utm}) AS q) p
+            WHERE {which}
+        ), loc AS (
+            SELECT c.pair, c.cx, c.cy,
+                   coalesce((SELECT h.cum FROM bt_cell h WHERE h.cx = c.cx AND h.cy = c.cy AND h.t <= c.t0
+                             ORDER BY h.t DESC LIMIT 1), 0) AS loc
+            FROM (SELECT DISTINCT pair, t0, cx, cy FROM r) c
+        )
+        SELECT r.pair, r.label, r.x, r.y, r.s, r.fires, r.events, r.ha, r.hist, r.tv,
+               (SELECT count(*) FROM bt_scene c WHERE c.pair = r.pair
+                   AND ST_Covers(c.geom, CAST(r.g AS geometry))) AS obs,
+               l.loc
+        FROM r JOIN loc l USING (pair, cx, cy) ORDER BY r.k
+    """
+    buf = io.BytesIO()
+    driver = session.connection().connection.driver_connection  # the psycopg 3 connection
+    with driver.cursor() as cur, cur.copy(f"COPY ({sql}) TO STDOUT WITH (FORMAT csv, HEADER)") as copy:
+        for chunk in copy:
+            buf.write(chunk)
+    buf.seek(0)
+    return pd.read_csv(buf, dtype=POOLED_COLUMNS) if buf.getbuffer().nbytes else pd.DataFrame(
+        {k: pd.Series(dtype=v) for k, v in POOLED_COLUMNS.items()})
+
+
+def _top_tenth_weights(pair: np.ndarray, score: np.ndarray) -> np.ndarray:
+    """Each field's share of its pair's top 10% (k = round(n / 10), as _pair_metrics): 1 above the cut,
+    the expected share of the remaining places for fields tied at the cut, else 0 (precision_at_k)."""
+    out = np.zeros(len(pair))
+    order = np.argsort(pair, kind="stable")
+    for rows in np.split(order, np.flatnonzero(np.diff(pair[order])) + 1):
+        s = score[rows]
+        k = max(1, (len(rows) + 5) // 10)  # round half up, as Postgres rounds n * 0.1
+        cut = np.sort(s)[::-1][k - 1]
+        above, tied = s > cut, s == cut
+        out[rows] = np.where(above, 1.0, np.where(tied, (k - above.sum()) / tied.sum(), 0.0))
+    return out
+
+
+def _recent(session: Session, done: list[dict[str, Any]], history_ok: bool, timing: bool) -> dict[str, Any]:
+    """The headline: every pass pair whose second pass falls in the RECENT_DAYS up to the newest one,
+    pooled over all tiles (RECENT_IS), with 95% intervals from resampling BLOCK_KM squares, the single
+    factors and the placebos on the same resamples (each with its difference from the score), and the
+    top tenth's burnt share. Shown only with RECENT_MIN_EACH burnt and unburnt fields."""
+    newest = max(r["t1"] for r in done)
+    start = newest - timedelta(days=RECENT_DAYS)
+    pairs = [r for r in done if r["t1"] > start]
+    burnt, unburnt = sum(r["burnt"] for r in pairs), sum(r["unburnt"] for r in pairs)
+    out: dict[str, Any] = {
+        "what": RECENT_IS.format(days=RECENT_DAYS, km=model.BLOCK_KM),
+        "window": {"from": start, "to": newest, "days": RECENT_DAYS,
+                   "anchor": "the second pass of the newest pass pair, not today"},
+        "pairs": len(pairs), "tiles": len({r["tile"] for r in pairs}), "burnt": burnt, "unburnt": unburnt,
+        "base_rate": _r(burnt / (burnt + unburnt)) if burnt + unburnt else None,
+        "comparisons": sum(r["burnt"] * r["unburnt"] for r in pairs), "min_each": RECENT_MIN_EACH,
+    }
+    if min(burnt, unburnt) < RECENT_MIN_EACH:
+        return {**out, "shown": False, "auc": None, "auc_ci95": None,
+                "reason": (f"the pass pairs of the last {RECENT_DAYS} days hold {burnt} burnt and {unburnt} unburnt "
+                           f"fields; at least {RECENT_MIN_EACH} of each are needed for a figure")}
+    rows = _pooled_rows(session, [r["pair"] for r in pairs])
+    pair, label = rows["pair"].to_numpy(), rows["label"].to_numpy()
+    block, k = model.block_ids(rows["x"].to_numpy(), rows["y"].to_numpy())
+    singles = {"fires_7d_only": "fires", "neighbourhood_only": "events", "burned_ha_7d_only": "ha"}
+    if history_ok:
+        singles["history_only"] = "hist"
+    if timing:
+        singles["timing_only"] = "tv"
+    placebos = {"location_only": "loc", "observation_only": "obs"}
+    cs, n = {}, None
+    for name, col in {"score": "s", **singles, **placebos}.items():
+        cs[name], n = model.concordance_by_block(pair, label, block, rows[col].to_numpy(), k)
+    stats = model.pooled_block_bootstrap(cs, n, against="score")
+    top = _top_tenth_weights(pair, rows["s"].to_numpy())
+    share = model.block_ratio_bootstrap(block, k, top * label, top, label, np.ones(len(label)))
+    return {
+        **out, "shown": True, "auc": stats["score"]["auc"], "auc_ci95": stats["score"]["auc_ci95"],
+        "ci_method": (f"95% percentile interval from {model.POOLED_REPS} resamples of whole {model.BLOCK_KM:g} km "
+                      f"squares (UTM zone 43N), {k} squares with fields; differences on the same resamples"),
+        "blocks": k, "block_km": model.BLOCK_KM,
+        "top_10pct": share,
+        "baselines": {"random": {"auc": 0.5}, **{name: stats[name] for name in singles},
+                      **({} if history_ok else {"history_only": None})},
+        "placebos": {name: stats[name] for name in placebos}, "placebos_are": PLACEBOS_ARE,
+        "factors_used": (["timing"] if timing else []) + ["neighbourhood"] + (["history"] if history_ok else []),
     }
 
 
@@ -1018,7 +1173,7 @@ def ranking_strength(all_pairs: dict[str, Any]) -> str | None:
 
 def verdict(report: dict[str, Any]) -> str | None:
     """One plain paragraph on how good the ranking is, every number taken from the report."""
-    a, h = report.get("all_pairs") or {}, report.get("headline") or {}
+    a = report.get("all_pairs") or {}
     if not a or a.get("auc_weighted_mean") is None or None in (a.get("auc_ci95") or [None]):
         return None
     lo, hi = a["auc_ci95"]
@@ -1037,32 +1192,67 @@ def verdict(report: dict[str, Any]) -> str | None:
         out += (f" Fields in the top 10% of each pass burnt by the next clear pass {top['lift']:.2f} times as "
                 f"often as the average field (95% CI {top['lift_ci95'][0]:.2f}-{top['lift_ci95'][1]:.2f}; "
                 f"{top['burnt_share']:.1%} against {top['base_rate']:.1%}).")
-    if h.get("auc") is not None and h.get("auc_ci95"):
-        out += (f" On the latest pass pair alone ({h['tile']}, {h['n']:,} fields) the AUC is {h['auc']:.3f} "
-                f"(95% CI {h['auc_ci95'][0]:.3f}-{h['auc_ci95'][1]:.3f}, from resampling that pair's fields: narrower "
-                f"than the truth, because neighbouring fields share their neighbourhood).")
-        out += _tile_spread(a, h["tile"])
+    out += _recent_sentences(report.get("recent") or {})
+    out += _tile_spread(a)
     return out + " Use it to choose where to look first, not as a forecast for any single field."
+
+
+def _day(value: Any) -> str:
+    """The UTC date of a time (a datetime, or ISO text as stored)."""
+    if isinstance(value, str):
+        value = datetime.fromisoformat(value)
+    return value.date().isoformat() if isinstance(value, datetime) else str(value)
+
+
+PLACEBO_WORDS = {"location_only": "where a field lies", "observation_only": "how often it was seen"}
+
+
+def _recent_sentences(r: dict[str, Any]) -> str:
+    """The headline (`recent`) in plain sentences: the pooled AUC of the last days with its interval
+    and what the placebos scored, or why there is no figure."""
+    if not r:
+        return ""
+    if not r.get("shown"):
+        return (f" The pass pairs of the last {r.get('window', {}).get('days', RECENT_DAYS)} days hold too few fields "
+                f"for a figure of their own ({r.get('burnt', 0):,} burnt, {r.get('unburnt', 0):,} unburnt; "
+                f"{r.get('min_each', RECENT_MIN_EACH)} of each are needed).")
+    ci = r.get("auc_ci95") or [None, None]
+    if r.get("auc") is None or None in ci:
+        return ""
+    w = r["window"]
+    out = (f" Over the last {w['days']} days of passes ({_day(w['from'])} to {_day(w['to'])}: {r['pairs']} pass pairs "
+           f"on {r['tiles']} tiles, {r['burnt']:,} burnt and {r['unburnt']:,} unburnt fields, pooled) the AUC is "
+           f"{r['auc']:.3f} (95% CI {ci[0]:.3f}-{ci[1]:.3f}, from resampling {r['block_km']:g} km squares of land).")
+    said = [f"{PLACEBO_WORDS.get(name, name)} {p['auc']:.3f} (95% CI {p['auc_ci95'][0]:.3f}-{p['auc_ci95'][1]:.3f})"
+            for name, p in (r.get("placebos") or {}).items()
+            if p and p.get("auc") is not None and None not in (p.get("auc_ci95") or [None])]
+    if said:
+        out += " Placebos that know only " + " or only ".join(said) + "."
+        if any(p and (p.get("auc_ci95") or [0])[0] is not None and p["auc_ci95"][0] > 0.5
+               for p in (r.get("placebos") or {}).values()):
+            out += (" A placebo above 0.5 means the backtest's labels also follow where fields lie or how they "
+                    "were seen, not only anything about the fields themselves.")
+    close = [f"{PLACEBO_WORDS.get(name, name)} ({d['diff']:+.3f}, 95% CI {d['ci95'][0]:+.3f} to {d['ci95'][1]:+.3f})"
+             for name, p in (r.get("placebos") or {}).items()
+             if p and (d := p.get("minus_score")) and None not in (d.get("ci95") or [None]) and d["ci95"][1] >= 0]
+    if close:
+        out += (" The score is not clearly ahead of the placebo that knows only " + " or only ".join(close)
+                + "; the figure in brackets is the placebo's AUC minus the score's.")
+    return out
 
 
 TILE_MIN_CHECKS = 100  # tiles with fewer field checks say too little to compare
 
 
-def _tile_spread(all_pairs: dict[str, Any], tile: str) -> str:
-    """How the headline pair's tile compares with the other tiles (its pair is one tile's luck)."""
+def _tile_spread(all_pairs: dict[str, Any]) -> str:
+    """How far apart the tiles are: one tile's pairs are no guide to another's."""
     tiles = sorted((t for t in all_pairs.get("auc_by_tile") or []
                     if t.get("auc") is not None and t["field_checks"] > TILE_MIN_CHECKS), key=lambda t: -t["auc"])
     if len(tiles) < 2:
         return ""
-    rank = next((i + 1 for i, t in enumerate(tiles) if t["tile"] == tile), None)
     low, high = tiles[-1], tiles[0]
-    out = (f" Tile by tile (over {TILE_MIN_CHECKS} field checks) the AUC runs from {low['auc']:.3f} ({low['tile']}, "
-           f"{low['field_checks']:,} checks) to {high['auc']:.3f} ({high['tile']})")
-    if rank is not None:
-        out += f"; {tile} ranks {rank} of {len(tiles)}"
-        if rank <= max(1, len(tiles) // 4):
-            out += ", so that one pair flatters the ranking"
-    return out + "."
+    return (f" Tile by tile (over {TILE_MIN_CHECKS} field checks) the AUC runs from {low['auc']:.3f} ({low['tile']}, "
+            f"{low['field_checks']:,} checks) to {high['auc']:.3f} ({high['tile']}).")
 
 
 def _village_level(villages: list[str | None], areas: list[float], scores: list[float],
@@ -1109,9 +1299,9 @@ def _store_report(report: dict[str, Any], run_id: int | None = None) -> None:
     sentinel module is rebuilding its tables) does not erase the last real result: that one stays,
     with a note saying when the newer attempt ran and why it had nothing."""
     path = get_settings().cache_path(*model.BACKTEST_FILE)
-    if "headline" not in report:
+    if "all_pairs" not in report:
         previous = load_backtest()
-        if previous and "headline" in previous:
+        if previous and "all_pairs" in previous:
             previous["latest_attempt"] = {"computed_at": report.get("computed_at"), "reason": report.get("reason")}
             report = previous
     body = orjson.dumps(report, option=orjson.OPT_UTC_Z | orjson.OPT_NAIVE_UTC, default=str)

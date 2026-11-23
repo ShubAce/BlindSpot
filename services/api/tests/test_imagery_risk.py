@@ -459,6 +459,61 @@ def test_backtest_factors_once_per_field_equal_every_check():
     assert len({r[1:] for r in got}) > 3 and max(r[4] for r in got) > 0  # factors differ; history counted
 
 
+def test_pooled_rows_placebos_know_only_what_was_known_at_t0():
+    """The pooled headline's two placebos. location_only: this season's scar hectares in the field's
+    10 km square up to t0 (a scar on the pass at t0 is known, one seen later is not); observation_only:
+    the processed passes of the pair's own tile whose footprint covers the field in the 7 days up to
+    t0 (not older ones, later ones, skipped ones or another tile's). Rows sit in the Indian Ocean
+    (scars and fields of a square share one point, so no square edge falls between them) and are
+    rolled back."""
+    from sqlalchemy.orm import Session
+
+    from blindspot.db import engine
+    from blindspot.jobs import risk as job
+
+    t0 = datetime(2026, 10, 20, 5, 50, tzinfo=UTC)
+    a, b = (63.37, -8.21), (63.87, -8.71)  # ~75 km apart: different 10 km squares
+
+    def box(*points: tuple[float, float]) -> str:
+        xs, ys = [p[0] for p in points], [p[1] for p in points]
+        x0, y0, x1, y1 = min(xs) - 0.01, min(ys) - 0.01, max(xs) + 0.01, max(ys) + 0.01
+        return f"POLYGON(({x0} {y0},{x1} {y0},{x1} {y1},{x0} {y1},{x0} {y0}))"
+
+    with engine.connect() as conn, Session(bind=conn) as s:
+        for (lon, lat), back, ha in ((a, 5, 2.0), (a, 2, 3.0), (a, 0, 4.0), (a, -1, 50.0), (b, 3, 7.0)):
+            t = t0 - timedelta(days=back)
+            s.execute(text("""
+                INSERT INTO burn_cluster (geom, centroid, area_ha, n_px, res_m, mgrs_tile, scope, block, burn_after,
+                    burn_before, gap_days, scene_pre, scene_post, collection, hazy, confidence, unseen, model_version)
+                VALUES (ST_GeomFromText(:poly, 4326), ST_SetSRID(ST_MakePoint(:lon, :lat), 4326), :ha, 10, 20,
+                    'TESTPLC', 'test', 'r0_c0', :a, :t, 3, 'x', 'y', 'test', false, 0.9, true, 'test-placebo')
+            """), {"poly": box((lon, lat)), "lon": lon, "lat": lat, "ha": ha, "a": t - timedelta(days=3), "t": t})
+        scenes = (("in-a", "TESTPLC", -3, "processed", box(a)),  # covers a only
+                  ("at-t0", "TESTPLC", 0, "processed", box(a, b)),
+                  ("too-old", "TESTPLC", -9, "processed", box(a, b)),
+                  ("after", "TESTPLC", 2, "processed", box(a, b)),
+                  ("skipped", "TESTPLC", -1, "skipped", box(a, b)),
+                  ("other-tile", "TESTOTH", -1, "processed", box(a, b)))
+        for item, tile, days, status, poly in scenes:
+            t = t0 + timedelta(days=days)
+            s.execute(text("""
+                INSERT INTO s2_scene (item_id, collection, datetime, obs_date, mgrs_tile, status, geom)
+                VALUES (:i, 'test', :t, :d, :tile, :st, ST_GeomFromText(:poly, 4326))
+            """), {"i": f"TESTPLC-{item}", "t": t, "d": t.date(), "tile": tile, "st": status, "poly": poly})
+        s.execute(text("DROP TABLE IF EXISTS bt_win, bt"))
+        s.execute(text("CREATE TEMP TABLE bt_win (pair int, tile text, scope text, t0 timestamptz, t1 timestamptz) "
+                       "ON COMMIT DROP"))
+        s.execute(text("INSERT INTO bt_win VALUES (0, 'TESTPLC', 'test', :t0, :t1)"), {"t0": t0, "t1": t0 + timedelta(days=3)})
+        s.execute(text(f"CREATE TEMP TABLE bt ({job.BT_COLUMNS}{model.SCORE_COLUMNS}) ON COMMIT DROP"))
+        s.execute(text("INSERT INTO bt (pair, label, fid, g, t0) VALUES "
+                       "(0, :y, :y, ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography, :t0)"),
+                  [{"y": 1, "lon": a[0], "lat": a[1], "t0": t0}, {"y": 0, "lon": b[0], "lat": b[1], "t0": t0}])
+        rows = job._pooled_rows(s, [0])
+        s.rollback()
+    got = {int(r.label): (r.loc, int(r.obs)) for r in rows.itertuples()}
+    assert got == {1: (9.0, 2), 0: (7.0, 1)}  # a: 2 + 3 + 4 ha, passes in-a and at-t0; b: 7 ha, at-t0
+
+
 def test_backtest_uses_harvest_dates_when_the_scar_table_has_them(client):
     """The timing branch (on once burn_cluster records harvest dates): timing enters the score and a
     timing-only baseline is reported. The pass pair's fields go straight into the backtest's table

@@ -587,3 +587,138 @@ def wilson_interval(successes: int, n: int, z: float = 1.96) -> tuple[float, flo
     centre = (p + z * z / (2 * n)) / denom
     half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / denom
     return max(0.0, centre - half), min(1.0, centre + half)
+
+
+# --- pooled backtest: many pass pairs, one AUC, intervals from resampling places ------------------------
+#
+# One pass pair is too small and too local to judge the ranking by: per-pair AUCs ran from 0.04 to
+# 0.995 on 13 Nov, and "the latest pair" (the old headline) read 0.355 on one day and 0.878 on another.
+# Pooling the pairs of a period gives one AUC: of every (burnt, unburnt) comparison WITHIN a pass pair,
+# the share the score orders right (ties count half). Each pair therefore weighs burnt x unburnt, its
+# number of comparisons, and pairs never compare with each other (their typical counts, gaps and base
+# rates differ). Neighbouring fields share their neighbourhood and their fate, and one waiting field
+# enters several pairs, so fields are not independent: the interval resamples whole spatial blocks
+# (BLOCK_KM squares of UTM zone 43N), each block carrying every pair's fields in it, over the whole
+# period. Resampling tiles (19 of them, 3 holding half the checks) or fields understates the doubt.
+
+BLOCK_KM = 30.0  # bootstrap block side (the critique asked for 25-50 km; 50 km is reported as a check)
+POOLED_REPS = 2000
+
+
+def block_ids(x: Any, y: Any, block_km: float = BLOCK_KM) -> tuple[Any, int]:
+    """Block index (0..n-1) of each point (UTM metres) on a block_km grid, and n."""
+    import numpy as np
+
+    side = block_km * 1000.0
+    keys = np.floor(np.asarray(x, float) / side).astype(np.int64) * 100_003 + np.floor(
+        np.asarray(y, float) / side).astype(np.int64)
+    uniq, idx = np.unique(keys, return_inverse=True)
+    return idx.astype(np.int64), len(uniq)
+
+
+def concordance_by_block(pair: Any, label: Any, block: Any, score: Any, n_blocks: int) -> tuple[Any, Any]:
+    """(C, N), two n_blocks x n_blocks arrays summed over every pass pair: C[a, b] counts the burnt
+    fields in block a that the score puts above an unburnt field of the same pass pair in block b
+    (a tie counts half), N[a, b] the burnt-unburnt comparisons between them. C.sum() / N.sum() is the
+    pooled AUC; with block weights w (a resample), (w C w) / (w N w) is that resample's AUC."""
+    import numpy as np
+
+    pair, label, block = np.asarray(pair), np.asarray(label).astype(bool), np.asarray(block, np.int64)
+    score = np.asarray(score, float)
+    c = np.zeros((n_blocks, n_blocks))
+    n = np.zeros((n_blocks, n_blocks))
+    order = np.argsort(pair, kind="stable")
+    bounds = np.flatnonzero(np.diff(pair[order])) + 1
+    for rows in np.split(order, bounds):
+        pos, neg = rows[label[rows]], rows[~label[rows]]
+        if len(pos) == 0 or len(neg) == 0:
+            continue
+        pos_blocks, pos_scores = block[pos], score[pos]
+        neg_count = np.bincount(block[neg], minlength=n_blocks)
+        n += np.outer(np.bincount(pos_blocks, minlength=n_blocks), neg_count)
+        for b in np.flatnonzero(neg_count):
+            ranked = np.sort(score[neg[block[neg] == b]])
+            below = np.searchsorted(ranked, pos_scores, side="left")
+            tied = np.searchsorted(ranked, pos_scores, side="right") - below
+            c[:, b] += np.bincount(pos_blocks, weights=below + 0.5 * tied, minlength=n_blocks)
+    return c, n
+
+
+def block_weights(k: int, reps: int = POOLED_REPS, seed: int = 20261123) -> Any:
+    """`reps` resamples of k blocks with replacement, as how many times each block was drawn."""
+    import numpy as np
+
+    if k == 0:
+        return np.zeros((reps, 0))
+    return np.random.default_rng(seed).multinomial(k, np.full(k, 1.0 / k), size=reps).astype(float)
+
+
+def block_ratio_bootstrap(block: Any, k: int, hits: Any, picked: Any, burnt: Any, fields: Any,
+                          reps: int = POOLED_REPS, seed: int = 20261123) -> dict[str, Any]:
+    """The top tenth's burnt share (sum of hits / sum of picked), the base rate (burnt / fields) and
+    their ratio, the lift, pooled over every pair, with 95% intervals from the same block resamples
+    as block_draws()."""
+    import numpy as np
+
+    sums = [np.bincount(np.asarray(block, np.int64), weights=np.asarray(v, float), minlength=k)
+            for v in (hits, picked, burnt, fields)]
+    w = block_weights(k, reps, seed)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        h, p, b, f = (w @ s for s in sums)
+        share, base = h / p, b / f
+        lift = share / base
+
+    def ci(x: Any) -> list[float | None]:
+        lo, hi = np.nanpercentile(x, [2.5, 97.5])
+        return [_r(lo), _r(hi)]
+
+    point_share = sums[0].sum() / sums[1].sum() if sums[1].sum() else None
+    point_base = sums[2].sum() / sums[3].sum() if sums[3].sum() else None
+    return {"burnt_share": _r(point_share), "burnt_share_ci95": ci(share), "base_rate": _r(point_base),
+            "lift": _r(point_share / point_base) if point_share is not None and point_base else None,
+            "lift_ci95": ci(lift)}
+
+
+def block_draws(cs: dict[str, Any], n: Any, reps: int = POOLED_REPS,
+                seed: int = 20261123) -> tuple[dict[str, float | None], dict[str, Any]]:
+    """({name: pooled AUC}, {name: the AUC in each of `reps` resamples of whole blocks}) for every C
+    in `cs` (all over the same fields, hence the same N and the same resamples)."""
+    import numpy as np
+
+    n = np.asarray(n, float)
+    total = float(n.sum())
+    k = n.shape[0]
+    w = block_weights(k, reps, seed)
+
+    def quad(m: Any) -> Any:
+        return np.einsum("rb,rb->r", w @ np.asarray(m, float), w)
+
+    den = quad(n)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        draws = {name: quad(c) / den for name, c in cs.items()}
+    points = {name: (float(np.asarray(c).sum()) / total if total else None) for name, c in cs.items()}
+    return points, draws
+
+
+def pooled_block_bootstrap(cs: dict[str, Any], n: Any, against: str | None = None, reps: int = POOLED_REPS,
+                           seed: int = 20261123) -> dict[str, dict[str, Any]]:
+    """Pooled AUC of each score in `cs` ({name: C}, all over the same fields and the same N) with a
+    95% percentile interval from `reps` resamples of whole blocks with replacement; with `against`,
+    also the paired difference (score - against) and its interval on the same resamples, which is
+    what a comparison of two orderings needs (they share the fields, so their errors move together)."""
+    import numpy as np
+
+    points, draws = block_draws(cs, n, reps, seed)
+    out: dict[str, dict[str, Any]] = {}
+    for name in cs:
+        point = points[name]
+        if point is None:
+            out[name] = {"auc": None, "auc_ci95": [None, None]}
+            continue
+        lo, hi = np.nanpercentile(draws[name], [2.5, 97.5])
+        row: dict[str, Any] = {"auc": _r(point), "auc_ci95": [_r(lo), _r(hi)]}
+        if against is not None and name != against and points.get(against) is not None:
+            d_lo, d_hi = np.nanpercentile(draws[name] - draws[against], [2.5, 97.5])
+            row["minus_" + against] = {"diff": _r(point - points[against]), "ci95": [_r(d_lo), _r(d_hi)]}
+        out[name] = row
+    return out
