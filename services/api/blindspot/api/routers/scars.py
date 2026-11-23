@@ -504,7 +504,8 @@ def _fires_nearby(session: Session, scar_id: int) -> list[dict[str, Any]]:
 # outline. The same cut as the live map's list, so every outline is a scar the map shows.
 OTHERS_MIN_CONFIDENCE = WEBSITE_LIST["min_confidence"]
 # On 22 Nov the 1.2 km box of a sample of 400 scars held at most 47 others; the boxes of the 40
-# largest scars held 74 (median) to 760 (a 10 km box). The largest come first when this cuts.
+# largest scars held 74 (median) to 760 (a 10 km box). When this cuts, the largest of those the
+# pictures show are kept (the scars first seen after them come last: they are not burnt in either).
 OTHERS_LIMIT = 300
 # Passes over one field are days apart, but the tiles of one pass are stamped seconds apart, so a
 # scar first seen within this of a picture's pass was seen on that same pass.
@@ -523,9 +524,9 @@ def _other_scars(session: Session, row: dict[str, Any], bbox: tuple[float, float
 
     Outlines are simplified to one picture pixel (the box's shorter side / CHIP_PX, in degrees;
     ST_SimplifyPreserveTopology never drops a small scar) with 5 decimals (about 1 m). One query on
-    the geometry index; `totals` count every match even when OTHERS_LIMIT cuts the list (same
-    first, then earlier, then later; larger first). `area_ha` is each scar's whole area, also the
-    part outside the box."""
+    the geometry index; `totals` count every match even when OTHERS_LIMIT cuts the list (the largest
+    first, same and earlier alike, then the later ones). `area_ha` is each scar's whole area, also
+    the part outside the box."""
     x0, y0, x1, y1 = bbox
     params = {
         "x0": x0, "y0": y0, "x1": x1, "y1": y1, "id": row["id"], "version": RULE.version,
@@ -550,10 +551,10 @@ def _other_scars(session: Session, row: dict[str, Any], bbox: tuple[float, float
         SELECT h.id, h.relation, h.burn_after, h.burn_before, h.unseen, h.confidence, h.area_ha,
                totals.t AS totals, ST_AsGeoJSON(ST_SimplifyPreserveTopology(h.geom, :tol), 5)::json AS outline
         FROM (SELECT * FROM hit
-              ORDER BY array_position(ARRAY['same', 'earlier', 'later'], relation), area_ha DESC, id
+              ORDER BY relation = 'later', area_ha DESC, id
               LIMIT :limit) h
         CROSS JOIN totals
-        ORDER BY array_position(ARRAY['same', 'earlier', 'later'], h.relation), h.area_ha DESC, h.id"""),
+        ORDER BY h.relation = 'later', h.area_ha DESC, h.id"""),
         params).mappings().all()
     totals = {r: {"scars": 0, "area_ha": 0.0} for r in RELATIONS}
     for relation, t in (rows[0]["totals"] if rows else {}).items():

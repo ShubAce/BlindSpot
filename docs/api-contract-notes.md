@@ -390,9 +390,9 @@ There is no `hours` parameter. A pass counts when the site lies inside the instr
     before picture's pass (dark in both), `later` = first seen after the after picture (burnt in
     neither); passes within an hour count as one (adjacent tiles of one pass). `outline` is a
     GeoJSON Polygon simplified to one picture pixel (the box's shorter side / 512) with 5 decimals.
-    The list holds at most `limit` (300) scars, same first, then earlier, then later, larger first;
-    `totals` and `total` count every match. `area_ha` is a scar's whole area, also any part outside
-    the box. One query on the geometry index (2-11 ms on the 22 Nov data).
+    The list holds at most `limit` (300) scars, the largest first (same and earlier alike), the
+    later ones last; `totals` and `total` count every match. `area_ha` is a scar's whole area, also
+    any part outside the box. One query on the geometry index (2-11 ms on the 22 Nov data).
   - `weather_at_burn: {available, series: [{t, wind_10m_kmh, wind_from_deg, blh_m, temp_2m_c,
     precip_mm}]}`.
   - An unknown id returns 404 "no such scar".

@@ -150,8 +150,8 @@ export type OtherScar = {
 export type OtherScarTotals = { scars: number; area_ha: number };
 
 /** The other stored scars inside imagery.bbox, with the live map's confidence cut. `totals` and
- *  `total` count every match; `scars` holds at most `limit` (same first, then earlier, then later,
- *  larger first). Added to the API on 2026-11-23: an older answer has no such key. */
+ *  `total` count every match; `scars` holds at most `limit` (the largest first, same and earlier
+ *  alike, the later ones last). Added to the API on 2026-11-23: an older answer has no such key. */
 export type OtherScars = {
   bbox?: [number, number, number, number] | null;
   model_version?: string;

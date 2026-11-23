@@ -135,8 +135,8 @@ def test_other_scars_in_the_pictures(client, case_ids) -> None:
     assert o["totals"] == {"same": {"scars": 4, "area_ha": 6.01}, "earlier": {"scars": 2, "area_ha": 5.5},
                            "later": {"scars": 1, "area_ha": 6.0}}
     assert (o["total"], o["returned"], o["truncated"]) == (7, 7, False)
-    # same first, then earlier, then later; larger first
-    assert [names[s["id"]] for s in o["scars"]] == ["same_b", "dense", "same_a", "tiny", "earlier_a", "earlier_b",
+    # the largest first, same and earlier alike; the later one (burnt in neither picture) last
+    assert [names[s["id"]] for s in o["scars"]] == ["earlier_a", "same_b", "dense", "same_a", "earlier_b", "tiny",
                                                     "later"]
     s = by_id[case_ids["same_b"]]
     assert s["burn_after"].endswith("Z") and s["burn_before"].startswith("2026-11-19")
@@ -168,7 +168,8 @@ def test_the_list_is_capped_but_the_totals_are_not(client, case_ids, monkeypatch
     monkeypatch.setattr(scars_router, "OTHERS_LIMIT", 2)
     o = _others(client, case_ids["case"])["other_scars"]
     names = {v: k for k, v in case_ids.items()}
-    assert [names[s["id"]] for s in o["scars"]] == ["same_b", "dense"]  # the largest of the same window
+    # the two largest the pictures show; the later scar (6 ha, the largest of all) is cut first
+    assert [names[s["id"]] for s in o["scars"]] == ["earlier_a", "same_b"]
     assert (o["total"], o["returned"], o["truncated"], o["limit"]) == (7, 2, True, 2)
     assert o["totals"]["earlier"] == {"scars": 2, "area_ha": 5.5} and o["totals"]["later"]["scars"] == 1
 
