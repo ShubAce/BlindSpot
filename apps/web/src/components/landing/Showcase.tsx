@@ -81,10 +81,11 @@ async function PlainsPicture() {
 }
 
 /** The slips' scope in one line (the headline's share and its audit sit on the first screen). The
- *  slips come from the newest scars (the list is newest pass first), so they are the largest of the
- *  newest pass, not of the season: the line says which pass and how confident, from the list itself. */
+ *  slips come from the newest pass, largest first (data.getSlipList), so they are the largest of that
+ *  pass, not of the season: the line says which pass, how confident and of how many, from the list
+ *  itself. When the API listed the newest scars instead (its scope 'newest'), it says that. */
 async function UnseenClaim() {
-  const [r, shown] = await Promise.all([getHeadline(), getSlipScars()]);
+  const [r, { shown, scope }] = await Promise.all([getHeadline(), getSlipScars()]);
   const u = r.ok ? r.data.unseen_burns : null;
   if (!r.ok) return <p className={s.honestOnDark} data-load-failed="">{`The burn scar totals did not load. ${r.error.message}`}</p>;
   if (!u?.available || u.unseen_clusters == null) {
@@ -92,10 +93,14 @@ async function UnseenClaim() {
   }
   const label = u.label ?? 'candidate unseen burns';
   const season = `${number(u.unseen_clusters)} ${label}${u.districts != null ? ` in ${number(u.districts)} districts` : ''}${u.first_pass ? ` since ${dateIST(u.first_pass)}` : ''}`;
-  const passes = [...new Set(shown.map((p) => dateIST(p.burn_before)))];
+  const pass = scope.passes.length === 1 ? `pass of ${scope.passes[0]}` : 'newest passes';
+  const confident = `with confidence ${number(UNSEEN_LIST_QUERY.min_confidence, { decimals: 1 })} or more`;
+  const drawn = scope.kind === 'pass'
+    ? `the largest of the ${number(scope.matched)} ${label} ${confident} in the ${pass}`
+    : `the largest of the ${number(scope.returned)} most recently sensed ${label} ${confident} (${pass})`;
   // (a list that did not load says so in the slips' own place; this line then gives the season only)
   const text = shown.length
-    ? `The slips below are the largest ${label} of the ${passes.length === 1 ? `pass of ${passes[0]}` : 'newest passes'} with confidence ${number(UNSEEN_LIST_QUERY.min_confidence, { decimals: 1 })} or more, one per village: ${number(shown.length)} of the ${season}. Each opens its case file.`
+    ? `The slips below are ${drawn}, one per village: ${number(shown.length)} of the ${season}. Each opens its case file.`
     : `Sentinel-2 has mapped ${season}.`;
   return <p className={s.claimText}>{text}</p>;
 }
@@ -151,7 +156,7 @@ function CaseSlip({ c }: { c: ScarCase }) {
 }
 
 async function AnswerSlip() {
-  const [r, slips] = await Promise.all([getExamples(), getSlipScars()]);
+  const [r, { shown: slips }] = await Promise.all([getExamples(), getSlipScars()]);
   // no slip without the read, but the render is marked, so it never replaces a good offline copy
   if (!r.ok) return <LoadFailed />;
   const all = (r.data.examples ?? []).filter((e) => e.ok !== false && e.answer && e.question && e.verification?.passed);
