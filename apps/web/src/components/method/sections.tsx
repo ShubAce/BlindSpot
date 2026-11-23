@@ -368,6 +368,8 @@ export async function Accuracy() {
   if (rc?.recall_same_window != null) rows.push({ label: 'VIIRS fires with a scar, same window', value: rc.recall_same_window, ci: rc.recall_same_window_ci95 ?? null, n: `n = ${rc.viirs_detections ?? '—'}` });
   const phrase = auditPhrase(u);
   const older = auditOlderText(u);
+  // the rules of the rows counted (two while the sentinel job rewrites the tiles after a rule change)
+  const versions = u?.model_versions?.length ? u.model_versions : u?.model_version ? [u.model_version] : [];
   return (
     <>
       {u?.available && u.unseen_share != null ? (
@@ -376,7 +378,7 @@ export async function Accuracy() {
             of the burnt area mapped since {dateIST(u.first_pass)} ({metric('area_ha', u.unseen_area_ha).value} of {metric('area_ha', u.area_ha).value} ha) is candidate unseen burns{phrase ? `, ${phrase}` : ''}.
           </Figure>
           <Figure value={number(u.unseen_clusters ?? null)}>
-            candidate unseen burns in {number(u.districts ?? null)} districts, mapped by {u.model_versions && u.model_versions.length > 1 ? `rules ${u.model_versions.join(' and ')} (tiles not yet re-run keep the earlier rule)` : `rule ${u.model_version ?? '—'}`} up to the pass of {dateIST(u.last_pass, { year: true })}{phrase ? `; ${phrase}` : ''}.
+            candidate unseen burns in {number(u.districts ?? null)} districts, mapped by {versions.length > 1 ? `rules ${versions.join(' and ')} (tiles not yet re-run keep the earlier rule)` : `rule ${versions[0] ?? '—'}`} up to the pass of {dateIST(u.last_pass, { year: true })}{phrase ? `; ${phrase}` : ''}.
           </Figure>
         </div>
       ) : (
