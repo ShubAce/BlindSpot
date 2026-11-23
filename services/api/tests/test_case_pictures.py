@@ -80,6 +80,7 @@ def case_ids() -> dict[str, int]:
         "same_b": _row("same_b", _ring(-300, 200, 100), T0 - 2 * DAY, T0 + 2 * DAY, 3.0),
         "dense": _row("dense", _circle(0, -350, 50, 720), T0, T1, 2.0),
         "tiny": _row("tiny", _ring(450, -350, 1), T0, T1, 0.01),  # smaller than one picture pixel
+        "edge": _row("edge", _ring(600, 0, 100), T0, T1, 2.5),  # half of it beyond the box's east edge
         # earlier: burnt by the before picture's pass (on this tile, or seconds later on the next one)
         "earlier_a": _row("earlier_a", _ring(-450, -300, 100), T0 - 5 * DAY, T0, 5.0),
         "earlier_b": _row("earlier_b", _ring(150, 420, 100), T0 - 5 * DAY, T0 + dt.timedelta(seconds=20), 0.5),
@@ -90,6 +91,9 @@ def case_ids() -> dict[str, int]:
         "old": _row("old", _ring(-300, -150, 100), T0, T1, 1.5, version="test-old-rules"),
         "far": _row("far", _ring(3000, 0, 100), T0, T1, 1.5),
         "l_shape": _row("l_shape", _l_shape_outside(bbox), T0, T1, 1.5),
+        # a case burnt before everything around it: its box holds one scar, first seen after it
+        "early_case": _row("early_case", _ring(6000, 0, 100), T0 - 10 * DAY, T0 - 6 * DAY, 1.0),
+        "after_it": _row("after_it", _ring(6300, 0, 100), T0, T1, 1.2),
     }
     with SessionLocal() as session:
         session.execute(text("DELETE FROM burn_cluster WHERE mgrs_tile = :t"), {"t": TILE})
@@ -127,17 +131,22 @@ def test_other_scars_in_the_pictures(client, case_ids) -> None:
     by_id = {s["id"]: s for s in o["scars"]}
     names = {v: k for k, v in case_ids.items()}
     listed = {names[i] for i in by_id}
-    # the case itself, the weak, the older model and the two outside the box are left out
-    assert listed == {"same_a", "same_b", "dense", "tiny", "earlier_a", "earlier_b", "later"}
+    # the case itself, the weak, the older model and the two outside the box are left out, and so is
+    # the later scar (burnt in neither picture): counted, not listed
+    assert listed == {"same_a", "same_b", "dense", "tiny", "edge", "earlier_a", "earlier_b"}
     assert {names[i]: s["relation"] for i, s in by_id.items()} == {
-        "same_a": "same", "same_b": "same", "dense": "same", "tiny": "same",
-        "earlier_a": "earlier", "earlier_b": "earlier", "later": "later"}
-    assert o["totals"] == {"same": {"scars": 4, "area_ha": 6.01}, "earlier": {"scars": 2, "area_ha": 5.5},
-                           "later": {"scars": 1, "area_ha": 6.0}}
-    assert (o["total"], o["returned"], o["truncated"]) == (7, 7, False)
-    # the largest first, same and earlier alike; the later one (burnt in neither picture) last
-    assert [names[s["id"]] for s in o["scars"]] == ["earlier_a", "same_b", "dense", "same_a", "earlier_b", "tiny",
-                                                    "later"]
+        "same_a": "same", "same_b": "same", "dense": "same", "tiny": "same", "edge": "same",
+        "earlier_a": "earlier", "earlier_b": "earlier"}
+    t = o["totals"]
+    # area_ha is the scars' whole area; area_in_box_ha only the part inside the pictures (half the edge)
+    assert t["same"]["scars"] == 5 and t["same"]["area_ha"] == 8.51
+    assert abs(t["same"]["area_in_box_ha"] - 7.26) < 0.01
+    assert t["earlier"] == {"scars": 2, "area_ha": 5.5, "area_in_box_ha": 5.5}
+    assert t["later"] == {"scars": 1, "area_ha": 6.0, "area_in_box_ha": 6.0}
+    assert (o["total"], o["returned"], o["truncated"]) == (8, 7, False)
+    # the largest first, same and earlier alike
+    assert [names[s["id"]] for s in o["scars"]] == ["earlier_a", "same_b", "edge", "dense", "same_a", "earlier_b",
+                                                    "tiny"]
     s = by_id[case_ids["same_b"]]
     assert s["burn_after"].endswith("Z") and s["burn_before"].startswith("2026-11-19")
     assert set(s) == {"id", "relation", "burn_after", "burn_before", "unseen", "confidence", "area_ha", "outline"}
@@ -168,10 +177,11 @@ def test_the_list_is_capped_but_the_totals_are_not(client, case_ids, monkeypatch
     monkeypatch.setattr(scars_router, "OTHERS_LIMIT", 2)
     o = _others(client, case_ids["case"])["other_scars"]
     names = {v: k for k, v in case_ids.items()}
-    # the two largest the pictures show; the later scar (6 ha, the largest of all) is cut first
+    # the two largest the pictures show (the later scar, 6 ha and the largest of all, is never listed)
     assert [names[s["id"]] for s in o["scars"]] == ["earlier_a", "same_b"]
-    assert (o["total"], o["returned"], o["truncated"], o["limit"]) == (7, 2, True, 2)
-    assert o["totals"]["earlier"] == {"scars": 2, "area_ha": 5.5} and o["totals"]["later"]["scars"] == 1
+    assert (o["total"], o["returned"], o["truncated"], o["limit"]) == (8, 2, True, 2)
+    assert o["totals"]["earlier"] == {"scars": 2, "area_ha": 5.5, "area_in_box_ha": 5.5}
+    assert o["totals"]["later"]["scars"] == 1
 
 
 def test_relations_are_seen_from_each_case(client, case_ids) -> None:
@@ -182,10 +192,19 @@ def test_relations_are_seen_from_each_case(client, case_ids) -> None:
     rel = {names[s["id"]]: s["relation"] for s in o["scars"]}
     assert "later" not in rel and rel["case"] == "earlier" and set(rel.values()) == {"earlier"}
     assert {"case", "dense", "earlier_a"} <= set(rel)
-    assert o["totals"]["same"] == {"scars": 0, "area_ha": 0.0} and o["totals"]["later"]["scars"] == 0
+    assert o["totals"]["same"] == {"scars": 0, "area_ha": 0.0, "area_in_box_ha": 0.0}
+    assert o["totals"]["later"]["scars"] == 0
 
 
 def test_a_case_alone_in_its_pictures(client, case_ids) -> None:
     o = _others(client, case_ids["far"])["other_scars"]
     assert (o["total"], o["returned"], o["truncated"], o["scars"]) == (0, 0, False, [])
-    assert o["totals"] == {r: {"scars": 0, "area_ha": 0.0} for r in ("same", "earlier", "later")}
+    assert o["totals"] == {r: {"scars": 0, "area_ha": 0.0, "area_in_box_ha": 0.0} for r in ("same", "earlier", "later")}
+
+
+def test_a_box_of_later_scars_only(client, case_ids) -> None:
+    """Nothing to outline, but the totals still count the scar first seen after the pictures."""
+    o = _others(client, case_ids["early_case"])["other_scars"]
+    assert (o["total"], o["returned"], o["truncated"], o["scars"]) == (1, 0, False, [])
+    assert o["totals"]["later"] == {"scars": 1, "area_ha": 1.2, "area_in_box_ha": 1.2}
+    assert o["totals"]["same"]["scars"] == o["totals"]["earlier"]["scars"] == 0
