@@ -556,8 +556,9 @@ def job_stamp(session: Session, jobs: Iterable[str]) -> str:
 # group that expired in one database wake-up: at most 21 refresh wake-ups a day (docs/neon-budget.md).
 # On the AWS server the clocks are a floor, not the only refresh: a daily, weekly or bulletin job
 # that ends after its group's last point would otherwise leave that group on the old data for a day
-# while the hourly answers move on, so the warm timer refreshes the answers each such job feeds as
-# soon as its job_run row appears (infra/aws/warm.sh, through nginx-api-cache.conf's :8002 door).
+# while the hourly answers move on, so the warm timer refreshes the answers each such job feeds once
+# its job_run row is 15 minutes old, when the in-process copies (cached_route, up to 600 s) built
+# before the job ended have expired (infra/aws/warm.sh, through nginx-api-cache.conf's :8002 door).
 # A rendered Sentinel-2 picture never changes, so it is immutable.
 # `stale-while-revalidate` lets the CDN answer at once with the old copy while it fetches a new
 # one (the body's generated_at and sources say how old it is); `stale-if-error` lets it keep

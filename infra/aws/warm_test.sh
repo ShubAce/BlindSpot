@@ -42,10 +42,15 @@ odd=$(put "/api/scars?district=a b")  # not a plain URI: purged, never fetched
 fires=$(put "/api/fires?hours=24")
 risk=$(put "/api/risk?limit=1")
 render=$(put "/api/imagery/render?item=x&bbox=1,2,3,4")
+# nginx's temp file of a store in progress, beside the cache file it will replace: never touched
+temp_store="$headline.0000000012"
+cp "$headline" "$temp_store"
 
 cat > "$tmp/psql.sh" <<'EOF'
-# fake psql: the SQL must ask for finished, successful runs; the rows come from $FAKE_ROWS
+# fake psql: the SQL must ask for successful runs that finished at least 15 minutes ago (the API's
+# in-process caches keep an answer up to 10); the rows come from $FAKE_ROWS
 grep -q "FROM job_run WHERE ok" <<< "$WARM_SQL" || { echo "unexpected SQL" >&2; exit 2; }
+grep -qF "finished_at <= now() - interval '15 minutes'" <<< "$WARM_SQL" || { echo "no settle time" >&2; exit 2; }
 printf '%b' "${FAKE_ROWS:-}"
 EOF
 
@@ -64,13 +69,13 @@ for key in "/api/stats/headline" "/api/scars/summary" "/api/scars?unseen=true&mi
   has "$out" "would refresh $key" "dry run"
 done
 for f in "$case_file" "$csv" "$odd" "$headline_other"; do has "$out" "would delete $f" "dry run"; done
-for f in "$headline" "$fires" "$risk" "$render"; do hasnt "$out" "would delete $f" "dry run"; done
+for f in "$headline" "$fires" "$risk" "$render" "$temp_store"; do hasnt "$out" "would delete $f" "dry run"; done
 hasnt "$out" "would refresh /api/fires" "dry run"
 hasnt "$out" "would refresh /api/risk" "dry run"
 has "$out" "5 answers refreshed, 3 purged, 0 failed" "dry run"
 [ -e "$case_file" ] && [ -e "$headline_other" ] || fail "dry run deleted a file"
 [ ! -e "$state/handled-job-runs" ] || fail "dry run wrote the state"
-ok "dry run after sentinel: 5 refreshed, case file, CSV, odd key and the other Origin's copy listed for deletion"
+ok "dry run after sentinel: 5 refreshed, case file, CSV, odd key and the other Origin's copy listed for deletion, a temp file of a store in progress left alone"
 
 # 2. The refresh cap: over it, answers are purged instead (newest first are refreshed).
 out=$(run '101 sentinel\n' WARM_DRY_RUN=1 WARM_REFRESH_MAX=2)
@@ -108,7 +113,7 @@ has "$asked" "/api/scars?unseen=true&min_confidence=0.9&limit=120 https://www.bl
 has "$asked" "/api/stats/headline https://www.blindspotin.tech" "real run"
 [ "$(wc -l < "$tmp/door.log")" -eq 5 ] || fail "real run: the door was asked $(wc -l < "$tmp/door.log") times, not 5"
 for f in "$case_file" "$csv" "$odd" "$headline_other"; do [ ! -e "$f" ] || fail "real run kept $f"; done
-for f in "$headline" "$fires" "$risk" "$render"; do [ -e "$f" ] || fail "real run deleted $f"; done
+for f in "$headline" "$fires" "$risk" "$render" "$temp_store"; do [ -e "$f" ] || fail "real run deleted $f"; done
 grep -qx "101" "$state/handled-job-runs" || fail "real run: job_run 101 not remembered"
 ok "real run: refreshed through the door with the site's Origin and Host, purged the rest, remembered the run"
 

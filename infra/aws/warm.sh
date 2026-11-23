@@ -8,8 +8,8 @@
 #    group, whose last point is 14:30 UTC. A daily job that finishes after that point (a late
 #    Sentinel-2 run, a long risk run) would leave those answers on the old data until the next day,
 #    while the hourly answers move on: two pages, two different counts. So each run asks the
-#    database (local psql, as postgres) which of the jobs in ROUTES finished since the last run, and
-#    for every cached answer those jobs feed:
+#    database (local psql, as postgres) which of the jobs in ROUTES finished since the last run and
+#    at least SETTLE_MIN ago, and for every cached answer those jobs feed:
 #      - refreshed: fetched again through 127.0.0.1:8002, a second door to the same cache that always
 #        asks the API and stores the new answer (proxy_cache_bypass). Visitors keep getting the old
 #        copy until the new one is stored, so nothing goes cold. At most REFRESH_MAX, newest first,
@@ -36,7 +36,12 @@ SITE_URL=${WARM_SITE_URL:-http://127.0.0.1:3000}
 DRY=${WARM_DRY_RUN:-0}
 ORIGIN=https://www.blindspotin.tech  # the Origin the website and its visitors send: their shared copy
 API_HOST=api.blindspotin.tech        # the Host Caddy passes on, so a refresh looks like a visitor's read
-LOOKBACK_MIN=90                      # job runs finished this recently are looked at (handled ones skipped)
+# A job run is handled once it finished at least SETTLE_MIN ago: the API keeps a built answer in
+# process for up to 600 s after its build (cached_route on /api/brief and /api/risk, the boundaries
+# GeoJSON, the slow orbit answers), so a refresh any sooner could fetch an answer built from the data
+# before the job and store it as new until the next clock point. 15 minutes leaves 5 for a slow build.
+SETTLE_MIN=15
+LOOKBACK_MIN=105                     # runs that finished this recently are looked at (handled ones skipped)
 REFRESH_MAX=${WARM_REFRESH_MAX:-60}  # answers refreshed per run; the rest are purged
 REFRESH_BUDGET_S=${WARM_REFRESH_BUDGET_S:-480}  # and no refresh starts after this long (a slow API)
 
@@ -70,7 +75,8 @@ fi
 # --- 1. which jobs finished since the last run ----------------------------------------------------
 names=$(printf "'%s'," "${!ROUTES[@]}")
 export WARM_SQL="SELECT id || ' ' || name FROM job_run WHERE ok AND name IN (${names%,})
-  AND finished_at > now() - interval '${LOOKBACK_MIN} minutes' ORDER BY finished_at"
+  AND finished_at > now() - interval '${LOOKBACK_MIN} minutes'
+  AND finished_at <= now() - interval '${SETTLE_MIN} minutes' ORDER BY finished_at"
 handled_file="$STATE_DIR/handled-job-runs"
 declare -A handled=()
 if [ -r "$handled_file" ]; then
@@ -101,13 +107,15 @@ if [ "${#jobs[@]}" -gt 0 ] && [ -d "$CACHE" ]; then
   for name in "${!jobs[@]}"; do pattern+="${pattern:+|}(${ROUTES[$name]})"; done
 
   # One line per cache file: "path:KEY: <request URI>" (nginx writes the key near the file's start).
+  # Names with a dot are left alone: <md5>.0000000NNN is nginx's temp file of a store in progress
+  # (use_temp_path=off puts it beside the cache files), renamed to <md5> when complete.
   declare -A files_of=()   # key -> its cache files, space-separated
   while IFS= read -r line; do
     path=${line%%:*}
     key=${line#*:KEY: }
     [[ "$key" =~ $pattern ]] || continue
     files_of[$key]+="${files_of[$key]:+ }$path"
-  done < <(find "$CACHE" -type f -exec grep -a -m1 -H '^KEY: ' {} + 2>/dev/null)
+  done < <(find "$CACHE" -type f ! -name '*.*' -exec grep -a -m1 -H '^KEY: ' {} + 2>/dev/null)
 
   # nginx names a cache file by the MD5 of its key (levels=1:2: .../<last char>/<2 before it>/<md5>);
   # a file of the same key under another name holds another Origin's copy (Vary).
@@ -125,7 +133,10 @@ if [ "${#jobs[@]}" -gt 0 ] && [ -d "$CACHE" ]; then
     fi
   done
 
-  # Newest first (the primary copy's age), so the answers read most lately are refreshed first.
+  # Most recently stored first (the primary copy's mtime). That is the last time the answer was built,
+  # not the last time it was read: one read all day but stored just after the last clock point sorts
+  # below one stored later by a single read, so over the cap it is purged and its next reader builds
+  # it again, once (proxy_cache_lock).
   ordered=()
   if [ "${#primary_of[@]}" -gt 0 ]; then
     while IFS=$'\t' read -r _age key; do ordered+=("$key"); done < <(
