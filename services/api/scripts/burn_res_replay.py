@@ -673,6 +673,39 @@ def runtime(args: argparse.Namespace) -> None:
         args.out_json.write_text(json.dumps(report, indent=1))
 
 
+def summary(args: argparse.Namespace) -> None:
+    """The pre-registered bar from the replays (a), the judges' verdicts (b) and the runtime (c)."""
+    from blindspot.analytics.burnscar import wilson_interval
+
+    rows = []
+    for path in sorted(args.out.glob("*/report.json")):
+        r = json.loads(path.read_text())
+        rows.append({"window": r["name"], "tile": r["tile"], "ha_40m": r["detected_ha"]["40m"],
+                     "ha_20m": r["detected_ha"]["20m"], "only20_ha": r["only20_ha"], "only40_ha": r["only40_ha"],
+                     "only20_share_of_40m": r["only20_share_of_40m"],
+                     "meets_10pct": (r["only20_share_of_40m"] or 0) >= 0.10})
+    out: dict[str, Any] = {"windows": rows, "bar_a": sum(r["meets_10pct"] for r in rows) >= 3}
+    if args.key and args.verdicts:
+        chips = json.loads(args.key.read_text())["chips"]
+        verdicts = {Path(k).stem: str(v).strip().lower() for k, v in json.loads(args.verdicts.read_text()).items()}
+        audit = {}
+        for stratum in ("both", "20m_only"):
+            judged = [verdicts.get(Path(c["chip"]).stem) for c in chips if c["stratum"] == stratum]
+            n, k = sum(v is not None for v in judged), sum(v == "burnt" for v in judged)
+            audit[stratum] = {"judged": n, "burnt": k, "precision": round(k / n, 3) if n else None,
+                              "precision_ci95": wilson_interval(k, n)}
+        p_both, p_only = audit["both"]["precision"], audit["20m_only"]["precision"]
+        out["audit"] = audit
+        out["bar_b"] = None if p_both is None or p_only is None else bool(p_only >= max(0.6, p_both - 0.10))
+    if args.runtime:
+        cfg = json.loads(args.runtime.read_text())["configs"][args.config]
+        out["runtime"] = {"districts": cfg["districts"], "loop_min_at_pass_factor": cfg["loop_min_at_pass_factor"]}
+        out["bar_c"] = cfg["bar_c_pass"]
+    bars = [out.get(k) for k in ("bar_a", "bar_b", "bar_c")]
+    out["ship"] = None if None in bars else all(bars)
+    print(json.dumps(out, indent=1))
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -695,6 +728,13 @@ def main() -> None:
     d.add_argument("--db", default=DEFAULT_DB)
     d.add_argument("--diag-pre", default="2026-11-17")
     d.add_argument("--diag-post", default="2026-11-22")
+    m = sub.add_parser("summary")
+    m.add_argument("out", type=Path)
+    m.add_argument("--key", type=Path, default=None, help="audit_key.json from burn_res_chips.py")
+    m.add_argument("--verdicts", type=Path, default=None,
+                   help='JSON {"chip_001.png": "burnt" | "not burnt" | "uncertain", ...} from blind judges')
+    m.add_argument("--runtime", type=Path, default=None, help="the runtime subcommand's --out-json")
+    m.add_argument("--config", default="top7")
     t = sub.add_parser("runtime")
     t.add_argument("prod", type=Path, help="JSON export of the production runs (see runtime())")
     t.add_argument("--db", default=DEFAULT_DB)
@@ -703,7 +743,7 @@ def main() -> None:
     t.add_argument("--top", type=int, nargs="+", default=[5, 7, 9])
     t.add_argument("--out-json", type=Path, default=None)
     args = ap.parse_args()
-    {"replay": replay, "diagnose": diagnose, "runtime": runtime}[args.cmd](args)
+    {"replay": replay, "diagnose": diagnose, "runtime": runtime, "summary": summary}[args.cmd](args)
 
 
 if __name__ == "__main__":
