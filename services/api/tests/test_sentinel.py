@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+from dataclasses import replace
 from itertools import pairwise
 from pathlib import Path
 
@@ -126,6 +127,128 @@ def test_burn_found_between_the_hazy_and_the_clear_pass(window) -> None:
     assert centre.mean("d_b8a") > RULE.d_b8a and centre.mean("d_b11") > RULE.d_b11
     assert centre.mean("tbi_post") <= RULE.tbi_max and centre.mean("bais2_post") >= RULE.bais2_min
     assert state.arrays["burn_day"][32, 32] == DAYS[2]
+
+
+# --- seed and grow (s2burn-rules-4), on a synthetic block -----------------------------------------
+
+# Surface reflectance of a harvested field (straw), of char that passes every strict test, of lighter
+# char that passes only the looser grow tests (dB8A, dB11 0.05; dB12 0.025; post NBR -0.06), and of
+# "warm" ground that passes every grow test but the NBR one (post NBR +0.01: SWIR-2 below NIR).
+_STRAW = {"B02": 0.06, "B03": 0.08, "B04": 0.10, "B06": 0.20, "B07": 0.22, "B08": 0.25, "B8A": 0.26,
+          "B11": 0.32, "B12": 0.26}
+_CHAR = {"B02": 0.05, "B03": 0.06, "B04": 0.08, "B06": 0.10, "B07": 0.12, "B08": 0.14, "B8A": 0.15,
+         "B11": 0.20, "B12": 0.20}
+_LIGHT = {"B02": 0.06, "B03": 0.07, "B04": 0.09, "B06": 0.14, "B07": 0.16, "B08": 0.20, "B8A": 0.21,
+          "B11": 0.27, "B12": 0.235}
+_WARM = {**_LIGHT, "B12": 0.205}
+
+
+def _grow_scene(post: dict[str, list[tuple[slice, slice]]], rule: burnscar.BurnRule = RULE,
+                res_m: int = 20) -> burnscar.PassResult:
+    """A 14 x 32 px block of straw on day 100, and on day 105 the same straw except where `post`
+    puts char ('char': every strict test) or light char ('light': the grow tests only)."""
+    shape = (14, 32)
+    pre = {b: np.full(shape, v, np.float32) for b, v in _STRAW.items()}
+    after = {b: a.copy() for b, a in pre.items()}
+    for kind, values in (("char", _CHAR), ("light", _LIGHT), ("warm", _WARM)):
+        for where in post.get(kind, []):
+            for b, v in values.items():
+                after[b][where] = v
+    state, registry = BlockState.empty(shape), []
+    scl, scope, index = np.full(shape, 4, np.uint8), np.ones(shape, bool), np.zeros(shape, np.uint8)
+    first = burnscar.apply_pass(state, pre, scl, ["pre"], index, 100, scope, registry, rule, res_m=res_m)
+    assert first.used and not first.burn.any()
+    out = burnscar.apply_pass(state, after, scl, ["post"], index, 105, scope, registry, rule, res_m=res_m)
+    assert out.used and out.burn is not None and out.seed is not None
+    assert (state.arrays["burn_day"][out.burn] == 105).all() and (state.arrays["burn_day"][~out.burn] == 0).all()
+    return out
+
+
+def test_the_synthetic_char_passes_the_strict_tests_and_light_char_only_the_grow_tests() -> None:
+    straw = {b: np.array([v], np.float32) for b, v in _STRAW.items()}
+    for name, values, strict, grows in (("char", _CHAR, True, True), ("light", _LIGHT, False, True),
+                                        ("warm", _WARM, False, False)):
+        post = {b: np.array([v], np.float32) for b, v in values.items()}
+        d = {b: (straw[b] - post[b])[0] for b in ("B8A", "B11", "B12")}
+        b2, t, n = burnscar.bais2(post)[0], burnscar.tbi(post)[0], burnscar.nbr(post)[0]
+        passes_strict = (d["B8A"] > RULE.d_b8a and d["B11"] > RULE.d_b11 and d["B12"] > RULE.d_b12
+                         and b2 >= RULE.bais2_min and t <= RULE.tbi_max)
+        passes_loose = (d["B8A"] > RULE.grow_d_b8a and d["B11"] > RULE.grow_d_b11 and d["B12"] > RULE.grow_d_b12
+                        and b2 >= RULE.grow_bais2_min and t <= RULE.grow_tbi_max)
+        assert bool(passes_strict) is strict and bool(passes_loose), name
+        assert bool(n < RULE.grow_nbr_post_max) is grows, name
+
+
+def test_a_strip_beside_a_seed_grows_into_the_burn() -> None:
+    """Lightly charred pixels 4-connected to a strict burn join it (the rest of the field)."""
+    seed, strip = (slice(2, 10), slice(2, 8)), (slice(2, 10), slice(8, 11))
+    out = _grow_scene({"char": [seed], "light": [strip]})
+    assert out.seed[seed].all() and not out.seed[strip].any()
+    assert out.burn[seed].all() and out.burn[strip].all()
+    assert int(out.burn.sum()) == 8 * 9 and out.stats["seed_px"] == 48
+    # The rule without growth (s2burn-rules-2's per-pixel rule) finds the seed only.
+    old = _grow_scene({"char": [seed], "light": [strip]}, replace(RULE, grow=False))
+    np.testing.assert_array_equal(old.burn, out.seed)
+    # 40 m: no opening; the same strip grows.
+    assert _grow_scene({"char": [seed], "light": [strip]}, res_m=40).burn[strip].all()
+
+
+def test_an_isolated_lightly_charred_patch_is_not_a_burn() -> None:
+    patch = (slice(2, 10), slice(20, 26))
+    out = _grow_scene({"char": [(slice(2, 10), slice(2, 8))], "light": [patch]})
+    assert not out.burn[patch].any()
+    assert not _grow_scene({"light": [patch]}).burn.any()  # no seed anywhere: nothing burns
+
+
+def test_nothing_grows_across_a_road_of_unburnt_pixels() -> None:
+    """A one-pixel column of unchanged ground (a road) stops the growth, and so does a diagonal
+    one: growth is 4-connected, like the clusters."""
+    seed, strip, beyond = (slice(2, 10), slice(2, 8)), (slice(2, 10), slice(8, 11)), (slice(0, 14), slice(12, 18))
+    out = _grow_scene({"char": [seed], "light": [strip, beyond]})  # column 11 stays straw
+    assert out.burn[strip].all() and not out.burn[beyond].any()
+    # A diagonal road (cells (i, 5 - i)): the seed lies above it and the light char below, so the two
+    # sides touch only at corners, which 8-connected growth would cross.
+    i, j = np.indices((6, 6))
+    seeds, relaxed, keys = j < 5 - i, j > 5 - i, np.ones((6, 6), np.uint16)
+    np.testing.assert_array_equal(burnscar.grow_from_seeds(seeds, relaxed, keys), seeds)
+    # ...while the same pixels joined to the seed by a side do grow.
+    relaxed[2, 3] = True
+    assert burnscar.grow_from_seeds(seeds, relaxed, keys)[5, 5]
+
+
+def test_growth_stays_within_the_seeds_pass_pair() -> None:
+    """A lightly charred pixel compared with another previous pass is not grown into."""
+    seeds = np.zeros((4, 6), bool)
+    seeds[:, :2] = True
+    relaxed = np.zeros((4, 6), bool)
+    relaxed[:, 2:] = True
+    keys = np.full((4, 6), 100, np.uint16)
+    keys[:, 4:] = 95  # these pixels' previous clear pass is another one (cloud on day 100)
+    grown = burnscar.grow_from_seeds(seeds, relaxed, keys)
+    assert grown[:, :4].all() and not grown[:, 4:].any()
+
+
+def test_ground_with_swir2_below_nir_is_not_grown_into() -> None:
+    """Grown pixels must look like char by NBR too (post NBR < 0): tilled soil, a vegetated bund or
+    water darkens without it."""
+    seed, strip = (slice(2, 10), slice(2, 8)), (slice(2, 10), slice(8, 11))
+    out = _grow_scene({"char": [seed], "warm": [strip]})
+    assert out.burn[seed].all() and not out.burn[strip].any()
+
+
+def test_the_lookalike_filter_judges_a_clusters_seeds() -> None:
+    """A grown cluster is kept or dropped on its seed pixels' mean post NBR (what s2burn-rules-2
+    judged): grown pixels can neither drop a burn nor rescue a look-alike."""
+    seed, strip = (slice(2, 10), slice(2, 8)), (slice(2, 10), slice(8, 11))
+    out = _grow_scene({"char": [seed], "light": [strip]})
+    ev = {k: np.where(out.burn, v, 0).astype(np.float32) for k, v in out.evidence.items()}
+    (part,) = burnscar.extract_parts(out.burn, out.pre_day, TRANSFORM, ev, {})
+    assert part.n_px == 72 and part.sums["seed"] == 48
+    assert burnscar.seed_nbr_post(part) == pytest.approx(float(burnscar.nbr({b: np.float32(v) for b, v in _CHAR.items()})))
+    assert RULE.keeps(burnscar.seed_nbr_post(part))
+    wet = burnscar.Part(0, box(0, 0, 1, 1), 10, {"nbr_post": -0.5, "seed": 4.0, "nbr_post_seed": 0.2}, {}, False)
+    assert wet.mean("nbr_post") < 0 and not RULE.keeps(burnscar.seed_nbr_post(wet))  # seeds' mean +0.05
+    assert burnscar.seed_nbr_post(burnscar.Part(0, box(0, 0, 1, 1), 2, {"nbr_post": -0.4}, {}, False)) == -0.2
 
 
 def test_hazy_pass_neither_harvests_nor_moves_ndvi_memory(window) -> None:
@@ -460,13 +583,14 @@ def test_lookalike_filter_and_audit_interval() -> None:
     are dropped; char keeps NBR negative. The recorded burnt field at the window centre passes."""
     assert RULE.keeps(-0.2) and RULE.keeps(None)
     assert not RULE.keeps(0.0) and not RULE.keeps(0.08)
-    assert RULE.pixel_version == "s2burn-rules-1" and RULE.version != RULE.pixel_version
+    # s2burn-rules-4 changed the per-pixel rule (seed and grow), so the block memory is rebuilt.
+    assert RULE.pixel_version == RULE.version == "s2burn-rules-4"
     # Wilson interval: 11/11 is not "100 % +- 0"; the lower bound is n / (n + z^2).
     lo, hi = burnscar.wilson_interval(11, 11)
     assert hi == 1.0 and lo == pytest.approx(11 / (11 + 1.96**2), abs=1e-3)
     assert burnscar.wilson_interval(0, 0) is None
     audit = burnscar.audit_summary()
-    assert audit["current"] is True
+    assert audit["current"] is False  # the hand audit is of s2burn-rules-2, not of the current rule
     assert 0 < audit["candidate_unseen"]["precision_ci95"][0] <= audit["candidate_unseen"]["precision"] <= 1
 
 

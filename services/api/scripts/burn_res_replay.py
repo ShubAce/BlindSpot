@@ -69,7 +69,7 @@ import sys
 import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -89,6 +89,8 @@ from blindspot.analytics.burnscar import RULE, BlockState, Part
 from blindspot.jobs import sentinel as job
 from blindspot.sources import stac
 
+# The per-pixel rule this replay was built for (s2burn-rules-2: no seed-and-grow), whatever RULE is now.
+RULES2 = replace(RULE, grow=False)
 RESOLUTIONS = (40, 20)
 DEFAULT_DB = "postgresql+psycopg://blindspot:blindspot@localhost:5434/blindspot_eval"
 # "Visibly charred" for the diagnosis (20 m, the pass pair read directly, not the memory).
@@ -222,7 +224,7 @@ def run_resolution(fr: Frame, key: str, cache: Path, area_utm: Any, passes: dict
             a = run.state.arrays
             before = {"last_day": a["last_day"].astype(np.int32), "burn_day": a["burn_day"].astype(np.int32)}
             out = burnscar.apply_pass(run.state, refl, read.dn["SCL"], read.items, read.item_index, day, scope,
-                                      run.registry, res_m=fr.res)
+                                      run.registry, RULES2, res_m=fr.res)
             run.state.applied_days.append(day)
             valid = scope & burnscar.valid_scl(read.dn["SCL"]) & np.isfinite(refl["B12"]) & np.isfinite(refl["B8A"])
             valid &= np.isfinite(refl["B11"]) & np.isfinite(refl["B04"]) & np.isfinite(refl["B08"])

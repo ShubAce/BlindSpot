@@ -19,6 +19,20 @@ then a 2x2 opening removes speckle and 4-connected clusters of at least 13 pixel
 are kept. On FIRMS-labelled fields this rule had the best trade-off of the rules tested (TPR 0.66 at
 an upper-bound FPR of 0.35, doc section 3.5); tillage can still mimic it, so results are candidates.
 
+Seed and grow (s2burn-rules-4). The pixels that pass every test above are seeds. A burn found that
+way often misses the rest of its own field: pixels on a field's edge mix char with the bund, a part
+burnt more lightly or smoke haze on the post pass (haze brightens NIR and the visible bands, so dB8A
+shrinks and brightness rises) leave real char just short of the cut-offs. So a pixel that passes
+looser tests for the same pass pair (dB8A > 0.04, dB11 > 0.04, dB12 > 0.02, BAIS2 >= 0.70,
+brightness <= 0.40, and post-burn NBR below 0 as char keeps SWIR-2 at or above NIR; same gap,
+re-arm, cropland and clear-sky rules) joins the burn when it is 4-connected, through other such
+pixels, to a seed with the same previous pass, as burned-area products grow core pixels into their
+scar. A pixel that passes only the looser tests and touches no seed is never a burn on its own (a
+blind audit found 3 of 19 such patches burnt). The 2x2 opening then runs on the grown burn, and any
+piece it cuts off from every seed is dropped. The cluster look-alike filter (mean post NBR < 0) is
+judged on a cluster's seed pixels, as s2burn-rules-2 judged them; grown pixels, each below 0, can
+then neither drop a burn nor rescue a look-alike.
+
 Each pixel remembers its last clear observation (BlockState), so a pixel hidden by cloud on one
 pass is compared with the pass before that, and each job run only reads the new passes.
 """
@@ -82,10 +96,26 @@ class BurnRule:
     # at or above NIR, so a burnt field's mean post-burn NBR is negative. Every audited cluster with
     # mean post NBR >= 0 was a flood-irrigated field (black in SWIR) or a cloud shadow SCL missed.
     nbr_post_max: float = 0.0
-    # The per-pixel rule (above) is unchanged since s2burn-rules-1, so the block memory on disk is
-    # keyed on pixel_version and a cluster-level change does not force reprocessing the season.
-    pixel_version: str = "s2burn-rules-1"
-    version: str = "s2burn-rules-2"
+    # Seed and grow (module docstring): a pixel passing these looser tests (same gap, re-arm,
+    # cropland and clear-sky rules) joins a burn 4-connected to it through such pixels. They are the
+    # "visibly charred" cut-offs of the replay diagnosis (scripts/burn_res_replay.py VISIBLE), plus
+    # dB11 relaxed as far as dB8A. False gives the per-pixel rule of s2burn-rules-1/-2.
+    grow: bool = True
+    grow_d_b8a: float = 0.04
+    grow_d_b11: float = 0.04
+    grow_d_b12: float = 0.02
+    grow_bais2_min: float = 0.70
+    grow_tbi_max: float = 0.40
+    # A grown pixel's own post NBR must be below this: char keeps SWIR-2 at or above NIR, while tilled
+    # soil, a vegetated bund or water does not. It also keeps the cluster filter a seeds' affair
+    # (seed_nbr_post): replayed without it, grown pixels pushed seed clusters' mean NBR over 0, and
+    # the filter then dropped their seeds as well (Kaithal 43RFP, 40 m: 1482 px vs 129 by rules-2).
+    grow_nbr_post_max: float = 0.0
+    # The block memory on disk is keyed on pixel_version, the per-pixel rule (a grown pixel sets
+    # burn_day, so re-arming differs from s2burn-rules-1), so a cluster-level change alone (as
+    # s2burn-rules-2 was) does not force reprocessing the season.
+    pixel_version: str = "s2burn-rules-4"
+    version: str = "s2burn-rules-4"
 
     def keeps(self, nbr_post_mean: float | None) -> bool:
         """Cluster-level filter: drop water / cloud-shadow look-alikes (mean post NBR >= 0)."""
@@ -311,6 +341,7 @@ class PassResult:
     post_item: np.ndarray | None = None
     evidence: dict[str, np.ndarray] = field(default_factory=dict)  # float32 per-pixel features
     hazy: bool = False
+    seed: np.ndarray | None = None  # bool: the burn pixels that passed every strict test (seeds)
 
 
 def _median(values: np.ndarray) -> float | None:
@@ -323,6 +354,23 @@ def _open_2x2(mask: np.ndarray) -> np.ndarray:
     padded = np.pad(mask, 1, mode="edge")
     opened = _ndimage().binary_opening(padded, structure=np.ones((2, 2), bool))
     return opened[1:-1, 1:-1]
+
+
+def grow_from_seeds(seeds: np.ndarray, relaxed: np.ndarray, keys: np.ndarray) -> np.ndarray:
+    """Seeds plus every pixel of `relaxed` 4-connected to a seed with the same key through pixels of
+    `relaxed` (hysteresis: the 4-connected components of relaxed | seeds, one key at a time, that
+    hold a seed). Keys are each pixel's previous clear pass, as in extract_parts, so a burn never
+    grows into pixels compared with another pass, and 4-connectivity matches the clusters, so every
+    grown pixel lands in a cluster with a seed (a corner-only link would make a seedless cluster)."""
+    out = seeds.copy()
+    for key in np.unique(keys[seeds]):
+        same = keys == key
+        labels, n = _ndimage().label((relaxed | seeds) & same, structure=FOUR_CONNECTED)
+        hit = np.zeros(n + 1, bool)
+        hit[labels[seeds & same]] = True
+        hit[0] = False
+        out |= hit[labels]
+    return out
 
 
 def haze_check(
@@ -372,7 +420,9 @@ def apply_pass(
     is updated in place; a pass that fails the plausibility gate leaves it untouched.
 
     The 2x2 opening that removes speckle is applied at 20 m only: at 40 m it would demand 80 m of
-    solid burn and erase most ~1 ha fields, and the 4-pixel minimum cluster already drops speckle."""
+    solid burn and erase most ~1 ha fields, and the 4-pixel minimum cluster already drops speckle.
+    Seeds (every strict test, after the opening) grow into 4-connected pixels that pass the looser
+    tests of the same pass pair (grow_from_seeds); at 20 m the opening runs again on the grown burn."""
     valid = scope & valid_scl(scl) & np.isfinite(refl["B12"]) & np.isfinite(refl["B8A"])
     valid &= np.isfinite(refl["B11"]) & np.isfinite(refl["B04"]) & np.isfinite(refl["B08"])
     n_valid = int(valid.sum())
@@ -410,9 +460,21 @@ def apply_pass(
         charred = (post_bais2 >= rule.bais2_min) & (post_tbi <= rule.tbi_max)
     burn_day = a["burn_day"].astype(np.int32)
     rearmed = (burn_day == 0) | (day - burn_day > rule.rearm_days)
-    candidate = has_prev & (gap <= rule.max_gap_days) & darkened & charred & rearmed
+    judged = has_prev & (gap <= rule.max_gap_days) & rearmed
+    candidate = judged & darkened & charred
     # The opening may not add pixels that failed the rule.
-    burn = (_open_2x2(candidate) & candidate) if res_m <= 20 else candidate
+    seed = (_open_2x2(candidate) & candidate) if res_m <= 20 else candidate
+    burn = seed
+    if rule.grow and seed.any():
+        with np.errstate(invalid="ignore"):
+            relaxed = judged & (d_b8a > rule.grow_d_b8a) & (d_b11 > rule.grow_d_b11) & (d_b12 > rule.grow_d_b12)
+            relaxed &= (post_bais2 >= rule.grow_bais2_min) & (post_tbi <= rule.grow_tbi_max)
+            relaxed &= post_nbr < rule.grow_nbr_post_max
+        keys = a["last_day"]  # each pixel's previous clear pass: the pass pair it is judged on
+        burn = grow_from_seeds(seed, relaxed, keys)
+        if res_m <= 20:
+            # The seeds' opening, on the grown burn; a piece it cuts off from every seed is dropped.
+            burn = grow_from_seeds(seed, _open_2x2(burn) & burn, keys)
 
     # Harvest bookkeeping: standing -> harvested, and harvested -> tilled (dark without char).
     # Smoke haze lowers NDVI and brightens the visible bands (so TBI rises), which would fake
@@ -437,6 +499,8 @@ def apply_pass(
         "d_b8a": d_b8a, "d_b11": d_b11, "d_b12": d_b12,
         "dnbr": a["last_nbr"].astype(np.float32) - post_nbr, "nbr_post": post_nbr,
         "bais2_post": post_bais2, "tbi_post": post_tbi, "ndvi_pre": pre_ndvi, "ndvi_post": post_ndvi,
+        # summed per cluster by extract_parts: its seed pixels and their post NBR (seed_nbr_post)
+        "seed": seed.astype(np.float32), "nbr_post_seed": np.where(seed, post_nbr, 0).astype(np.float32),
     }
     # Remember this pass for every clear pixel.
     global_items = np.array([registry_index(registry, i) for i in item_ids] + [0], dtype=np.uint16)
@@ -453,9 +517,9 @@ def apply_pass(
     if not hazy:
         a["clear_b02"][valid] = refl["B02"][valid]
         a["clear_b12"][valid] = refl["B12"][valid]
-    stats.update(burn_px=int(burn.sum()), harvested_px=int(harvested_now.sum()),
+    stats.update(burn_px=int(burn.sum()), seed_px=int(seed.sum()), harvested_px=int(harvested_now.sum()),
                  tilled_px=int(tilled_now.sum()))
-    return PassResult(True, None, stats, burn, pre_day, pre_item, post_item, evidence, hazy)
+    return PassResult(True, None, stats, burn, pre_day, pre_item, post_item, evidence, hazy, seed)
 
 
 def harvest_candidates(state: BlockState, scope: np.ndarray, newest_day: int,
@@ -593,6 +657,15 @@ def merge_parts(parts: Iterable[Part]) -> list[Part]:
     return out
 
 
+def seed_nbr_post(part: Part) -> float | None:
+    """Mean post-burn NBR of a burn cluster's seed pixels, for the look-alike filter (BurnRule.keeps):
+    the seeds are what s2burn-rules-2 judged. Parts without seed sums fall back to the whole mean."""
+    n = part.sums.get("seed")
+    if not n:
+        return part.mean("nbr_post")
+    return part.sums.get("nbr_post_seed", 0.0) / n
+
+
 def iter_large(parts: Iterable[Part], min_px: int) -> Iterator[Part]:
     for part in parts:
         if part.n_px >= min_px:
@@ -601,7 +674,7 @@ def iter_large(parts: Iterable[Part], min_px: int) -> Iterator[Part]:
 
 __all__ = [
     "HARVEST_RULE", "RULE", "STATE_FIELDS", "VALID_SCL", "BlockState", "BurnRule", "HarvestRule",
-    "Part", "PassResult", "apply_pass", "bais2", "confidence", "extract_parts", "harvest_candidates",
-    "registry_index",
+    "Part", "PassResult", "apply_pass", "bais2", "confidence", "extract_parts", "grow_from_seeds",
+    "harvest_candidates", "registry_index", "seed_nbr_post",
     "iter_large", "merge_parts", "nbr", "ndvi", "tbi", "valid_scl",
 ]
