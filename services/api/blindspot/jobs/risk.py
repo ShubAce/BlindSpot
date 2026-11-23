@@ -760,9 +760,7 @@ def backtest(session: Session, history: History, as_of: datetime) -> dict[str, A
         report["windows"] = [_window(w, counts.get(i, (0, 0))) for i, w in enumerate(windows)]
         report["reason"] = "no pass pair has enough burnt and unburnt fields yet"
         return report
-    fill_neighbourhood(session, "bt", None)  # every pair's fields as of its own t0 (in slabs of first passes)
-    loaded = load_history(session, history)
-    fill_history(session, "bt", loaded)
+    _fill_backtest_factors(session, load_history(session, history))
     for stmt in model.score_sql("bt", "pair"):
         session.execute(text(stmt))
     history_ok = history.reason is None
@@ -783,6 +781,37 @@ def backtest(session: Session, history: History, as_of: datetime) -> dict[str, A
     report["verdict"] = verdict(report)
     report["strength"] = ranking_strength(report["all_pairs"])
     return report
+
+
+def _fill_backtest_factors(session: Session, history: History) -> None:
+    """fires, unseen and ha as of each field check's own t0 (fill_neighbourhood) and last season's
+    fires (fill_history) on every row of `bt`. A waiting field enters many pass pairs, and these
+    factors depend only on where it lies and on t0, so they are computed once per field and first
+    pass, and last season's once per field, then copied to every check: the same numbers as filling
+    every check. On the 22 Nov snapshot that is 2.11M (field, t0) and 619,620 fields for 2,840,905
+    checks."""
+    session.execute(text("DROP TABLE IF EXISTS bt_pt, bt_fld"))
+    session.execute(text("""
+        CREATE TEMP TABLE bt_pt ON COMMIT DROP AS
+        SELECT CAST(row_number() OVER () AS bigint) AS k, label, fid, t0, g,
+               0 AS fires, 0 AS unseen, CAST(0 AS float8) AS ha
+        FROM (SELECT DISTINCT ON (label, fid, t0) label, fid, t0, g FROM bt) d
+    """))
+    session.execute(text("ALTER TABLE bt_pt ADD PRIMARY KEY (k)"))
+    session.execute(text("CREATE INDEX ON bt_pt (t0)"))  # fill_neighbourhood's slabs select by t0
+    session.execute(text("ANALYZE bt_pt"))
+    fill_neighbourhood(session, "bt_pt", None)
+    session.execute(text("""
+        CREATE TEMP TABLE bt_fld ON COMMIT DROP AS
+        SELECT DISTINCT ON (label, fid) label, fid, g, CAST(NULL AS int) AS hist FROM bt
+    """))
+    fill_history(session, "bt_fld", history)
+    session.execute(text("""
+        UPDATE bt AS t SET fires = p.fires, unseen = p.unseen, ha = p.ha, hist = f.hist
+        FROM bt_pt p, bt_fld f
+        WHERE p.label = t.label AND p.fid = t.fid AND p.t0 = t.t0 AND f.label = t.label AND f.fid = t.fid
+    """))
+    session.execute(text("DROP TABLE bt_pt, bt_fld"))
 
 
 def _window(w: Any, counts: tuple[int, int]) -> dict[str, Any]:

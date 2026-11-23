@@ -13,7 +13,9 @@ temporary tables, so it needs no write to any real table, but it keeps a CPU bus
 Variants (each fills fires, unseen, ha and hist on the job's own field table `rk`):
   reference  the code as it was until 2026-11-23: geography (metres on the spheroid), every scar's
              polygon, a LATERAL ST_DWithin per field (kept here verbatim, so the check can be rerun)
-  job        whatever blindspot.jobs.risk.fill_neighbourhood / fill_history do now
+  job        whatever blindspot.jobs.risk.fill_neighbourhood / fill_history do now (with --backtest:
+             _fill_backtest_factors, once per field and first pass, then copied to every check)
+  slab       --backtest only: fill_neighbourhood on every check (in slabs of first passes), no dedup
   planar     planar EPSG:32643 metres, scar polygons, the same LATERAL joins
   centroid   planar EPSG:32643 metres, scar centroids instead of polygons (an approximation)
 
@@ -296,6 +298,7 @@ VARIANTS = {
     "planar": (planar_fill_neighbourhood, None),
     "centroid": (lambda s, t, e, *a, **k: planar_fill_neighbourhood(s, t, e, *a, centroids=True, **k), None),
     "twostage": (twostage_fill_neighbourhood, None),
+    "slab": (None, None),  # backtest only: fill_neighbourhood on every check, no dedup
     "season_loop": (None, None),  # backtest only
     "nd": (None, None),  # backtest only
     "season_single": (None, None),  # backtest only
@@ -438,9 +441,11 @@ def run_backtest(as_of: datetime, variants: list[str], out: Path) -> dict[str, A
                 session.execute(text("CREATE INDEX ON bt (t0)"))  # the per-t0 loops filter on it
             session.execute(text("ANALYZE bt"))
             rows = session.execute(text("SELECT count(*), count(DISTINCT t0) FROM bt")).one()
-            fill, fill_hist = VARIANTS["job" if name == "job_loop" else name]
+            fill, fill_hist = VARIANTS["job" if name in ("job_loop", "slab") else name]
             t = time.perf_counter()
-            if name == "job":  # the job's own way: every row's window in one statement
+            if name == "job":  # the job's own way: once per (field, t0) and per field, then copied
+                job._fill_backtest_factors(session, job.load_history(session, season))
+            elif name == "slab":  # every check, each as of its own t0, in slabs of first passes
                 job.fill_neighbourhood(session, "bt", None)
             elif name == "season_loop":
                 loop_fill_neighbourhood(session, "bt")
@@ -454,7 +459,9 @@ def run_backtest(as_of: datetime, variants: list[str], out: Path) -> dict[str, A
             t_nb = time.perf_counter() - t
             loaded = job.load_history(session, season)
             t = time.perf_counter()
-            if fill_hist is None:
+            if name == "job":
+                pass  # last season's fires are in _fill_backtest_factors, timed above
+            elif fill_hist is None:
                 job.fill_history(session, "bt", loaded)
             else:
                 fill_hist(session, "bt")
