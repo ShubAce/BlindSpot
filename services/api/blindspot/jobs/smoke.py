@@ -1392,10 +1392,12 @@ def validation_scores(
                    "hindcast_from": _utc(inp.t0)},
         "inputs": {"fires": sum(1 for s_ in p.sources if s_["type"] == "fire"),
                    "scars": sum(1 for s_ in p.sources if s_["type"] == "scar")},
-        # The first city is Delhi when Delhi has measurements, else the city with the most hours:
-        # the headline names it, so a page never prints another city's result under Delhi.
-        "headline": f"{results[0]['city']}: {results[0]['summary']}" if results else None,
+        # The first city is Delhi when Delhi has measurements, else the city with the most hours.
+        # `headline` stays the bare sentence, as pages that print "Delhi: " before it expect;
+        # headline_city says whose result it is, and headline_text is the sentence with its city.
+        "headline": results[0]["summary"] if results else None,
         "headline_city": results[0]["city"] if results else None,
+        "headline_text": f"{results[0]['city']}: {results[0]['summary']}" if results else None,
         "headline_placebos": results[0]["placebo_summary"] if results else None,
         "median_r_smoke_per_km_mixing_depth": median(rs),
         "median_r_ventilation_only": median(vent_rs),
@@ -1475,6 +1477,7 @@ def smoke_validate() -> dict[str, Any]:
         "cities": len(results),
         "scored": summary["period"],
         "headline": summary["headline"],
+        "headline_city": summary["headline_city"],
         "delhi": None if delhi is None else {
             "r_smoke_index": _lag0_r(delhi, "smoke_index"),
             "r_per_mixing_depth": _lag0_r(delhi, "smoke_per_km_mixing_depth"),
