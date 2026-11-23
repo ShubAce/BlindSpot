@@ -25,13 +25,10 @@ type Props = { params: Promise<{ id: string }> };
 
 const isId = (id: string) => /^\d{1,12}$/.test(id);
 
-/** The API's answer; `forwarded_from` is set when it answered for a replaced id. */
-type CaseAnswer = CaseFile & { forwarded_from?: number | null };
+const getCase = (id: string) => serverGet<CaseFile>(PATHS.scarCase(id), undefined, 12_000);
 
-const getCase = (id: string) => serverGet<CaseAnswer>(PATHS.scarCase(id), undefined, 12_000);
-
-/** The case's own address when the API answered for a replaced id, else null. */
-const movedTo = (data: CaseAnswer) => (data.forwarded_from != null ? `/case/${data.case.id}` : null);
+/** The case's own address when the API answered for a replaced id (`forwarded_from`), else null. */
+const movedTo = (data: CaseFile) => (data.forwarded_from != null ? `/case/${data.case.id}` : null);
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params;

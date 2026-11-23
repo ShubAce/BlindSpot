@@ -2,10 +2,11 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 
+import type { BBox } from '@/lib/aoi';
 import { dateIST, timeIST } from '@/lib/format';
 
 import { platformName, type CaseState } from './audit';
-import { pathFor, VIEW, type BBox, type OtherMark } from './picture-marks';
+import { pathFor, VIEW, type OtherMark } from './picture-marks';
 import type { CaseFire, CaseImageryPass, CaseProps } from './types';
 
 /**
@@ -32,6 +33,12 @@ import type { CaseFire, CaseImageryPass, CaseProps } from './types';
  */
 
 const STROKE: Record<CaseState, string> = { unseen: 'var(--photo-unseen)', alerted: 'var(--photo-seen)', unchecked: 'var(--photo-seen)' };
+/** The case's own line: a little thinner and dashed while unchecked (`keyDash`: the dash at the key's size). */
+const CASE_LINE: Record<CaseState, { width: number; dash?: string; keyDash?: string }> = {
+  unseen: { width: 4 },
+  alerted: { width: 4 },
+  unchecked: { width: 3, dash: '14 10', keyDash: '4 3' },
+};
 type Others = { casing: string; marks: OtherMark[]; same: boolean; earlier: boolean };
 
 function OtherScars({ others }: { others: Others }) {
@@ -93,13 +100,13 @@ function Chip({
             {showOutline && outline ? (
               <>
                 {/* the case's own outline stays the boldest: a dark casing under it */}
-                <path d={outline} className="chip__casing chip__casing--case" strokeDasharray={state === 'unchecked' ? '14 10' : undefined} />
+                <path d={outline} className="chip__casing chip__casing--case" strokeDasharray={CASE_LINE[state].dash} />
                 <path
                   d={outline}
                   fill="none"
                   stroke={STROKE[state]}
-                  strokeWidth={state === 'unchecked' ? 3 : 4}
-                  strokeDasharray={state === 'unchecked' ? '14 10' : undefined}
+                  strokeWidth={CASE_LINE[state].width}
+                  strokeDasharray={CASE_LINE[state].dash}
                   vectorEffect="non-scaling-stroke"
                   strokeLinejoin="round"
                 />
@@ -124,9 +131,9 @@ export function EvidenceChips({
   fires,
   state,
   place,
-  otherMarks = [],
-  othersNote = null,
-  othersLabels = { same: 'Other scars, same days', earlier: 'Other scars, burnt earlier' },
+  otherMarks,
+  othersNote,
+  othersLabels,
 }: {
   bbox: BBox | null;
   pre: CaseImageryPass | null;
@@ -135,20 +142,20 @@ export function EvidenceChips({
   fires: CaseFire[];
   state: CaseState;
   place: string;
-  /** The other scars inside the square, as CaseScreen drew them (picture-marks.ts otherMarks). */
-  otherMarks?: OtherMark[];
+  /** The other scars inside the square, as CaseScreen drew them (picture-marks.ts otherMarks: none without a bbox). */
+  otherMarks: OtherMark[];
   /** The sentence under the pictures that counts them (picture-marks.ts othersSentence). */
-  othersNote?: string | null;
+  othersNote: string | null;
   /** The key's words for the two kinds, with the case's dates (picture-marks.ts othersLabels). */
-  othersLabels?: { same: string; earlier: string };
+  othersLabels: { same: string; earlier: string };
 }) {
   const [showOutline, setShowOutline] = useState(true);
   const toggleId = useId();
   const outline = bbox ? pathFor(geometry, bbox) : '';
-  const n = bbox ? otherMarks.length : 0;
+  const n = otherMarks.length;
   const others = useMemo<Others | null>(
     () =>
-      bbox && otherMarks.length
+      otherMarks.length
         ? {
             casing: otherMarks.map((m) => m.d).join(''),
             marks: otherMarks,
@@ -156,7 +163,7 @@ export function EvidenceChips({
             earlier: otherMarks.some((m) => m.rel === 'earlier'),
           }
         : null,
-    [bbox, otherMarks],
+    [otherMarks],
   );
   const dots = bbox
     ? fires
@@ -172,7 +179,7 @@ export function EvidenceChips({
     p ? `${when}: ${platformName(p.item_id) ?? 'Sentinel-2'}, ${dateIST(p.datetime, { weekday: true })} ${timeIST(p.datetime, { suffix: true })}` : `${when}: no pass`;
   const altFor = (p: CaseImageryPass | null, kind: string, when: string) =>
     p ? `Sentinel-2 ${kind} picture of the fields ${place}, ${dateIST(p.datetime, { year: true })}, ${when} the burn${showOutline ? `, with the scar${n ? ` and ${n} other${n === 1 ? '' : 's'}` : ''} outlined` : ''}.` : '';
-  const caseW = n ? (state === 'unchecked' ? 3 : 4) : 2;
+  const caseW = n ? CASE_LINE[state].width : 2;
   const keyLine = (stroke: string) => (
     <svg className="evidence__swatch" width="22" height="12" aria-hidden="true">
       <rect x="1" y="1" width="20" height="10" fill="none" stroke={stroke} strokeWidth="1.5" />
@@ -201,7 +208,7 @@ export function EvidenceChips({
           <span className="evidence__keyitem">
             {/* as wide as on the pictures beside the others' thin lines (4 or 3 against 1.5) */}
             <svg className="evidence__swatch" width="22" height="12" aria-hidden="true">
-              <rect x={caseW / 2} y={caseW / 2} width={22 - caseW} height={12 - caseW} fill="none" stroke={STROKE[state]} strokeWidth={caseW} strokeDasharray={state === 'unchecked' ? '4 3' : undefined} />
+              <rect x={caseW / 2} y={caseW / 2} width={22 - caseW} height={12 - caseW} fill="none" stroke={STROKE[state]} strokeWidth={caseW} strokeDasharray={CASE_LINE[state].keyDash} />
             </svg>
             {n ? 'This scar' : 'The scar as mapped'}
           </span>

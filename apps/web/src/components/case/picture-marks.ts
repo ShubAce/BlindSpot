@@ -8,11 +8,11 @@
  * against 21), and the sentence under the pictures takes its numbers from the API's totals.
  */
 
-import { dateIST, dateRangeIST, metricText, NBSP, number, plural } from '@/lib/format';
+import type { BBox } from '@/lib/aoi';
+import { dateIST, dateRangeIST, listJoin, metric, NBSP, number, plural } from '@/lib/format';
 
 import type { CaseProps, OtherScar, OtherScars, OtherScarTotals } from './types';
 
-export type BBox = [number, number, number, number];
 export const VIEW = 1000;
 
 type Outline = CaseProps['geometry'];
@@ -61,8 +61,16 @@ export function compactPath(g: Outline, bbox: BBox): string {
   return d;
 }
 
-/** A field-sized area keeps two decimals (0.72 ha), as the case's own figure does. */
-const areaText = (ha: number) => (ha < 10 ? `${number(ha, { decimals: 2 })}${NBSP}ha` : metricText('area_ha', ha));
+/** A field-sized area keeps two decimals (0.72 ha, not 0.7); larger ones follow the house metric.
+ *  The case's own figure (CaseScreen) and the other scars' read the same. */
+export const areaOf = (ha: number | null | undefined): { value: string; unit: string } =>
+  ha != null && Number.isFinite(ha) && ha < 10 ? { value: number(ha, { decimals: 2 }), unit: 'ha' } : metric('area_ha', ha);
+
+/** The same as one string, the unit after `space` (a no-break space unless given); no area is a dash alone. */
+export function areaText(ha: number | null | undefined, space = NBSP): string {
+  const a = areaOf(ha);
+  return a.unit ? `${a.value}${space}${a.unit}` : a.value;
+}
 
 export type OtherMark = { id: number; rel: 'same' | 'earlier'; d: string; title: string };
 
@@ -75,7 +83,6 @@ export function otherMarks(o: OtherScars | null | undefined, bbox: BBox | null):
   if (!o?.scars || !bbox) return [];
   return o.scars
     .filter(drawn)
-    .filter((s) => s.outline)
     .sort((a, b) => b.area_ha - a.area_ha || a.id - b.id)
     .map((s) => ({
       id: s.id,
@@ -126,7 +133,7 @@ export function othersSentence(o: OtherScars | null | undefined, marks: number, 
     const what = same.scars ? number(earlier.scars) : plural(earlier.scars, 'other burn scar', 'other burn scars');
     parts.push(`${what} that had burnt by ${dateIST(w.after)}${inside(earlier, same.scars ? 'inside it' : 'inside the picture')}`);
   }
-  let text = `Also mapped in this picture: ${parts.join(' and ')}${cut ? `, ${shown === 1 ? '' : 'all '}${cut.trim()}, as on the live map` : ''}.`;
+  let text = `Also mapped in this picture: ${listJoin(parts)}${cut ? `, ${shown === 1 ? '' : 'all '}${cut.trim()}, as on the live map` : ''}.`;
   if (marks < shown) text += ` Only the ${number(marks)} largest are outlined.`;
   if (later) text += ` ${number(later)} more, first seen burnt after ${dateIST(w.before)}, ${later === 1 ? 'is' : 'are'} not drawn.`;
   return text;

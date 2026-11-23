@@ -13,7 +13,7 @@ import { DailyFreshness } from './DailyFreshness';
 import { EvidenceChips } from './EvidenceChips';
 import { Locator } from './Locator';
 import { Kpi, ProvItem } from './parts';
-import { otherMarks, othersLabels, othersSentence } from './picture-marks';
+import { areaOf, areaText, otherMarks, othersLabels, othersSentence } from './picture-marks';
 import type { CaseFile, CaseFire, HeadlineAudit } from './types';
 import { WeatherChart } from './WeatherChart';
 
@@ -40,14 +40,6 @@ const dist = (m: number | null | undefined): { value: string; unit: string } =>
 const kmPrecise = (m: number | null | undefined) => {
   const d = dist(m);
   return d.unit ? `${d.value} ${d.unit}` : d.value;
-};
-
-/** A field-sized area keeps two decimals (0.72 ha, not 0.7); larger ones follow the house metric. */
-const areaOf = (ha: number | null | undefined): { value: string; unit: string } =>
-  ha != null && Number.isFinite(ha) && ha < 10 ? { value: number(ha, { decimals: 2 }), unit: 'ha' } : metric('area_ha', ha);
-const areaText = (ha: number | null | undefined) => {
-  const a = areaOf(ha);
-  return a.unit ? `${a.value} ${a.unit}` : a.value;
 };
 
 function passText(itemId: string | null | undefined, at: string | null | undefined) {
@@ -132,12 +124,13 @@ export function CaseScreen({ data }: { data: CaseFile }) {
   const ask = `/live?ask=${encodeURIComponent(caseQuestion(c))}`;
   const windowText = `${dateTimeIST(c.burn_after, { suffix: true })} and ${dateTimeIST(c.burn_before, { suffix: true })}`;
 
+  // the finding keeps a plain space before the unit (areaText's default is a no-break space)
   const finding =
     st === 'unseen'
-      ? `${areaText(c.area_ha)} burnt between ${windowText}, and no fire alert explains it. This is a candidate unseen burn.`
+      ? `${areaText(c.area_ha, ' ')} burnt between ${windowText}, and no fire alert explains it. This is a candidate unseen burn.`
       : st === 'alerted'
-        ? `${areaText(c.area_ha)} burnt between ${windowText}. ${c.fire_matches === 1 ? 'A fire alert explains' : `${number(c.fire_matches)} fire alerts explain`} it: a fire satellite counted this one.`
-        : `${areaText(c.area_ha)} burnt between ${windowText}. It has not been checked against the fire alerts yet, so it is not called unseen.`;
+        ? `${areaText(c.area_ha, ' ')} burnt between ${windowText}. ${c.fire_matches === 1 ? 'A fire alert explains' : `${number(c.fire_matches)} fire alerts explain`} it: a fire satellite counted this one.`
+        : `${areaText(c.area_ha, ' ')} burnt between ${windowText}. It has not been checked against the fire alerts yet, so it is not called unseen.`;
 
   const sources = uniqueSources(data.sources);
 

@@ -4,6 +4,7 @@
  * shared with other screens; every field the contract marks as possibly missing is optional here.
  */
 
+import type { BBox } from '@/lib/aoi';
 import type { Envelope, IsoTime, LonLat, PolygonGeometry, MultiPolygonGeometry } from '@/lib/api';
 
 export type CaseImageryPass = {
@@ -156,7 +157,7 @@ export type OtherScarTotals = { scars: number; area_ha: number; area_in_box_ha?:
  *  first (`truncated` when the cap left some out). Added to the API on 2026-11-23: an older answer
  *  has no such key. */
 export type OtherScars = {
-  bbox?: [number, number, number, number] | null;
+  bbox?: BBox | null;
   model_version?: string;
   min_confidence?: number | null;
   totals?: Partial<Record<OtherScarRelation, OtherScarTotals>>;
@@ -169,11 +170,14 @@ export type OtherScars = {
 
 export type CaseFile = Envelope & {
   case: CaseProps;
-  imagery: { bbox: [number, number, number, number] | null; pre: CaseImageryPass | null; post: CaseImageryPass | null } | null;
+  imagery: { bbox: BBox | null; pre: CaseImageryPass | null; post: CaseImageryPass | null } | null;
   other_scars?: OtherScars | null;
   fires_nearby: CaseFire[];
   weather_at_burn: CaseWeather | null;
   method?: ScarMethod | null;
+  /** The id asked for, when the API answered for a scar the sentinel job replaced (this case is its
+   *  successor); absent otherwise. Added to the API on 2026-11-23: an older answer has no such key. */
+  forwarded_from?: number | null;
 };
 
 /** /api/stats/headline, the block this screen reads (the audit precision of candidate unseen burns). */

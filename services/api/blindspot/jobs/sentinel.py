@@ -863,7 +863,7 @@ def _replace_rows(session: Session, model: type[BurnCluster | HarvestCluster], s
     if forward:
         out["forwarded"] = 0
         _gone_table(session)
-    gone_cols = "t.id, t.geom, t.burn_before" if forward else "1"
+    gone_cols = GONE_COLS if forward else "1"
     saved = f"saved AS (INSERT INTO {GONE_TABLE} SELECT * FROM gone RETURNING 1)," if forward else ""
     session.execute(text(f"CREATE TEMP TABLE {stage.name} (LIKE {real.name} INCLUDING DEFAULTS) ON COMMIT DROP"))
     if rows:
@@ -899,9 +899,8 @@ def _replace_rows(session: Session, model: type[BurnCluster | HarvestCluster], s
         """), params).one()
     elif scope is not None:
         delete = f"DELETE FROM {real.name} t WHERE {scope}"
-        if forward:
-            delete = f"WITH gone AS ({delete} RETURNING {gone_cols}) INSERT INTO {GONE_TABLE} SELECT * FROM gone"
-        out["deleted"] = session.execute(text(delete), params).rowcount
+        out["deleted"] = (_delete_keeping_gone(session, delete, params) if forward
+                          else session.execute(text(delete), params).rowcount)
     if out["computed"] > out["kept"] + out["updated"]:  # some new rows matched nothing stored
         _name_places(session, stage.name)
         out["inserted"] = session.execute(text(f"INSERT INTO {real.name} SELECT * FROM {stage.name}")).rowcount
@@ -914,6 +913,7 @@ def _replace_rows(session: Session, model: type[BurnCluster | HarvestCluster], s
 # --- case links that survive a replaced scar --------------------------------------------------------
 
 GONE_TABLE = "gone_scar"  # scars deleted in this transaction, waiting to be forwarded
+GONE_COLS = "t.id, t.geom, t.burn_before"  # its columns, in order, as a DELETE FROM burn_cluster t returns them
 # A deleted scar's successor: the stored scar of the same burn (same post pass day) whose outline
 # overlaps it most. ST_MakeValid: an outline rounded to 6 decimals can self-touch, and GEOS would
 # reject it in an intersection.
@@ -937,6 +937,13 @@ _FORWARD_SQL = text(f"""
 def _gone_table(session: Session) -> None:
     session.execute(text(f"CREATE TEMP TABLE IF NOT EXISTS {GONE_TABLE} "
                          "(id bigint, geom geometry, burn_before timestamptz) ON COMMIT DROP"))
+
+
+def _delete_keeping_gone(session: Session, delete: str, params: dict[str, Any]) -> int:
+    """Run `delete` (a DELETE FROM burn_cluster with the alias t) and keep the scars it deleted in
+    GONE_TABLE until forward_gone. Returns the rows deleted."""
+    return session.execute(text(f"WITH gone AS ({delete} RETURNING {GONE_COLS}) "
+                                f"INSERT INTO {GONE_TABLE} SELECT * FROM gone"), params).rowcount
 
 
 def forward_gone(session: Session) -> int:
@@ -971,11 +978,9 @@ def claim_moved_rows(session: Session, tile: str, scope: str, area_wkt: str) -> 
     area = "(SELECT ST_GeomFromText(:area, 4326) AS g) a"
     _gone_table(session)
     claimed = {
-        "burn_cluster": session.execute(text(f"""
-            WITH gone AS (DELETE FROM burn_cluster t USING {area}
-                           WHERE t.mgrs_tile = :tile AND t.scope <> :scope AND ST_Covers(a.g, t.geom)
-                          RETURNING t.id, t.geom, t.burn_before)
-            INSERT INTO {GONE_TABLE} SELECT * FROM gone"""), params).rowcount,
+        "burn_cluster": _delete_keeping_gone(session, f"""
+            DELETE FROM burn_cluster t USING {area}
+             WHERE t.mgrs_tile = :tile AND t.scope <> :scope AND ST_Covers(a.g, t.geom)""", params),
         "harvest_cluster": session.execute(text(f"""
             DELETE FROM harvest_cluster t USING {area}
              WHERE t.mgrs_tile = :tile AND t.scope <> :scope AND ST_Covers(a.g, t.geom)"""), params).rowcount,
@@ -1003,12 +1008,13 @@ def drop_stage_rows(scope: str, tiles: list[str], dead: dict[str, DeadRows]) -> 
     deleted = {}
     with session_scope() as session:
         _gone_table(session)
+        params = {"scope": scope, "tiles": tiles}
         for name in ("burn_cluster", "harvest_cluster"):
-            delete = f"DELETE FROM {name} WHERE scope = :scope AND mgrs_tile = ANY(:tiles)"
+            delete = f"DELETE FROM {name} t WHERE scope = :scope AND mgrs_tile = ANY(:tiles)"
             if name == "burn_cluster":  # their ids go to the scars the tile's new stage stored
-                delete = (f"WITH gone AS ({delete} RETURNING id, geom, burn_before) "
-                          f"INSERT INTO {GONE_TABLE} SELECT * FROM gone")
-            n = session.execute(text(delete), {"scope": scope, "tiles": tiles}).rowcount
+                n = _delete_keeping_gone(session, delete, params)
+            else:
+                n = session.execute(text(delete), params).rowcount
             if n:
                 deleted[name] = n
                 dead[name].add(n)

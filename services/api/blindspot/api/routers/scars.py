@@ -38,6 +38,7 @@ from blindspot.api.cache import (
 )
 from blindspot.api.responses import ORJSONResponse
 from blindspot.config import get_settings
+from blindspot.db import table_exists
 from blindspot.geo import parse_bbox
 from blindspot.models.sentinel import S2Scene
 from blindspot.provenance import (
@@ -727,7 +728,7 @@ def _round(value: float | None, ndigits: int) -> float | None:
 def _forwarded(session: Session, scar_id: int) -> int | None:
     """The stored scar that replaced a deleted one (burn_cluster_forward, written by the sentinel
     job), following replacements of replacements up to MAX_FORWARD_HOPS; None if there is none."""
-    if not _table_exists(session, "burn_cluster_forward"):
+    if not table_exists(session, "burn_cluster_forward"):
         return None
     return session.execute(text("""
         WITH RECURSIVE chain(id, depth) AS (
