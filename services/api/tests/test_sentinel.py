@@ -460,13 +460,14 @@ def test_lookalike_filter_and_audit_interval() -> None:
     are dropped; char keeps NBR negative. The recorded burnt field at the window centre passes."""
     assert RULE.keeps(-0.2) and RULE.keeps(None)
     assert not RULE.keeps(0.0) and not RULE.keeps(0.08)
-    assert RULE.pixel_version == "s2burn-rules-1" and RULE.version != RULE.pixel_version
+    assert RULE.pixel_version == RULE.version == "s2burn-rules-4h"  # the haze correction is per pixel
     # Wilson interval: 11/11 is not "100 % +- 0"; the lower bound is n / (n + z^2).
     lo, hi = burnscar.wilson_interval(11, 11)
     assert hi == 1.0 and lo == pytest.approx(11 / (11 + 1.96**2), abs=1e-3)
     assert burnscar.wilson_interval(0, 0) is None
     audit = burnscar.audit_summary()
-    assert audit["current"] is True
+    # The audit judged rules-2 clusters; the site says so while the rule is newer (brief/read.ts).
+    assert audit["current"] is (burnscar.AUDIT["model_version"] == RULE.version)
     assert 0 < audit["candidate_unseen"]["precision_ci95"][0] <= audit["candidate_unseen"]["precision"] <= 1
 
 

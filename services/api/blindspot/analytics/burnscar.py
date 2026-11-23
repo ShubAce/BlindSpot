@@ -550,6 +550,9 @@ def apply_pass(
         ndvi_day = a["ndvi_day"].astype(np.int32)
         ndvi_gap = np.where(ndvi_day > 0, day - ndvi_day, 10_000)
         comparable = valid & (ndvi_day > 0) & (ndvi_gap <= harvest.max_gap_days)
+        # A burn seen since the NDVI reference (on a hazy pass, which leaves the NDVI memory alone)
+        # explains the NDVI drop: it is not a harvest, and the burnt field is not unburnt residue.
+        comparable &= ~((burn_day > 0) & (burn_day >= ndvi_day))
         harvested_now = harvested_between(pre_ndvi, post_ndvi, pre_b11, refl["B11"], comparable, harvest)
         a["harv_after"][harvested_now] = a["ndvi_day"][harvested_now]
         a["harv_before"][harvested_now] = day
