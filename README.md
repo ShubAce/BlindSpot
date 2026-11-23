@@ -41,7 +41,8 @@ time farmers burn, not how much they burn.
    three minutes.
 3. **The evening fires, measured.** GK-2A scans the region every 10 minutes. BlindSpot finds its fire pixels and
    reports the burning that happens outside the hours in which a polar satellite reported a fire (16:30-20:41 IST
-   in the last days: none at all), validated against VIIRS and MODIS.
+   in the last days: none at all), validated against VIIRS and MODIS. The share outside those hours depends on the
+   margin allowed around each pass.
 4. **Where help should go next.** Fields that are harvested but not yet burnt are ranked by burn risk (time since
    harvest, dryness, local burning history, neighbourhood), so that seeders can reach them first.
 5. **Where the smoke goes.** A particle model driven by two weather models runs forward from fires and scars, and
@@ -64,15 +65,16 @@ time farmers burn, not how much they burn.
 
 ## Measured so far
 
-As of 31 October 2026. The site's `/method` page shows the current values, read live from the API.
+As of 31 October 2026 unless a row names its own window. The site's `/method` page shows the current values, read
+live from the API.
 
 | Check                                                                                       | Result                                                                                     |
 | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
 | Predicted pass times vs FIRMS acquisition times (1,428 detections, 3 days)                  | median error 0.5 min; all within 3 min                                                     |
-| Candidate unseen burns that are real burns (visual audit of random Sentinel-2 chip samples) | precision 87%, 95% CI 68–96%, n = 23                                                       |
-| Smoke index vs measured PM2.5 (16 cities, 25–31 Oct)                                       | median r = 0.43 (Delhi 0.60); the CAMS model 0.62, ventilation alone 0.14; few independent hours, so not yet robust |
+| Candidate unseen burns that are real burns (visual audit of random Sentinel-2 chip samples) | precision 83%, 95% CI 61–94%, n = 18 (held-out samples; 87%, n = 23 with the first sample, which shaped the look-alike filter) |
+| Smoke model vs measured PM2.5 (16 cities, 17–22 Nov 2026; evaluation on a copy of production data, scored after a 48 h spin-up) | median r = 0.11 (Delhi 0.06), below the CAMS model (0.40), ventilation alone (0.33) and 1/BLH alone (0.29); against its own smoke moved 1–3 days, on the same hours, it ties or is slightly above (0.22 vs 0.21); no sign of skill at timing smoke that week; about 10 independent hours per city |
 | Burn-risk ranking vs the burns that followed (risk-v3, 213 pass pairs)                      | AUC 0.57 (95% CI 0.50–0.65; 0.5 is chance): weak, about what burning nearby predicts alone; the top tenth burnt 1.4× as often as average |
-| GK-2A fire pixels vs MODIS on Aqua (strong afternoon fires)                                 | 78% detected (n = 37); 15% of GK-2A's pixels unconfirmed                                   |
+| GK-2A fire pixels vs MODIS on Aqua, afternoon passes (stored validation, 27 Oct–22 Nov 2026, 23 Aqua passes, previous algorithm version gk2a-ctx-2) | 74.3% of MODIS's strong fire pixels detected (809 of 1,089; 95% CI 66.3–78.8%); 25.2% of GK-2A's fire pixels unconfirmed (666 of 2,645; 95% CI 8.7–47.8%). The live figures on `/method` come only from scans processed under gk2a-ctx-3 (static heat sources left out), so until the season is reprocessed they cover fewer passes |
 | Investigator answers, last 30 days (read 1 Nov 2026, 14:37 IST; `/api/agent/stats`)          | 299 of 300 figures matched the tool outputs before display, in 23 answers; 1 answer corrected after its first draft, then passed |
 
 ## Architecture
@@ -176,7 +178,7 @@ docstrings); the jobs (GitHub Actions) are described in [services/api/README.md]
 
 ## Limitations
 
-- The precision audit is small (n = 23), so the unseen share is an upper bound until the audit grows.
+- The precision audit is small (n = 18), so the unseen share is an upper bound until the audit grows.
 - Sentinel-2 revisits every few days and cannot see through cloud or thick smoke, so scars appear with a delay.
 - GK-2A pixels cover about 12 km² each over Punjab. It raises some false alarms at midday, and there is no reference to validate its
   evening detections against.

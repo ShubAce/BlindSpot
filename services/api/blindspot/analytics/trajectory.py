@@ -868,23 +868,32 @@ def _residual(y: np.ndarray, z: np.ndarray) -> np.ndarray:
 
 def lagged_correlations(
     model: np.ndarray, obs: np.ndarray, control: np.ndarray | None = None, max_lag: int = 12,
-    min_n: int = 12,
+    min_n: int = 12, min_lag: int = 0,
 ) -> dict[str, Any]:
-    """How well an hourly model series tracks an hourly observed one, model leading by 0..max_lag h.
+    """How well an hourly model series tracks an hourly observed one, at lags min_lag..max_lag h.
 
-    For each lag: Pearson r, Spearman rho, n, and (with `control`) the partial r once both series
-    are regressed on the control (here log ventilation, since stagnant air alone raises PM2.5). At
-    lag 0 also the effective number of independent hours (Bretherton et al. 1999,
+    For each lag L the model at hour t is paired with the observation at t + L, so a positive lag
+    means the model leads (its peak comes L hours before the measured one) and a negative lag that
+    it trails. Per lag: Pearson r, Spearman rho, n, and (with `control`) the partial r once each
+    series is regressed on the control of its own hour, the model on control(t) and the
+    observation on control(t + L) (here log ventilation, since stagnant air alone raises PM2.5).
+    At lag 0 also the effective number of independent hours (Bretherton et al. 1999,
     n_eff = n (1 - r1x r1y) / (1 + r1x r1y)), because neighbouring hours are not independent.
+    `best_lag` is the lag of the highest r: picked after seeing the data, so it flatters.
     """
     from scipy.stats import pearsonr, spearmanr
 
+    size = min(model.size, obs.size)
     by_lag = []
-    for lag in range(max_lag + 1):
-        x = model[: model.size - lag] if lag else model
-        y = obs[lag:]
-        z = None if control is None else (control[: control.size - lag] if lag else control)
-        ok = np.isfinite(x) & np.isfinite(y) & (np.isfinite(z) if z is not None else True)
+    for lag in range(min_lag, max_lag + 1):
+        t = np.arange(max(0, -lag), max(0, min(size, size - lag)))  # hours t with t + lag in range
+        x, y = model[t], obs[t + lag]
+        zx = zy = None
+        if control is not None:  # each series against the control at its own hour
+            zx, zy = control[t], control[t + lag]
+        ok = np.isfinite(x) & np.isfinite(y)
+        if control is not None:
+            ok &= np.isfinite(zx) & np.isfinite(zy)
         n = int(ok.sum())
         if n < min_n or np.std(x[ok]) == 0 or np.std(y[ok]) == 0:
             by_lag.append({"lag_h": lag, "n": n, "r": None, "rho": None, "partial_r": None})
@@ -895,8 +904,8 @@ def lagged_correlations(
             "rho": round(float(spearmanr(x[ok], y[ok])[0]), 3),
             "partial_r": None,
         }
-        if z is not None and np.std(z[ok]) > 0:
-            rx, ry = _residual(x[ok], z[ok]), _residual(y[ok], z[ok])
+        if control is not None and np.std(zx[ok]) > 0 and np.std(zy[ok]) > 0:
+            rx, ry = _residual(x[ok], zx[ok]), _residual(y[ok], zy[ok])
             if np.std(rx) > 0 and np.std(ry) > 0:
                 entry["partial_r"] = round(float(np.corrcoef(rx, ry)[0, 1]), 3)
         if lag == 0:
@@ -905,7 +914,96 @@ def lagged_correlations(
         by_lag.append(entry)
     scored = [e for e in by_lag if e["r"] is not None]
     best = max(scored, key=lambda e: e["r"]) if scored else None
-    return {"lag0": by_lag[0], "best_lag": best, "by_lag": by_lag}
+    lag0 = next((e for e in by_lag if e["lag_h"] == 0), None)
+    return {"lag0": lag0, "best_lag": best, "by_lag": by_lag}
+
+
+DAY_SHIFTS_H = (-72, -48, -24, 24, 48, 72)
+
+
+def day_shift_placebo(
+    smoke: np.ndarray, blh: np.ndarray, obs: np.ndarray, shifts_h: Sequence[int] = DAY_SHIFTS_H,
+    floor_m: float = BL_FLOOR_M, min_n: int = 12,
+) -> dict[str, Any]:
+    """A placebo for smoke divided by the mixing depth: the modelled smoke moved by whole days,
+    divided by the mixing depth of the hour it is moved to.
+
+    It keeps the smoke's level and daily rhythm, and the 1/BLH cycle that the concentration proxy
+    shares with measured PM2.5, but no longer knows which day the smoke came. A model whose r is
+    no higher than these placebos' shows no skill at timing the smoke. On hourly series: at hour t
+    the placebo is smoke(t - s) / max(BLH(t), floor), over the hours where t - s is in the series.
+    Per shift s, its r and the model's own r over the same hours (a paired comparison).
+
+    Compare mean_r with model_mean_r_same_hours (the model's r on those hours, averaged over the
+    shifts the same way), never with the model's r over the whole window: each copy covers only
+    n - |s| hours, and r depends on which hours are in."""
+    from scipy.stats import pearsonr
+
+    size = smoke.size
+    model = smoke / np.maximum(blh, floor_m)
+    by_shift = []
+    for s in shifts_h:
+        t = np.arange(max(0, s), max(0, min(size, size + s)))  # hours t with t - s in range
+        x, m, y = smoke[t - s] / np.maximum(blh[t], floor_m), model[t], obs[t]
+        ok = np.isfinite(x) & np.isfinite(m) & np.isfinite(y)
+        n = int(ok.sum())
+        entry: dict[str, Any] = {"shift_h": int(s), "n": n, "r": None, "r_model_same_hours": None}
+        if n >= min_n and np.std(x[ok]) > 0 and np.std(y[ok]) > 0 and np.std(m[ok]) > 0:
+            entry["r"] = round(float(pearsonr(x[ok], y[ok])[0]), 3)
+            entry["r_model_same_hours"] = round(float(pearsonr(m[ok], y[ok])[0]), 3)
+        by_shift.append(entry)
+    scored = [e for e in by_shift if e["r"] is not None]
+    return {
+        "shifts_h": [int(s) for s in shifts_h],
+        "by_shift": by_shift,
+        "mean_r": round(float(np.mean([e["r"] for e in scored])), 3) if scored else None,
+        "max_r": max(e["r"] for e in scored) if scored else None,
+        "model_mean_r_same_hours": (
+            round(float(np.mean([e["r_model_same_hours"] for e in scored])), 3) if scored else None),
+        "model_higher": sum(1 for e in scored if e["r_model_same_hours"] > e["r"]),
+        "compared": len(scored),
+    }
+
+
+def _r2(r: float) -> str:
+    """r to two decimals, with no minus sign on a value that rounds to zero."""
+    text = f"{r:.2f}"
+    return "0.00" if text == "-0.00" else text
+
+
+def _versus(a: float, b: float) -> str:
+    """How a compares with b, in the words of a sentence that prints both to two decimals."""
+    if _r2(a) == _r2(b):
+        return "level with"
+    return "higher than" if a > b else "not higher than"
+
+
+def describe_placebos(
+    r_model: float | None, r_constant: float | None, day_shift: dict[str, Any] | None = None,
+    unit: str = "shifts",
+) -> str:
+    """Plain words: is the smoke model's r higher than its placebos'? Point estimates only, and
+    each comparison on the same hours: the model's lag-0 r against 1/BLH alone over every scored
+    hour, and against the day-shifted copies the model's mean r over the hours those copies cover
+    (`day_shift` as day_shift_placebo returns it; for medians over cities, the same keys, with
+    model_higher and compared counting cities: `unit`)."""
+    if r_model is None:
+        return "not enough overlapping hours"
+    parts = [f"smoke model r = {_r2(r_model)}"]
+    if r_constant is not None:
+        parts.append(f"{_versus(r_model, r_constant)} 1/BLH alone (r = {_r2(r_constant)})")
+    ds = day_shift or {}
+    r_shift, r_same = ds.get("mean_r"), ds.get("model_mean_r_same_hours")
+    if r_shift is not None and r_same is not None:
+        if ds["compared"] == 1:
+            unit = {"cities": "city", "shifts": "shift"}.get(unit, unit)
+        parts.append(
+            f"against the same smoke moved by 1 to 3 days, on the same hours: smoke model mean r = "
+            f"{_r2(r_same)}, {_versus(r_same, r_shift)} the moved smoke's {_r2(r_shift)} "
+            f"(higher in {ds['model_higher']} of {ds['compared']} {unit})")
+    if len(parts) == 1:
+        parts.append("no placebo could be scored")
+    return "; ".join(parts)
 
 
 def describe_r(r: float | None, n_eff: float | None) -> str:
@@ -915,7 +1013,7 @@ def describe_r(r: float | None, n_eff: float | None) -> str:
     size = abs(r)
     words = "no" if size < 0.1 else "a weak" if size < 0.3 else "a moderate" if size < 0.6 else "a strong"
     sign = "" if size < 0.1 else (" positive" if r > 0 else " negative")
-    text = f"{words}{sign} correlation (r = {r:.2f})"
+    text = f"{words}{sign} correlation (r = {_r2(r)})"
     if n_eff is not None and n_eff < 20:
         text += f"; only ~{n_eff:.0f} independent hours, so not statistically robust"
     return text

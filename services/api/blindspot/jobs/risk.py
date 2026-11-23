@@ -101,36 +101,84 @@ def load_fields(session: Session) -> list[Field]:
 # --- 2a. burning nearby (database) ---------------------------------------------------------------------
 
 
-def fill_neighbourhood(session: Session, table: str, t_end: datetime, where: str = "TRUE",
+def fill_neighbourhood(session: Session, table: str, t_end: datetime | None, where: str = "TRUE",
                        params: dict[str, Any] | None = None, days: int = model.NEIGHBOUR_DAYS,
                        radius_km: float = model.NEIGHBOUR_RADIUS_KM) -> None:
     """Set `fires`, `unseen` and `ha` on the rows of a temporary table (columns k, g geography) that
     match `where`: FIRMS detections (nominal/high confidence), candidate unseen burn scars, and burnt
-    hectares within `radius_km` during (t_end - days, t_end]. Set-based, in a few statements
-    whatever the number of rows, and nothing comes back to the client.
+    hectares within `radius_km` during (t_end - days, t_end]. With t_end None, each row's window ends
+    at its own `t0` column instead (the backtest: every pass pair's fields as of its first pass, a
+    few days of first passes per statement). Set-based, and nothing comes back to the client.
 
-    Distances are true metres on the ellipsoid (geography). The window's fires and scars are first
-    copied into temporary tables as geography, each with its own spatial index, so the search for
-    a field only meets this week's rows (not the whole season's), no polygon is converted again for
-    every field it is compared with, and one pass over the scars gives both the unseen count and
-    the burnt hectares. (Three correlated subqueries per field over the season's tables took 13 min
-    for 172k fields on the dev box.)"""
+    Distances are planar metres in UTM zone 43N (model.UTM_EPSG), whose central meridian (75 E) runs
+    through the area we watch (73.8-77.7 E): there a planar distance is within 0.05% of the true one,
+    about 2 m in 5 km. Scars stay polygons, so a scar counts when its nearest edge is within 5 km, as
+    before. The fires and scars are first copied into temporary tables, projected once and indexed,
+    so the search for a field only meets nearby rows and no polygon is converted again for every
+    field it is compared with; one pass over the scars gives both the unseen count and the hectares.
+
+    Until 2026-11-23 the distances were metres on the ellipsoid (geography). On the 22 Nov snapshot
+    (243,450 fields, 147,993 scars in the week) that statement took 384 s on a desktop's Postgres 18.
+    On the 1 GB server the job's run of 22 Nov failed 19.9 minutes in with "server closed the
+    connection unexpectedly" (job_run); the log does not name the statement that was running, so
+    that it was this slow one is an inference. The planar statement took 52-62 s on the same desktop
+    (three runs) and changes no field's score by more than 0.66 points (Spearman 0.999999, the same
+    top 1%; scripts/risk_neighbourhood_bench.py).
+    The week's scars are found by burn_before through ix_burn_cluster_window (B-tree skip scan on
+    Postgres 18: 0.12 s for 147,993 scars), so no index was added. Scar centroids instead of
+    polygons would save only a sixth more and undercount nearby hectares by 7.5% on average (a
+    scar's edge lies up to 3.7 km from its centroid), so the polygons stay."""
     has_fires, has_burns = _exists(session, "fire_detection"), _exists(session, "burn_cluster")
-    window = {"t0": t_end - timedelta(days=days), "t1": t_end}
+    utm = model.UTM_EPSG
+    span = timedelta(days=days)
+    fires_sql = (f"SELECT ST_Transform(geom, {utm}) AS g, acq_utc AS t FROM fire_detection "
+                 "WHERE acq_utc > :a AND acq_utc <= :b AND confidence <> 'low'"
+                 if has_fires else "SELECT CAST(NULL AS geometry) AS g, CAST(NULL AS timestamptz) AS t WHERE FALSE")
+    burns_sql = (f"SELECT ST_Transform(geom, {utm}) AS g, burn_before AS t, area_ha, unseen FROM burn_cluster "
+                 "WHERE burn_before > :a AND burn_before <= :b" if has_burns else
+                 "SELECT CAST(NULL AS geometry) AS g, CAST(NULL AS timestamptz) AS t, CAST(NULL AS float8) AS area_ha, "
+                 "CAST(NULL AS boolean) AS unseen WHERE FALSE")
+    if t_end is not None:  # one window for every row
+        _fill_window(session, table, fires_sql, burns_sql, {"a": t_end - span, "b": t_end}, where, params,
+                     "", radius_km)
+        return
+    # Each row's own window (t0 - days, t0]: the rows go in slabs of first passes up to SLAB_DAYS apart,
+    # and a slab copies the fires and scars of its widest window (first t0 - days, last t0] from the
+    # season's, projected once; each candidate's time is then tested against the row's own t0. So a row
+    # meets at most days + SLAB_DAYS days of scars, not the whole season's.
+    t0s = [r[0] for r in session.execute(text(f"SELECT DISTINCT t0 FROM {table} p WHERE {where} ORDER BY 1"),
+                                         params or {}).all()]
+    if not t0s:
+        return
+    season = {"a": t0s[0] - span, "b": t0s[-1]}
+    session.execute(text("DROP TABLE IF EXISTS nb_sfire, nb_sburn"))
+    session.execute(text(f"CREATE TEMP TABLE nb_sfire ON COMMIT DROP AS {fires_sql}"), season)
+    session.execute(text(f"CREATE TEMP TABLE nb_sburn ON COMMIT DROP AS {burns_sql}"), season)
+    slabs: list[list[datetime]] = []
+    for t0 in t0s:
+        if slabs and t0 - slabs[-1][0] <= timedelta(days=SLAB_DAYS):
+            slabs[-1][1] = t0
+        else:
+            slabs.append([t0, t0])
+    for lo, hi in slabs:
+        _fill_window(session, table, "SELECT g, t FROM nb_sfire WHERE t > :a AND t <= :b",
+                     "SELECT g, t, area_ha, unseen FROM nb_sburn WHERE t > :a AND t <= :b", {"a": lo - span, "b": hi},
+                     f"({where}) AND p.t0 >= :lo AND p.t0 <= :hi", {**(params or {}), "lo": lo, "hi": hi, "span": span},
+                     "AND {x}.t > p.t0 - :span AND {x}.t <= p.t0", radius_km)
+    session.execute(text("DROP TABLE nb_sfire, nb_sburn"))
+
+
+SLAB_DAYS = 3  # the backtest fills its rows in slabs of first passes at most this many days apart
+
+
+def _fill_window(session: Session, table: str, fires_sql: str, burns_sql: str, window: dict[str, Any], where: str,
+                 params: dict[str, Any] | None, row_time: str, radius_km: float) -> None:
+    """One step of fill_neighbourhood: copy the fires and scars of `window` (a, b] into indexed
+    temporary tables and count them around every row that matches `where` (and, with `row_time`,
+    whose own window holds them)."""
     session.execute(text("DROP TABLE IF EXISTS nb_fire, nb_burn"))
-    # The fires module flags spots hot on 3+ nights (kilns, industry) as static_source: not crop fires.
-    static = "AND NOT static_source" if has_fires and "static_source" in _columns(session, "fire_detection") else ""
-    session.execute(text(f"""
-        CREATE TEMP TABLE nb_fire ON COMMIT DROP AS
-        SELECT geom::geography AS g FROM fire_detection
-        WHERE acq_utc > :t0 AND acq_utc <= :t1 AND confidence <> 'low' {static}
-    """ if has_fires else "CREATE TEMP TABLE nb_fire (g geography) ON COMMIT DROP"), window)
-    session.execute(text("""
-        CREATE TEMP TABLE nb_burn ON COMMIT DROP AS
-        SELECT geom::geography AS g, area_ha, unseen FROM burn_cluster
-        WHERE burn_before > :t0 AND burn_before <= :t1
-    """ if has_burns else "CREATE TEMP TABLE nb_burn (g geography, area_ha float8, unseen boolean) ON COMMIT DROP"),
-        window)
+    session.execute(text(f"CREATE TEMP TABLE nb_fire ON COMMIT DROP AS {fires_sql}"), window)
+    session.execute(text(f"CREATE TEMP TABLE nb_burn ON COMMIT DROP AS {burns_sql}"), window)
     for name in ("nb_fire", "nb_burn"):
         session.execute(text(f"CREATE INDEX ON {name} USING gist (g)"))
         session.execute(text(f"ANALYZE {name}"))
@@ -139,10 +187,12 @@ def fill_neighbourhood(session: Session, table: str, t_end: datetime, where: str
         FROM (
             SELECT p.k, f.n, b.unseen, b.ha
             FROM {table} p
-            CROSS JOIN LATERAL (SELECT count(*) AS n FROM nb_fire f WHERE ST_DWithin(f.g, p.g, :m)) f
+            CROSS JOIN LATERAL (SELECT ST_Transform(CAST(p.g AS geometry), {model.UTM_EPSG}) AS q) q
+            CROSS JOIN LATERAL (SELECT count(*) AS n FROM nb_fire f
+                                WHERE ST_DWithin(f.g, q.q, :m) {row_time.format(x="f")}) f
             CROSS JOIN LATERAL (
                 SELECT count(*) FILTER (WHERE b.unseen IS TRUE) AS unseen, coalesce(sum(b.area_ha), 0) AS ha
-                FROM nb_burn b WHERE ST_DWithin(b.g, p.g, :m)
+                FROM nb_burn b WHERE ST_DWithin(b.g, q.q, :m) {row_time.format(x="b")}
             ) b
             WHERE {where}
         ) AS x
@@ -269,7 +319,11 @@ def load_history(session: Session, history: History) -> History:
 def fill_history(session: Session, table: str, history: History,
                  radius_km: float = model.NEIGHBOUR_RADIUS_KM) -> None:
     """Set `hist` (last season's fires within radius_km, from rk_hist) on every row of `table`; left
-    NULL when last season could not be fetched, so the factor is reported missing, not zero."""
+    NULL when last season could not be fetched, so the factor is reported missing, not zero.
+
+    Still metres on the ellipsoid (geography): last season's ~6,600 points are a few per field, so
+    this is cheap (5 s for 243,450 fields on the 22 Nov snapshot), and projecting every field to
+    UTM first cost more than it saved (scripts/risk_neighbourhood_bench.py)."""
     if history.reason is not None:
         return
     session.execute(text(f"""
@@ -410,14 +464,15 @@ def risk() -> dict[str, Any]:
     try:
         with session_scope() as session:
             report = backtest(session, season, as_of)
-        if tested is not None and "headline" in report and not report.get("timing_tested"):
+        if tested is not None and "all_pairs" in report and not report.get("timing_tested"):
             report["tested_order"] = tested  # timing tested one day: the full score is then the tested one
         _store_report(report, run_id)
-        head = report.get("headline") or {}
+        recent = report.get("recent") or {}
         all_pairs = report.get("all_pairs") or {}
-        summary["backtest"] = ({**{k: head.get(k) for k in ("tile", "auc", "auc_ci95", "burnt", "unburnt")},
+        summary["backtest"] = ({"recent": {k: recent.get(k) for k in ("shown", "auc", "auc_ci95", "pairs", "tiles",
+                                                                      "burnt", "unburnt")},
                                 "all_pairs": {k: all_pairs.get(k) for k in ("pairs", "auc_weighted_mean", "auc_ci95")}}
-                               if head else report.get("reason"))
+                               if all_pairs else report.get("reason"))
     except Exception as exc:  # the scores above are saved; a backtest problem must not undo them
         log.exception("risk backtest failed")
         summary["backtest_error"] = f"{type(exc).__name__}: {exc}"[:300]
@@ -644,8 +699,8 @@ def store_scores(scored: list[model.Scored], as_of: datetime) -> tuple[int, int]
 # --- 4. backtest ----------------------------------------------------------------------------------------
 
 BT_COLUMNS = ("k bigserial PRIMARY KEY, pair int, label int, fid bigint, g geography, t0 timestamptz, "
-              "village text, area float8, days float8, fires int NOT NULL DEFAULT 0, unseen int NOT NULL DEFAULT 0, "
-              "ha float8 NOT NULL DEFAULT 0, hist int, r72 float8, r24 float8, ")
+              "village text, subdistrict text, area float8, days float8, fires int NOT NULL DEFAULT 0, "
+              "unseen int NOT NULL DEFAULT 0, ha float8 NOT NULL DEFAULT 0, hist int, r72 float8, r24 float8, ")
 TOP_SHARE = 0.1  # "top 10%": the k = round(n / 10) best-ranked fields of each pass pair
 PAIRS_ARE = (
     "A pass pair is two consecutive clear Sentinel-2 passes (t0, t1) over one tile, a few days apart. "
@@ -653,6 +708,35 @@ PAIRS_ARE = (
     "t1; not burnt = still harvested and unburnt on a pass at or after t1. Each field is scored with what "
     "was known at t0 (burning within 5 km in the 7 days before t0, last season's fires); rain and timing "
     "are not tested.")
+# The headline: every pass pair whose second pass falls in the RECENT_DAYS up to the newest one, on
+# every tile, pooled (analytics/risk.py, "pooled backtest"); shown only with RECENT_MIN_EACH burnt and
+# unburnt field checks. A field check is one field in one pair: a burnt field is checked once (in the
+# pair where it burnt), but a field still waiting is checked again in every pair it enters (about 3.2
+# pairs in the week to 22 Nov), so the unburnt checks are several times the unburnt fields. It
+# replaced "the latest pass pair" (2026-11-23), which read anything from 0.355 (127 burnt / 78
+# unburnt on one edge tile) to 0.878 between production runs.
+RECENT_DAYS = 7
+RECENT_MIN_EACH = 100
+RECENT_IS = (
+    "Every pass pair whose second pass falls in the {days} days up to the newest one, on every tile, pooled: "
+    "of all (burnt, unburnt) comparisons within a pair, the share the score orders right (ties count half), "
+    "so each pair weighs burnt x unburnt. The 95% interval resamples {km:g} km squares of land, each with all "
+    "its fields in every pair of the window, because neighbouring fields share their neighbourhood and one "
+    "waiting field enters several pairs.")
+# Placebos: orderings that know nothing about the field itself. observation_only knows nothing about
+# burning either: if it scores well, the labels follow how fields were seen. location_only knows how much
+# burnt around the field, so it is a rival ranking more than a placebo (burning clusters, so it should beat
+# 0.5): if it does about as well as the score, the score adds little to knowing which area burns.
+LOCATION_CELL_KM = 10.0
+OBSERVATION_DAYS = 7
+PLACEBOS_ARE = (
+    f"location_only: hectares of Sentinel-2 burn scars this season up to t0 in the field's "
+    f"{LOCATION_CELL_KM:g} km square (where the field lies and how much burnt there, nothing about the field "
+    "itself: burn information, so a rival ranking more than a placebo, expected above 0.5 because burning "
+    f"clusters); observation_only: how many processed passes of the tile covered the field in the "
+    f"{OBSERVATION_DAYS} days up to t0 (how it was observed, nothing about burning). An observation placebo "
+    "well above 0.5 means the labels follow how fields were seen; a location ranking close to the score means "
+    "the score adds little to knowing which area burns.")
 
 
 def backtest(session: Session, history: History, as_of: datetime) -> dict[str, Any]:
@@ -669,9 +753,10 @@ def backtest(session: Session, history: History, as_of: datetime) -> dict[str, A
     field was harvested, so burnt and unburnt fields cannot be compared on it.
     Caveat: fields harvested by t0 that were tilled or sown (not burnt) by t1 are in neither table,
     so the unburnt group only holds fields still waiting.
-    Runs in the database (temporary table bt): only per-pair counts and the headline pair's fields
-    come back. Intervals: the headline AUC by resampling its fields (optimistic: neighbouring fields
-    share their neighbourhood), the all-pairs numbers by resampling whole tiles.
+    Runs in the database (temporary table bt). The headline (`recent`) pools every pair of the last
+    7 days on every tile; its fields come back (position, score, factors, two placebos) for its
+    intervals, which resample 30 km squares of land. The per-pair numbers stay (all_pairs.auc_by_pair,
+    and `latest_pair` for the newest pair's detail); the all-pairs numbers resample whole tiles.
     """
     if not (_exists(session, "burn_cluster") and _exists(session, "harvest_cluster")):
         return {"reason": "burn_cluster / harvest_cluster do not exist yet", "windows": []}
@@ -706,10 +791,7 @@ def backtest(session: Session, history: History, as_of: datetime) -> dict[str, A
         report["windows"] = [_window(w, counts.get(i, (0, 0))) for i, w in enumerate(windows)]
         report["reason"] = "no pass pair has enough burnt and unburnt fields yet"
         return report
-    for (t0,) in session.execute(text("SELECT DISTINCT t0 FROM bt ORDER BY 1")).all():
-        fill_neighbourhood(session, "bt", t0, "p.t0 = :t0", {"t0": t0})
-    loaded = load_history(session, history)
-    fill_history(session, "bt", loaded)
+    _fill_backtest_factors(session, load_history(session, history))
     for stmt in model.score_sql("bt", "pair"):
         session.execute(text(stmt))
     history_ok = history.reason is None
@@ -721,15 +803,50 @@ def backtest(session: Session, history: History, as_of: datetime) -> dict[str, A
             row.update(per_pair[i], pair=i)
             done.append(row)
         report["windows"].append(row)
-    # The headline is the latest pass pair, not the best one: its unburnt fields were seen waiting
-    # at t0 and still waiting a few days later. On earlier pairs the unburnt group is fields that sat
-    # unburnt for 10-20 days (the table only keeps today's waiting fields), a different population.
+    # The headline pools the last 7 days of pairs: one pair alone is one tile's luck (0.355 one day,
+    # 0.878 another). The latest pair keeps its detail (precision at k, villages) as latest_pair.
+    report["recent"] = _recent(session, done, history_ok, timing_cols)
     latest = max(done, key=lambda r: (r["t1"], r["burnt"] + r["unburnt"]))
-    report["headline"] = _headline(session, latest, history_ok, timing_cols)
+    report["latest_pair"] = _headline(session, latest, history_ok, timing_cols)
     report["all_pairs"], report["calibration"] = _all_pairs(done)
     report["verdict"] = verdict(report)
     report["strength"] = ranking_strength(report["all_pairs"])
     return report
+
+
+def _fill_backtest_factors(session: Session, history: History) -> None:
+    """fires, unseen and ha as of each field check's own t0 (fill_neighbourhood) and last season's
+    fires (fill_history) on every row of `bt`. A waiting field enters many pass pairs, and these
+    factors depend only on where it lies and on t0, so they are computed once per field and first
+    pass, and last season's once per field, then copied to every check: the same numbers as filling
+    every check. On the 22 Nov snapshot that is 2.11M (field, t0) and 619,620 fields for 2,840,905
+    checks. Measured there on a desktop's Postgres 18 (scripts/risk_neighbourhood_bench.py
+    --backtest): one geography fill per first pass, as until 2026-11-23, took 4,297 s plus 70 s for
+    last season's fires; slabs of first passes on every check 651 s + 98 s; this 455 s for both, with
+    the same numbers on every check. The whole backtest() then took 773 s and held up to 4.8 GB of
+    temporary tables until its transaction ended."""
+    session.execute(text("DROP TABLE IF EXISTS bt_pt, bt_fld"))
+    session.execute(text("""
+        CREATE TEMP TABLE bt_pt ON COMMIT DROP AS
+        SELECT CAST(row_number() OVER () AS bigint) AS k, label, fid, t0, g,
+               0 AS fires, 0 AS unseen, CAST(0 AS float8) AS ha
+        FROM (SELECT DISTINCT ON (label, fid, t0) label, fid, t0, g FROM bt) d
+    """))
+    session.execute(text("ALTER TABLE bt_pt ADD PRIMARY KEY (k)"))
+    session.execute(text("CREATE INDEX ON bt_pt (t0)"))  # fill_neighbourhood's slabs select by t0
+    session.execute(text("ANALYZE bt_pt"))
+    fill_neighbourhood(session, "bt_pt", None)
+    session.execute(text("""
+        CREATE TEMP TABLE bt_fld ON COMMIT DROP AS
+        SELECT DISTINCT ON (label, fid) label, fid, g, CAST(NULL AS int) AS hist FROM bt
+    """))
+    fill_history(session, "bt_fld", history)
+    session.execute(text("""
+        UPDATE bt AS t SET fires = p.fires, unseen = p.unseen, ha = p.ha, hist = f.hist
+        FROM bt_pt p, bt_fld f
+        WHERE p.label = t.label AND p.fid = t.fid AND p.t0 = t.t0 AND f.label = t.label AND f.fid = t.fid
+    """))
+    session.execute(text("DROP TABLE bt_pt, bt_fld"))
 
 
 def _window(w: Any, counts: tuple[int, int]) -> dict[str, Any]:
@@ -755,22 +872,21 @@ def _load_pairs(session: Session, windows: list[Any], scope: str | None, timing_
         return _days_sql(t, "x.harvested_after", "x.harvested_before") if timing_cols else "NULL"
 
     session.execute(text(f"""
-        INSERT INTO bt (pair, label, fid, g, t0, village, area, days)
+        INSERT INTO bt (pair, label, fid, g, t0, village, subdistrict, area, days)
         SELECT w.pair, 1, x.id, coalesce(x.centroid, ST_PointOnSurface(x.geom))::geography, w.t0, x.village,
-               x.area_ha, {days("w.t0")}
+               x.subdistrict, x.area_ha, {days("w.t0")}
         FROM bt_win w JOIN burn_cluster x ON x.mgrs_tile = w.tile {same_scope}
              AND x.burn_after = w.t0 AND x.burn_before = w.t1 AND x.ndvi_pre < :ndvi
         {"WHERE x.harvested_after IS NOT NULL AND x.harvested_before IS NOT NULL" if timing_cols else ""}
     """), {"ndvi": model.HARVESTED_NDVI_MAX})
     tol = timedelta(hours=12)  # passes of one tile are days apart; this only absorbs rounding
     session.execute(text(f"""
-        INSERT INTO bt (pair, label, fid, g, t0, village, area, days)
+        INSERT INTO bt (pair, label, fid, g, t0, village, subdistrict, area, days)
         SELECT w.pair, 0, x.id, coalesce(x.centroid, ST_PointOnSurface(x.geom))::geography, w.t0, x.village,
-               x.area_ha, {days("w.t0")}
+               x.subdistrict, x.area_ha, {days("w.t0")}
         FROM bt_win w JOIN harvest_cluster x ON x.mgrs_tile = w.tile {same_scope}
              AND x.harvested_before <= w.t0 + :tol AND x.last_seen_unburnt >= w.t1 - :tol
     """), {"tol": tol})
-    session.execute(text("CREATE INDEX ON bt (t0)"))
     session.execute(text("ANALYZE bt"))
 
 
@@ -836,8 +952,8 @@ def _headline(session: Session, pair: dict[str, Any], history_ok: bool, timing: 
     """Everything about one pass pair, from its fields (a thousand or so rows): precision and lift at
     k with Wilson intervals, the AUC with a bootstrap interval, the baselines, and the villages."""
     rows = session.execute(text("""
-        SELECT label, s, fires, fires + unseen, ha, coalesce(hist, 0), village, area, coalesce(tv, 0) FROM bt
-        WHERE pair = :pair ORDER BY label DESC, k
+        SELECT label, s, fires, fires + unseen, ha, coalesce(hist, 0), village, area, coalesce(tv, 0), subdistrict
+        FROM bt WHERE pair = :pair ORDER BY label DESC, k
     """), {"pair": pair["pair"]}).all()
     labels = [int(r[0]) for r in rows]
     full = [float(r[1]) for r in rows]
@@ -874,8 +990,140 @@ def _headline(session: Session, pair: dict[str, Any], history_ok: bool, timing: 
                     "truth because neighbouring fields share their neighbourhood"),
         "baselines": baselines,
         "factors_used": (["timing"] if timing else []) + ["neighbourhood"] + (["history"] if history_ok else []),
-        "villages": _village_level([r[6] for r in rows], [float(r[7] or 0) for r in rows], full, labels),
-        "why_this_pair": "the latest pass pair (the cleanest unburnt control group)",
+        "villages": _village_level([r[6] for r in rows], [float(r[7] or 0) for r in rows], full, labels,
+                                   [r[9] for r in rows]),
+        "why_this_pair": ("the latest pass pair, kept for its detail; one pair is one tile's luck, so the "
+                          f"headline is `recent`, the pairs of the last {RECENT_DAYS} days pooled"),
+    }
+
+
+POOLED_COLUMNS = {"pair": "int64", "label": "int64", "x": "float64", "y": "float64", "s": "float64",
+                  "fires": "int64", "events": "int64", "ha": "float64", "hist": "int64", "tv": "float64",
+                  "obs": "int64", "loc": "float64"}
+
+
+def _pooled_rows(session: Session, pairs: list[int] | None = None) -> pd.DataFrame:
+    """Every field check of these pass pairs (None: of all) in the temporary table `bt`, as the pooled
+    backtest needs it: pair, label, position (x, y in UTM 43N metres), the score `s`, the single-factor
+    baselines (fires, events = fires + candidate unseen burns, ha, hist, tv = timing) and the two
+    placebos of PLACEBOS_ARE, `loc` and `obs`. One COPY: about 50 bytes a check."""
+    cell = LOCATION_CELL_KM * 1000.0
+    utm = model.UTM_EPSG
+    session.execute(text("DROP TABLE IF EXISTS bt_cell, bt_scene"))
+    # this season's scar hectares per square, summed up to each pass (a step function of time)
+    session.execute(text(f"""
+        CREATE TEMP TABLE bt_cell ON COMMIT DROP AS
+        SELECT cx, cy, t, sum(ha) OVER (PARTITION BY cx, cy ORDER BY t) AS cum
+        FROM (SELECT CAST(floor(ST_X(c) / {cell!r}) AS int) AS cx, CAST(floor(ST_Y(c) / {cell!r}) AS int) AS cy,
+                     burn_before AS t, sum(area_ha) AS ha
+              FROM (SELECT ST_Transform(centroid, {utm}) AS c, burn_before, area_ha FROM burn_cluster) s
+              GROUP BY 1, 2, 3) g
+    """))
+    session.execute(text("CREATE INDEX ON bt_cell (cx, cy, t)"))
+    session.execute(text("ANALYZE bt_cell"))
+    if _exists(session, "s2_scene"):
+        session.execute(text("""
+            CREATE TEMP TABLE bt_scene ON COMMIT DROP AS
+            SELECT w.pair, s.geom FROM bt_win w JOIN s2_scene s ON s.mgrs_tile = w.tile AND s.status = 'processed'
+                 AND s.geom IS NOT NULL AND s.datetime > w.t0 - :days AND s.datetime <= w.t0 + interval '1 hour'
+        """), {"days": timedelta(days=OBSERVATION_DAYS)})
+    else:
+        session.execute(text("CREATE TEMP TABLE bt_scene (pair int, geom geometry) ON COMMIT DROP"))
+    session.execute(text("CREATE INDEX ON bt_scene (pair)"))
+    session.execute(text("ANALYZE bt_scene"))
+    which = "TRUE" if pairs is None else f"b.pair = ANY(ARRAY[{','.join(str(int(p)) for p in pairs) or 'NULL'}]::int[])"
+    sql = f"""
+        WITH r AS (
+            SELECT b.k, b.pair, b.label, round(ST_X(p.q)) AS x, round(ST_Y(p.q)) AS y, b.s, b.fires,
+                   b.fires + b.unseen AS events,
+                   b.ha, coalesce(b.hist, 0) AS hist, coalesce(b.tv, 0) AS tv, b.t0, b.g,
+                   CAST(floor(ST_X(p.q) / {cell!r}) AS int) AS cx, CAST(floor(ST_Y(p.q) / {cell!r}) AS int) AS cy
+            FROM bt b CROSS JOIN LATERAL (SELECT ST_Transform(CAST(b.g AS geometry), {utm}) AS q) p
+            WHERE {which}
+        ), loc AS (
+            SELECT c.pair, c.cx, c.cy,
+                   coalesce((SELECT h.cum FROM bt_cell h WHERE h.cx = c.cx AND h.cy = c.cy AND h.t <= c.t0
+                             ORDER BY h.t DESC LIMIT 1), 0) AS loc
+            FROM (SELECT DISTINCT pair, t0, cx, cy FROM r) c
+        )
+        SELECT r.pair, r.label, r.x, r.y, r.s, r.fires, r.events, r.ha, r.hist, r.tv,
+               (SELECT count(*) FROM bt_scene c WHERE c.pair = r.pair
+                   AND ST_Covers(c.geom, CAST(r.g AS geometry))) AS obs,
+               l.loc
+        FROM r JOIN loc l USING (pair, cx, cy) ORDER BY r.k
+    """
+    buf = io.BytesIO()
+    driver = session.connection().connection.driver_connection  # the psycopg 3 connection
+    with driver.cursor() as cur, cur.copy(f"COPY ({sql}) TO STDOUT WITH (FORMAT csv, HEADER)") as copy:
+        for chunk in copy:
+            buf.write(chunk)
+    buf.seek(0)
+    return pd.read_csv(buf, dtype=POOLED_COLUMNS) if buf.getbuffer().nbytes else pd.DataFrame(
+        {k: pd.Series(dtype=v) for k, v in POOLED_COLUMNS.items()})
+
+
+def _top_tenth_weights(pair: np.ndarray, score: np.ndarray) -> np.ndarray:
+    """Each field's share of its pair's top 10% (k = round(n * TOP_SHARE), as _pair_metrics): 1 above
+    the cut, the expected share of the remaining places for fields tied at the cut, else 0
+    (precision_at_k)."""
+    out = np.zeros(len(pair))
+    order = np.argsort(pair, kind="stable")
+    for rows in np.split(order, np.flatnonzero(np.diff(pair[order])) + 1):
+        s = score[rows]
+        k = max(1, math.floor(len(rows) * TOP_SHARE + 0.5))  # round half up, as Postgres rounds n * TOP_SHARE
+        cut = np.sort(s)[::-1][k - 1]
+        above, tied = s > cut, s == cut
+        out[rows] = np.where(above, 1.0, np.where(tied, (k - above.sum()) / tied.sum(), 0.0))
+    return out
+
+
+def _recent(session: Session, done: list[dict[str, Any]], history_ok: bool, timing: bool) -> dict[str, Any]:
+    """The headline: every pass pair whose second pass falls in the RECENT_DAYS up to the newest one,
+    pooled over all tiles (RECENT_IS), with 95% intervals from resampling BLOCK_KM squares, the single
+    factors and the placebos on the same resamples (each with its difference from the score), and the
+    top tenth's burnt share. Shown only with RECENT_MIN_EACH burnt and unburnt field checks. `burnt`,
+    `unburnt` and the base rates count field checks, not distinct fields."""
+    newest = max(r["t1"] for r in done)
+    start = newest - timedelta(days=RECENT_DAYS)
+    pairs = [r for r in done if r["t1"] > start]
+    burnt, unburnt = sum(r["burnt"] for r in pairs), sum(r["unburnt"] for r in pairs)
+    out: dict[str, Any] = {
+        "what": RECENT_IS.format(days=RECENT_DAYS, km=model.BLOCK_KM),
+        "window": {"from": start, "to": newest, "days": RECENT_DAYS,
+                   "anchor": "the second pass of the newest pass pair, not today"},
+        "pairs": len(pairs), "tiles": len({r["tile"] for r in pairs}), "burnt": burnt, "unburnt": unburnt,
+        "base_rate": _r(burnt / (burnt + unburnt)) if burnt + unburnt else None,
+        "comparisons": sum(r["burnt"] * r["unburnt"] for r in pairs), "min_each": RECENT_MIN_EACH,
+    }
+    if min(burnt, unburnt) < RECENT_MIN_EACH:
+        return {**out, "shown": False, "auc": None, "auc_ci95": None,
+                "reason": (f"the pass pairs of the last {RECENT_DAYS} days hold {burnt} burnt and {unburnt} unburnt "
+                           f"field checks; at least {RECENT_MIN_EACH} of each are needed for a figure")}
+    rows = _pooled_rows(session, [r["pair"] for r in pairs])
+    pair, label = rows["pair"].to_numpy(), rows["label"].to_numpy()
+    block, k = model.block_ids(rows["x"].to_numpy(), rows["y"].to_numpy())
+    singles = {"fires_7d_only": "fires", "neighbourhood_only": "events", "burned_ha_7d_only": "ha"}
+    if history_ok:
+        singles["history_only"] = "hist"
+    if timing:
+        singles["timing_only"] = "tv"
+    placebos = {"location_only": "loc", "observation_only": "obs"}
+    cs, n = {}, None
+    for name, col in {"score": "s", **singles, **placebos}.items():
+        cs[name], n = model.concordance_by_block(pair, label, block, rows[col].to_numpy(), k)
+    stats = model.pooled_block_bootstrap(cs, n, against="score")
+    top = _top_tenth_weights(pair, rows["s"].to_numpy())
+    share = model.block_ratio_bootstrap(block, k, top * label, top, label, np.ones(len(label)))
+    return {
+        **out, "shown": True, "auc": stats["score"]["auc"], "auc_ci95": stats["score"]["auc_ci95"],
+        "ci_method": (f"95% percentile interval from {model.POOLED_REPS} resamples of whole {model.BLOCK_KM:g} km "
+                      f"squares (UTM zone 43N), {k} squares with fields; differences on the same resamples"),
+        "blocks": k, "block_km": model.BLOCK_KM,
+        "top_10pct": share,
+        "baselines": {"random": {"auc": 0.5}, **{name: stats[name] for name in singles},
+                      **({} if history_ok else {"history_only": None})},
+        "placebos": {name: stats[name] for name in placebos}, "placebos_are": PLACEBOS_ARE,
+        "factors_used": (["timing"] if timing else []) + ["neighbourhood"] + (["history"] if history_ok else []),
     }
 
 
@@ -935,7 +1183,7 @@ def ranking_strength(all_pairs: dict[str, Any]) -> str | None:
 
 def verdict(report: dict[str, Any]) -> str | None:
     """One plain paragraph on how good the ranking is, every number taken from the report."""
-    a, h = report.get("all_pairs") or {}, report.get("headline") or {}
+    a = report.get("all_pairs") or {}
     if not a or a.get("auc_weighted_mean") is None or None in (a.get("auc_ci95") or [None]):
         return None
     lo, hi = a["auc_ci95"]
@@ -954,44 +1202,103 @@ def verdict(report: dict[str, Any]) -> str | None:
         out += (f" Fields in the top 10% of each pass burnt by the next clear pass {top['lift']:.2f} times as "
                 f"often as the average field (95% CI {top['lift_ci95'][0]:.2f}-{top['lift_ci95'][1]:.2f}; "
                 f"{top['burnt_share']:.1%} against {top['base_rate']:.1%}).")
-    if h.get("auc") is not None and h.get("auc_ci95"):
-        out += (f" On the latest pass pair alone ({h['tile']}, {h['n']:,} fields) the AUC is {h['auc']:.3f} "
-                f"(95% CI {h['auc_ci95'][0]:.3f}-{h['auc_ci95'][1]:.3f}, from resampling that pair's fields: narrower "
-                f"than the truth, because neighbouring fields share their neighbourhood).")
-        out += _tile_spread(a, h["tile"])
+    out += _recent_sentences(report.get("recent") or {})
+    out += _tile_spread(a)
     return out + " Use it to choose where to look first, not as a forecast for any single field."
+
+
+def _day(value: Any) -> str:
+    """The UTC date of a time (a datetime, or ISO text as stored)."""
+    if isinstance(value, str):
+        value = datetime.fromisoformat(value)
+    return value.date().isoformat() if isinstance(value, datetime) else str(value)
+
+
+# The rankings the headline is compared with, in words; location_only is a rival, not a placebo (see
+# PLACEBOS_ARE), so only observation_only above 0.5 says something about the labels.
+RIVAL_WORDS = {
+    "fires_7d_only": f"ranking by fire alerts nearby in the last {model.NEIGHBOUR_DAYS} days alone",
+    "neighbourhood_only": "ranking by burning nearby (fire alerts and unseen scars) alone",
+    "burned_ha_7d_only": f"ranking by scar hectares nearby in the last {model.NEIGHBOUR_DAYS} days alone",
+    "history_only": "ranking by last season's fires nearby alone",
+    "timing_only": "ranking by harvest timing alone",
+    "location_only": f"ranking by how much burnt this season in the field's {LOCATION_CELL_KM:g} km square alone",
+    "observation_only": "the placebo that knows only how often the field was seen",
+}
+
+
+def _auc_ci(p: dict[str, Any] | None) -> str | None:
+    """'0.576 (95% CI 0.519-0.633)' for a ranking with an AUC and its interval, else None."""
+    if not p or p.get("auc") is None or None in (ci := p.get("auc_ci95") or [None]):
+        return None
+    return f"{p['auc']:.3f} (95% CI {ci[0]:.3f}-{ci[1]:.3f})"
+
+
+def _recent_sentences(r: dict[str, Any]) -> str:
+    """The headline (`recent`) in plain sentences: the pooled AUC of the last days with its interval,
+    the location rival and the observation placebo, and every ranking the score is not clearly ahead
+    of; or why there is no figure. Its counts are field checks (one field in one pair), not fields."""
+    if not r:
+        return ""
+    if not r.get("shown"):
+        return (f" The pass pairs of the last {r.get('window', {}).get('days', RECENT_DAYS)} days hold too few field "
+                f"checks for a figure of their own ({r.get('burnt', 0):,} burnt, {r.get('unburnt', 0):,} unburnt; "
+                f"{r.get('min_each', RECENT_MIN_EACH)} of each are needed).")
+    ci = r.get("auc_ci95") or [None, None]
+    if r.get("auc") is None or None in ci:
+        return ""
+    w = r["window"]
+    out = (f" Over the last {w['days']} days of passes ({_day(w['from'])} to {_day(w['to'])}: {r['pairs']} pass pairs "
+           f"on {r['tiles']} tiles, {r['burnt']:,} burnt and {r['unburnt']:,} unburnt field checks, pooled; a field "
+           f"still waiting is checked again in each pair) the AUC is {r['auc']:.3f} (95% CI {ci[0]:.3f}-{ci[1]:.3f}, "
+           f"from resampling {r['block_km']:g} km squares of land).")
+    placebos = r.get("placebos") or {}
+    for name in ("location_only", "observation_only"):
+        if said := _auc_ci(placebos.get(name)):
+            words = RIVAL_WORDS[name]
+            out += f" {words[:1].upper()}{words[1:]} scored {said}"
+            out += (": above 0.5, so the backtest's labels also follow how fields were seen, not only anything "
+                    "about the fields themselves." if name == "observation_only"
+                    and placebos[name]["auc_ci95"][0] > 0.5 else ".")
+    # random has no minus_score, so it is never named
+    close = [f"{RIVAL_WORDS.get(name, name)} {d['diff']:+.3f} ({d['ci95'][0]:+.3f} to {d['ci95'][1]:+.3f})"
+             for name, p in {**(r.get("baselines") or {}), **placebos}.items()
+             if p and (d := p.get("minus_score")) and None not in (d.get("ci95") or [None]) and d["ci95"][1] >= 0]
+    if close:
+        out += (" The score is not clearly ahead of these (their AUC minus the score's, with its 95% CI): "
+                + "; ".join(close) + ".")
+    return out
 
 
 TILE_MIN_CHECKS = 100  # tiles with fewer field checks say too little to compare
 
 
-def _tile_spread(all_pairs: dict[str, Any], tile: str) -> str:
-    """How the headline pair's tile compares with the other tiles (its pair is one tile's luck)."""
+def _tile_spread(all_pairs: dict[str, Any]) -> str:
+    """How far apart the tiles are: one tile's pairs are no guide to another's."""
     tiles = sorted((t for t in all_pairs.get("auc_by_tile") or []
                     if t.get("auc") is not None and t["field_checks"] > TILE_MIN_CHECKS), key=lambda t: -t["auc"])
     if len(tiles) < 2:
         return ""
-    rank = next((i + 1 for i, t in enumerate(tiles) if t["tile"] == tile), None)
     low, high = tiles[-1], tiles[0]
-    out = (f" Tile by tile (over {TILE_MIN_CHECKS} field checks) the AUC runs from {low['auc']:.3f} ({low['tile']}, "
-           f"{low['field_checks']:,} checks) to {high['auc']:.3f} ({high['tile']})")
-    if rank is not None:
-        out += f"; {tile} ranks {rank} of {len(tiles)}"
-        if rank <= max(1, len(tiles) // 4):
-            out += ", so that one pair flatters the ranking"
-    return out + "."
+    return (f" Tile by tile (over {TILE_MIN_CHECKS} field checks) the AUC runs from {low['auc']:.3f} ({low['tile']}, "
+            f"{low['field_checks']:,} checks) to {high['auc']:.3f} ({high['tile']}).")
 
 
 def _village_level(villages: list[str | None], areas: list[float], scores: list[float],
-                   labels: list[int]) -> dict[str, Any] | None:
+                   labels: list[int], subdistricts: list[str | None] | None = None) -> dict[str, Any] | None:
     """The same test for villages, which is how field teams work: rank each village by its
     risk-weighted hectares at t0 (sum of score/100 x area, the order GET /api/risk uses) and check
     which had at least one field burn by t1. The naive rival ranks villages by harvested area alone
-    (bigger villages have more fields that can burn)."""
-    rows: dict[str, list[float]] = {}
-    for v, a, s, y in zip(villages, areas, scores, labels, strict=True):
+    (bigger villages have more fields that can burn).
+
+    A village is a (name, sub-district) pair, as the district brief groups them: names repeat across
+    a district (two "Kotli"s in different tehsils are two villages), and summing them as one would
+    add their fields together."""
+    rows: dict[tuple[str, str | None], list[float]] = {}
+    subs = subdistricts if subdistricts is not None else [None] * len(villages)
+    for v, sub, a, s, y in zip(villages, subs, areas, scores, labels, strict=True):
         if v:
-            acc = rows.setdefault(v, [0.0, 0.0, 0.0])
+            acc = rows.setdefault((v, sub), [0.0, 0.0, 0.0])
             acc[0] += s / 100 * a
             acc[1] += a
             acc[2] = max(acc[2], y)
@@ -1021,9 +1328,9 @@ def _store_report(report: dict[str, Any], run_id: int | None = None) -> None:
     sentinel module is rebuilding its tables) does not erase the last real result: that one stays,
     with a note saying when the newer attempt ran and why it had nothing."""
     path = get_settings().cache_path(*model.BACKTEST_FILE)
-    if "headline" not in report:
+    if "all_pairs" not in report:
         previous = load_backtest()
-        if previous and "headline" in previous:
+        if previous and "all_pairs" in previous:
             previous["latest_attempt"] = {"computed_at": report.get("computed_at"), "reason": report.get("reason")}
             report = previous
     body = orjson.dumps(report, option=orjson.OPT_UTC_Z | orjson.OPT_NAIVE_UTC, default=str)

@@ -10,9 +10,11 @@ What one run does:
    judged only inside the stage's districts, on cropland, and in the tile's own 100 km MGRS square,
    so the ~10 km overlap between tiles is never counted twice.
 3. Stitch clusters cut by block edges, drop those under 0.52 ha, and replace this tile's rows for
-   the passes just processed (so a rerun after a crash never duplicates a scar); a stored row that
-   came out the same is kept, id and verdict included, so a rebuild writes only what changed. The
-   harvested-but-unburnt snapshot of the tile is replaced the same way.
+   the passes just processed (so a rerun after a crash never duplicates a scar); a stored scar with
+   the same outline and window is kept, id, verdict and names included, and only its computed
+   columns are updated if they changed (a new confidence formula or rule version), so a rebuild
+   writes only what changed. The harvested-but-unburnt snapshot of the tile is replaced the same
+   way, matching whole rows.
 4. Match every scar against fire detections (fire_detection, filled by the fires module) and name
    its district, sub-district and nearest village from the boundary and place tables. Writes that
    can touch most of a table go in steps of their own, each followed by a VACUUM, so the database
@@ -560,8 +562,8 @@ def _pass_time(passes: dict[int, list[stac.SceneItem]], day: int, sensing: dict[
 
 def store_tile(result: TileResult, fetch_id: int | None) -> dict[str, dict[str, int]]:
     """Bring this tile's rows for the passes just processed in line with what was computed (rows
-    that came out the same are kept as they are, see _replace_rows), then swap in its new memory.
-    Returns _replace_rows' counts per table."""
+    that are the same scar keep their id, verdict and names, see _replace_rows), then swap in its
+    new memory. Returns _replace_rows' counts per table."""
     stage_name, tile = result.stage, result.tile
     tile_sql = "t.mgrs_tile = :tile AND t.scope = :scope"
     tile_params: dict[str, Any] = {"tile": tile, "scope": stage_name}
@@ -796,48 +798,74 @@ def _name_places(session: Session, name: str) -> dict[str, int]:
     }
 
 
+# What makes a stored row the same thing as a newly computed one. A scar is its tile, stage, burn
+# window and outline: everything else on the row (confidence, the evidence means, model_version) is
+# computed from those pixels by rules that can change, and its fire verdict and place names depend
+# only on the outline and the window. Tables without an entry match on their whole content.
+IDENTITY: dict[str, tuple[str, ...]] = {
+    "burn_cluster": ("mgrs_tile", "scope", "burn_after", "burn_before", "geom"),
+}
+
+
 def _replace_rows(session: Session, model: type[BurnCluster | HarvestCluster], scope: str | None,
                   params: dict[str, Any], rows: list[dict[str, Any]]) -> dict[str, int]:
     """Make the stored rows inside `scope` (an SQL condition on alias `t` with `params`; None: no
     stored row is replaced) equal to `rows`, writing only what changed.
 
-    A stored row inside the scope whose content equals a new row's (every column the run computes,
-    i.e. every key of `rows` but fetch_id) is kept as it is: its id, so links to it keep working,
-    and its fire verdict, place names and risk score. Stored rows that nothing matched are deleted;
-    new rows that nothing matched are named in a temporary copy of the table (same columns,
-    defaults and id sequence), so each is written once, then inserted. (Naming rows after they
-    landed wrote every new row three more times.)
+    A stored row inside the scope that is the same thing as a new row (IDENTITY: for a scar its
+    tile, stage, window and outline; otherwise every column the run computes, i.e. every key of
+    `rows` but fetch_id) keeps its id, so links to it keep working, and what later steps wrote onto
+    it (a scar's fire verdict and place names; a harvested field's place names and risk score). If
+    the columns the run computes came out the same, the row is not touched; if not (a new
+    confidence formula or rule version), those columns and fetch_id are updated in place, and
+    created_at keeps the time the row was first stored.
+    Stored rows that nothing matched are deleted; new rows that nothing matched are named in a
+    temporary copy of the table (same columns, defaults and id sequence), so each is written once,
+    then inserted. (Naming rows after they landed wrote every new row three more times.)
 
     Why: GitHub's runner starts every run without the block memory, so each tile is rebuilt from
     all of the season's passes, and replacing all its rows rewrote every scar and harvested field
     daily (~277k and ~264k by November), each again for its fire verdict and its risk score. The
     dead copies needed more room than Neon's 1 GB cap left: the runs of 8-12 Nov 2026 all failed.
-    Kept rows also keep their ids, so a case link stays valid across daily runs."""
+    Matched rows also keep their ids, so a case link stays valid across daily runs and rule
+    changes that leave a scar's outline and window alone."""
     real = model.__table__
     stage = table(f"new_{real.name}", *(column(c.name, c.type) for c in real.columns))
-    out = {"computed": len(rows), "kept": 0, "deleted": 0, "inserted": 0}
+    out = {"computed": len(rows), "kept": 0, "updated": 0, "deleted": 0, "inserted": 0}
     session.execute(text(f"CREATE TEMP TABLE {stage.name} (LIKE {real.name} INCLUDING DEFAULTS) ON COMMIT DROP"))
     if rows:
         session.execute(insert(stage), rows)
     if scope is not None and rows:
-        content = ", ".join(f"t.{name}" for name in rows[0] if name != "fetch_id")
-        sig = f"md5(ROW({content})::text)"  # geometry as its EWKB hex, floats as exact text
-        # Pair new and stored rows of equal content one to one (row_number among equals), then delete
-        # the stored rows nothing paired and the new rows already stored, all in one statement.
-        out["deleted"], out["kept"] = session.execute(text(f"""
-            WITH n AS (SELECT id, sig, row_number() OVER (PARTITION BY sig ORDER BY id) AS rn
-                       FROM (SELECT t.id, {sig} AS sig FROM {stage.name} t) s),
-                 o AS (SELECT id, sig, row_number() OVER (PARTITION BY sig ORDER BY id) AS rn
-                       FROM (SELECT t.id, {sig} AS sig FROM {real.name} t WHERE {scope}) s),
-                 pair AS (SELECT n.id AS new_id, o.id AS old_id FROM n JOIN o USING (sig, rn)),
+        computed = [name for name in rows[0] if name != "fetch_id"]
+        identity = IDENTITY.get(real.name, tuple(computed))
+        rest = [name for name in computed if name not in identity]  # equal identity: compare the rest
+        # Geometry as its EWKB hex, floats as exact text.
+        isig = f"md5(ROW({', '.join(f't.{name}' for name in identity)})::text)"
+        csig = f"md5(ROW({', '.join(f't.{name}' for name in rest)})::text)"
+        assign = ", ".join(f"{name} = s.{name}" for name in rows[0] if name not in identity)
+        update = (f"UPDATE {real.name} t SET {assign} FROM pair p JOIN {stage.name} s ON s.id = p.new_id "
+                  "WHERE t.id = p.old_id AND NOT p.same RETURNING 1") if assign else "SELECT 1 WHERE false"
+        # Pair new and stored rows of equal identity one to one (row_number among equals), update the
+        # pairs whose computed columns differ, delete the stored rows nothing paired and the new rows
+        # already stored, all in one statement (its parts see the tables as they were before it, and
+        # each runs to completion whether or not the final SELECT reads it).
+        out["deleted"], out["kept"], out["updated"] = session.execute(text(f"""
+            WITH n AS (SELECT id, isig, csig, row_number() OVER (PARTITION BY isig ORDER BY id) AS rn
+                       FROM (SELECT t.id, {isig} AS isig, {csig} AS csig FROM {stage.name} t) s),
+                 o AS (SELECT id, isig, csig, row_number() OVER (PARTITION BY isig ORDER BY id) AS rn
+                       FROM (SELECT t.id, {isig} AS isig, {csig} AS csig FROM {real.name} t WHERE {scope}) s),
+                 pair AS (SELECT n.id AS new_id, o.id AS old_id, n.csig = o.csig AS same
+                          FROM n JOIN o USING (isig, rn)),
                  gone AS (DELETE FROM {real.name} t USING o WHERE t.id = o.id
                            AND NOT EXISTS (SELECT 1 FROM pair p WHERE p.old_id = o.id) RETURNING 1),
-                 kept AS (DELETE FROM {stage.name} t USING pair p WHERE t.id = p.new_id RETURNING 1)
-            SELECT (SELECT count(*) FROM gone), (SELECT count(*) FROM kept)
+                 changed AS ({update}),
+                 taken AS (DELETE FROM {stage.name} t USING pair p WHERE t.id = p.new_id RETURNING 1)
+            SELECT (SELECT count(*) FROM gone), (SELECT count(*) FROM pair WHERE same),
+                   (SELECT count(*) FROM changed)
         """), params).one()
     elif scope is not None:
         out["deleted"] = session.execute(text(f"DELETE FROM {real.name} t WHERE {scope}"), params).rowcount
-    if out["computed"] > out["kept"]:
+    if out["computed"] > out["kept"] + out["updated"]:  # some new rows matched nothing stored
         _name_places(session, stage.name)
         out["inserted"] = session.execute(text(f"INSERT INTO {real.name} SELECT * FROM {stage.name}")).rowcount
     session.execute(text(f"DROP TABLE {stage.name}"))
@@ -936,7 +964,7 @@ def run_sentinel(*, budget_min: float | None = None, stages: tuple[str, ...] | N
                     continue
                 stored = store_tile(res, tracker.fetch_id)
                 for name, counts in stored.items():
-                    dead[name].add(counts["deleted"])
+                    dead[name].add(counts["deleted"] + counts["updated"])  # both leave a dead row version
                 done.append({
                     "stage": stage.name, "tile": tile, "passes": res.passes, "blocks": res.blocks,
                     "burn_clusters": len(res.burn_rows), "filtered_lookalikes": res.filtered_clusters,

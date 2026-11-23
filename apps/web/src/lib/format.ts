@@ -167,6 +167,22 @@ export function number(v: number | null | undefined, opts: { decimals?: number; 
   return sign + body;
 }
 
+/** A 95% interval as "0.544–0.623" (signed: "−0.016 to +0.027"), or null unless both ends are numbers. */
+export function interval(
+  ci: readonly (number | null | undefined)[] | null | undefined,
+  opts: { decimals?: number; signed?: boolean } = {},
+): string | null {
+  if (ci?.length !== 2 || ci.some(isMissing)) return null;
+  const { decimals = 3, signed = false } = opts;
+  return `${number(ci[0], { decimals, signed })}${signed ? ' to ' : '–'}${number(ci[1], { decimals, signed })}`;
+}
+
+/** "Amritsar, Ludhiana and Patiala" (or "a, b or c" with conj 'or'). */
+export function listJoin(items: readonly string[], conj = 'and'): string {
+  if (items.length <= 1) return items[0] ?? '';
+  return `${items.slice(0, -1).join(', ')} ${conj} ${items[items.length - 1]}`;
+}
+
 /** "1 answer", "21 answers": a count and its noun. A median of an even number of runs keeps one
  *  decimal ("2.5 tool calls"). */
 export function plural(v: number, one: string, many: string): string {

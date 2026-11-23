@@ -1,7 +1,7 @@
 import { Suspense } from 'react';
 
 import { Skeleton } from '@/components/ui/states';
-import { dateTimeIST, metricText, number } from '@/lib/format';
+import { dateTimeIST, interval, metricText, number } from '@/lib/format';
 import { PHOTOS } from '@/lib/photo-credits';
 
 import { getRisk } from './data';
@@ -115,17 +115,36 @@ async function Caveat() {
     .join(' ')
     .trim();
   const bt = r.data.backtest;
-  if (!note && bt?.headline?.auc == null && bt?.all_pairs?.auc_weighted_mean == null) return null;
-  // one AUC sentence: when the method's note already gives the backtest's AUC, it is not said twice
-  const noteHasAuc = /AUC/.test(note);
-  // Lead with the season-wide figure, with its interval when the API has one (risk-v3 backtest): one
-  // pass pair alone flatters the ranking.
+  // The pass pairs of the last days on every tile, pooled: none in a report stored before 2026-11-23,
+  // and no figure (shown false) with too few field checks.
+  const recent = bt?.recent;
+  const rc = recent?.shown && recent.auc != null ? recent : null;
+  if (!note && rc == null && bt?.all_pairs?.auc_weighted_mean == null) return null;
+  // One season AUC: when the method's note already gives it, the season line is left out and only the
+  // last days of passes, pooled, are added.
+  const noteHasAuc = /\bAUC\b/.test(note);
+  // Lead with the season-wide figure, with its interval when the API has one (risk-v3 backtest), then
+  // the last days of passes, pooled; never one pass pair alone, which flatters or sinks the ranking.
   const all = bt?.all_pairs;
-  const ci = all?.auc_ci95 && all.auc_ci95.length === 2 ? all.auc_ci95 : null;
+  const ci = interval(all?.auc_ci95, { decimals: 2 });
+  const rci = interval(rc?.auc_ci95, { decimals: 2 });
+  const recentInner = [
+    rci ? `95% CI ${rci}` : null,
+    rc?.pairs != null && rc.tiles != null ? `${number(rc.pairs)} pairs of passes on ${number(rc.tiles)} tiles` : null,
+  ]
+    .filter(Boolean)
+    .join('; ');
+  const recentText = rc
+    ? `AUC ${number(rc.auc, { decimals: 2 })} over ${rc.window?.days != null ? `the last ${number(rc.window.days)} days of passes` : 'the latest passes'}, pooled${recentInner ? ` (${recentInner})` : ''}`
+    : null;
   const seasonLine =
     all?.auc_weighted_mean != null
-      ? `Tested on the burns that followed: AUC ${number(all.auc_weighted_mean, { decimals: 2 })} over ${number(all.pairs)} pairs of passes (${ci ? `95% CI ${number(ci[0], { decimals: 2 })}–${number(ci[1], { decimals: 2 })}; ` : ''}0.5 would be chance)${bt?.headline?.auc != null ? `, ${number(bt.headline.auc, { decimals: 2 })} on the latest pair alone` : ''}.`
+      ? `Tested on the burns that followed: AUC ${number(all.auc_weighted_mean, { decimals: 2 })} over ${number(all.pairs)} pairs of passes (${ci ? `95% CI ${ci}; ` : ''}0.5 would be chance)${recentText ? `; ${recentText}` : ''}.`
       : null;
+  const recentLine = rc
+    ? `Tested on the burns that followed: ${recentText}${rc.baselines?.random?.auc != null ? `; ${number(rc.baselines.random.auc, { decimals: 1 })} would be chance` : ''}.`
+    : null;
+  const backtestLine = (!noteHasAuc && seasonLine) || recentLine;
   return (
     <div className={s.listMethod}>
       {note ? (
@@ -136,13 +155,7 @@ async function Caveat() {
           <figcaption className={s.caption}>From the ranking’s method, as the API states it.</figcaption>
         </figure>
       ) : null}
-      {noteHasAuc ? null : seasonLine ? (
-        <p className={s.listBacktest}>{seasonLine}</p>
-      ) : bt?.headline?.auc != null ? (
-        <p className={s.listBacktest}>
-          {`Tested on the burns that followed: AUC ${number(bt.headline.auc, { decimals: 2 })} on the latest pair of passes${bt.all_pairs?.auc_weighted_mean != null ? `, ${number(bt.all_pairs.auc_weighted_mean, { decimals: 2 })} averaged over ${number(bt.all_pairs.pairs)} pairs` : ''}${bt.headline.baselines?.random?.auc != null ? `; ${number(bt.headline.baselines.random.auc, { decimals: 1 })} would be chance` : ''}.`}
-        </p>
-      ) : null}
+      {backtestLine ? <p className={s.listBacktest}>{backtestLine}</p> : null}
     </div>
   );
 }

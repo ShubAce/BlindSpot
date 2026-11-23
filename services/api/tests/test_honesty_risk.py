@@ -233,22 +233,140 @@ def test_pair_metrics_in_sql_match_the_python_metrics() -> None:
         assert m["bands"] == want
 
 
+def test_pooled_auc_by_block_matches_brute_force() -> None:
+    """The pooled AUC compares burnt and unburnt fields within each pass pair only, so it is the mean
+    of the pairs' AUCs weighted by burnt x unburnt; C and N split those comparisons by the blocks of
+    the two fields (checked one comparison at a time here), so resampling blocks reweights them."""
+    import numpy as np
+
+    rng = random.Random(3)
+    rows = []
+    for pair in range(4):
+        for _ in range(40 + 10 * pair):
+            y = int(rng.random() < 0.2 + 0.1 * pair)
+            rows.append((pair, y, rng.randrange(5), round(rng.random() * 4) + y * (pair % 2)))  # ties on purpose
+    pair, label, block, score = (np.array(c) for c in zip(*rows, strict=True))
+    c, n = model.concordance_by_block(pair, label, block, score, 5)
+    want_c, want_n = np.zeros((5, 5)), np.zeros((5, 5))
+    for p, y, a, s in rows:
+        if not y:
+            continue
+        for q, y2, b, s2 in rows:
+            if q == p and not y2:
+                want_n[a, b] += 1
+                want_c[a, b] += 1.0 if s > s2 else 0.5 if s == s2 else 0.0
+    assert np.array_equal(n, want_n) and np.allclose(c, want_c)
+    num = den = 0.0
+    for p in range(4):
+        m = pair == p
+        pos = int(label[m].sum())
+        num += model.roc_auc(list(score[m]), list(label[m])) * pos * (int(m.sum()) - pos)
+        den += pos * (int(m.sum()) - pos)
+    assert c.sum() / n.sum() == pytest.approx(num / den)
+    out = model.pooled_block_bootstrap({"s": c, "same": c.copy(), "flip": n - c}, n, against="s", reps=300)
+    assert out["s"]["auc_ci95"][0] <= out["s"]["auc"] <= out["s"]["auc_ci95"][1]
+    assert out["same"]["minus_s"] == {"diff": 0.0, "ci95": [0.0, 0.0]}  # the same order: no doubt at all
+    assert out["flip"]["auc"] == round(1 - c.sum() / n.sum(), 3) and out["flip"]["minus_s"]["ci95"][1] < 0
+    assert model.pooled_block_bootstrap({"s": c}, n, reps=300) == model.pooled_block_bootstrap({"s": c}, n, reps=300)
+    ids, k = model.block_ids([1000.0, 29_999.0, 30_001.0, 1000.0], [5.0, 29_000.0, 5.0, 31_000.0])
+    assert k == 3 and ids[0] == ids[1] and len({int(ids[0]), int(ids[2]), int(ids[3])}) == 3
+
+
+def test_recent_headline_pools_the_week_with_block_intervals() -> None:
+    """The headline pools every pass pair of the last 7 days: its AUC is the mean of the pairs' AUCs
+    weighted by burnt x unburnt (comparisons stay inside a pair), its interval resamples 30 km squares,
+    the top tenth's share matches the per-pair counts, and a placebo that cannot tell the fields apart
+    (no pass of this made-up tile covers them) scores exactly 0.5. A pair 9 days older stays out, and
+    with fewer than 100 burnt or unburnt field checks there is no figure, only the reason."""
+    from datetime import timedelta
+
+    from blindspot.jobs import risk as job
+
+    t1 = datetime(2026, 11, 20, 5, 50, tzinfo=UTC)
+    rng = random.Random(4)
+    done, rows = [], []
+    with session_scope() as s:
+        s.execute(text("DROP TABLE IF EXISTS bt_win, bt"))
+        s.execute(text("CREATE TEMP TABLE bt_win (pair int, tile text, scope text, t0 timestamptz, t1 timestamptz) "
+                       "ON COMMIT DROP"))
+        s.execute(text(f"CREATE TEMP TABLE bt ({job.BT_COLUMNS}{model.SCORE_COLUMNS}) ON COMMIT DROP"))
+        for pair, (gap, back) in enumerate(((3, 0), (5, 2), (4, 9))):
+            p_t1 = t1 - timedelta(days=back)
+            p_t0 = p_t1 - timedelta(days=gap)
+            s.execute(text("INSERT INTO bt_win VALUES (:p, 'TESTWEEK', NULL, :t0, :t1)"), {"p": pair, "t0": p_t0, "t1": p_t1})
+            for i in range(130):
+                y = int(i < 60)  # timing separates them, not perfectly: burnt 2-12 days after harvest, unburnt 5-35
+                rows.append({"pair": pair, "y": y, "i": i, "lon": 60.0 + rng.random(), "lat": -5.0 + rng.random() / 2,
+                             "t0": p_t0, "d": rng.uniform(2, 12) if y else rng.uniform(5, 35)})
+            done.append({"tile": "TESTWEEK", "t0": p_t0, "t1": p_t1, "burnt": 60, "unburnt": 70, "pair": pair})
+        s.execute(text("""INSERT INTO bt (pair, label, fid, g, t0, days)
+                          VALUES (:pair, :y, :i, ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography, :t0, :d)"""), rows)
+        for stmt in model.score_sql("bt", "pair"):
+            s.execute(text(stmt))
+        per_pair = job._pair_metrics(s, history_ok=False, timing=True)
+        for r in done:
+            r.update(per_pair[r["pair"]])
+        got = job._recent(s, done, history_ok=False, timing=True)
+        few = job._recent(s, done[:1], history_ok=False, timing=True)
+        scored = s.execute(text("SELECT pair, label, s FROM bt")).all()
+    week = [model.roc_auc([r[2] for r in scored if r[0] == p], [r[1] for r in scored if r[0] == p]) for p in (0, 1)]
+    assert got["shown"] and (got["pairs"], got["tiles"], got["burnt"], got["unburnt"]) == (2, 1, 120, 140)
+    assert got["auc"] == round(sum(week) / 2, 3) and got["auc_ci95"][0] <= got["auc"] <= got["auc_ci95"][1]
+    assert got["blocks"] >= 2 and got["block_km"] == model.BLOCK_KM
+    assert got["placebos"]["observation_only"] == {"auc": 0.5, "auc_ci95": [0.5, 0.5],
+                                                   "minus_score": got["placebos"]["observation_only"]["minus_score"]}
+    assert got["placebos"]["observation_only"]["minus_score"]["diff"] == round(0.5 - sum(week) / 2, 3)
+    timing = got["baselines"]["timing_only"]  # timing is the only factor here: the same order as the score
+    assert timing["auc"] == got["auc"] and timing["minus_score"] == {"diff": 0.0, "ci95": [0.0, 0.0]}
+    share = sum(per_pair[p]["top_hits"] for p in (0, 1)) / sum(per_pair[p]["top_k"] for p in (0, 1))
+    assert got["top_10pct"]["burnt_share"] == pytest.approx(share, abs=0.002)
+    assert got["top_10pct"]["base_rate"] == round(120 / 260, 3)
+    assert few["shown"] is False and few["auc"] is None and "60 burnt and 70 unburnt field checks" in few["reason"]
+
+
+def test_village_level_keeps_same_named_villages_apart() -> None:
+    """A village is a (name, sub-district) pair, as in the district brief: two "Kotli"s in different
+    tehsils are two villages. Grouped by name alone they merged, so the unburnt one inherited the
+    other's burn and their hectares were summed."""
+    from blindspot.jobs.risk import _village_level
+
+    villages = ["Kotli", "Kotli"] + [f"V{i}" for i in range(10)]
+    subs = ["Malerkotla", "Dhuri"] + ["Dhuri"] * 10
+    areas = [5.0, 1.0] + [2.0] * 10
+    scores = [90.0, 10.0] + [50.0 - i for i in range(10)]
+    labels = [1, 0] + [int(i < 3) for i in range(10)]
+    v = _village_level(villages, areas, scores, labels, subs)
+    assert v["villages"] == 12 and v["with_a_burn"] == 4  # the Dhuri Kotli did not burn
+    merged = _village_level(villages, areas, scores, labels)  # no sub-districts known: names alone
+    assert merged["villages"] == 11 and merged["with_a_burn"] == 4
+    # the burnt Kotli ranks first by risk-weighted hectares (90/100 x 5 ha), the unburnt one last
+    assert v["precision_at_k"]["5"] == 0.8 and v["auc"] == round(model.roc_auc(
+        [0.9 * 5, 0.1 * 1] + [(50.0 - i) / 100 * 2 for i in range(10)], labels), 3)
+
+
 def test_verdict_and_strength_follow_the_numbers() -> None:
     from blindspot.jobs.risk import ranking_strength, verdict
 
     a = {"pairs": 148, "field_pairs": 361031, "tiles": 12, "auc_weighted_mean": 0.56, "auc_ci95": [0.491, 0.663],
          "top_10pct": {"burnt_share": 0.216, "base_rate": 0.152, "lift": 1.418, "lift_ci95": [1.235, 1.733]}}
-    text_ = verdict({"all_pairs": a, "headline": {"tile": "43REP", "n": 1173, "auc": 0.701, "auc_ci95": [0.664, 0.736]}})
+    text_ = verdict({"all_pairs": a})
     assert ranking_strength(a) == "weak" and text_.startswith("The ranking is weak.")
     assert "0.560 (95% CI 0.491-0.663" in text_ and "not clearly better than chance" in text_
     assert "1.42 times as often" in text_ and "21.6% against 15.2%" in text_
     assert ranking_strength({**a, "auc_weighted_mean": 0.72, "auc_ci95": [0.66, 0.78]}) == "moderate"
 
 
-def test_verdict_puts_the_latest_pair_in_its_place() -> None:
-    """The latest pair's AUC comes with the caveat that its interval is too narrow, and with where its
-    tile stands among the tiles (per-tile AUCs of the reviewer's recompute of 2026-10-31: the headline
-    tile 43REP was the best tile with over 100 checks, 43REQ held 35% of the checks at 0.444)."""
+def test_verdict_states_the_pooled_week_not_one_pair() -> None:
+    """The headline is the last 7 days of pass pairs pooled, with its interval from resampling squares
+    of land, its counts in field checks (a field still waiting is checked again in every pair: in the
+    week to 22 Nov 638,948 unburnt checks were 200,696 fields), the location ranking as a rival (it
+    knows how much burnt nearby, so above 0.5 is no flag on the labels), the observation placebo, and
+    every ranking the score is not clearly ahead of, baselines too. One pair (the old headline, 0.355
+    one day and 0.878 another) is no longer quoted, and with too few field checks the verdict says so
+    instead of giving a number.
+    (Per-tile AUCs of the reviewer's recompute of 2026-10-31: 43REQ held 35% of the checks at 0.444.)
+    Changed on purpose on 2026-11-23: this test used to check the latest-pair sentence, and then the
+    pooled week's counts as "fields" and the location ranking as a placebo."""
     from blindspot.jobs.risk import _all_pairs, verdict
 
     a = {"pairs": 148, "field_pairs": 361031, "tiles": 4, "auc_weighted_mean": 0.56, "auc_ci95": [0.491, 0.663],
@@ -257,10 +375,42 @@ def test_verdict_puts_the_latest_pair_in_its_place() -> None:
              {"tile": "43REP", "pairs": 30, "field_checks": 90000, "auc": 0.718},
              {"tile": "43RFP", "pairs": 30, "field_checks": 80000, "auc": 0.61},
              {"tile": "43RFQ", "pairs": 10, "field_checks": 60, "auc": 0.9}]}  # too few checks to compare
-    text_ = verdict({"all_pairs": a, "headline": {"tile": "43REP", "n": 1173, "auc": 0.701, "auc_ci95": [0.664, 0.736]}})
-    assert "On the latest pass pair alone (43REP, 1,173 fields) the AUC is 0.701" in text_
-    assert "narrower than the truth" in text_
-    assert "from 0.444 (43REQ, 126,082 checks) to 0.718 (43REP); 43REP ranks 1 of 3, so that one pair flatters" in text_
+    behind = {"diff": -0.1, "ci95": [-0.15, -0.05]}
+    recent = {"shown": True, "window": {"from": "2026-11-15T06:00:00Z", "to": "2026-11-22T05:50:00Z", "days": 7},
+              "pairs": 107, "tiles": 18, "burnt": 12345, "unburnt": 67890, "auc": 0.6, "auc_ci95": [0.55, 0.65],
+              "block_km": 30.0, "min_each": 100,
+              "baselines": {"random": {"auc": 0.5}, "history_only": None,
+                            "fires_7d_only": {"auc": 0.5, "auc_ci95": [0.47, 0.53], "minus_score": behind},
+                            "neighbourhood_only": {"auc": 0.61, "auc_ci95": [0.56, 0.66],
+                                                   "minus_score": {"diff": 0.01, "ci95": [-0.01, 0.03]}}},
+              "placebos": {"location_only": {"auc": 0.58, "auc_ci95": [0.52, 0.63],
+                                             "minus_score": {"diff": -0.02, "ci95": [-0.05, 0.01]}},
+                           "observation_only": {"auc": 0.5, "auc_ci95": [0.49, 0.51], "minus_score": behind}}}
+    text_ = verdict({"all_pairs": a, "recent": recent,
+                     "latest_pair": {"tile": "43REP", "n": 1173, "auc": 0.701, "auc_ci95": [0.664, 0.736]}})
+    assert ("Over the last 7 days of passes (2026-11-15 to 2026-11-22: 107 pass pairs on 18 tiles, 12,345 burnt and "
+            "67,890 unburnt field checks, pooled; a field still waiting is checked again in each pair) the AUC is "
+            "0.600 (95% CI 0.550-0.650, from resampling 30 km squares") in text_
+    assert "unburnt fields" not in text_ and "where a field lies" not in text_
+    assert ("Ranking by how much burnt this season in the field's 10 km square alone scored 0.580 (95% CI "
+            "0.520-0.630).") in text_
+    assert "The placebo that knows only how often the field was seen scored 0.500 (95% CI 0.490-0.510)." in text_
+    assert "above 0.5" not in text_  # the location ranking's 0.52 lower bound flags nothing
+    # every ranking whose difference from the score may be >= 0 is named; one clearly behind is not
+    assert ("The score is not clearly ahead of these (their AUC minus the score's, with its 95% CI): ranking by "
+            "burning nearby (fire alerts and unseen scars) alone +0.010 (-0.010 to +0.030); ranking by how much burnt "
+            "this season in the field's 10 km square alone -0.020 (-0.050 to +0.010).") in text_
+    assert "-0.100" not in text_ and "random" not in text_
+    assert "0.701" not in text_ and "latest pass pair" not in text_
+    assert "Tile by tile (over 100 field checks) the AUC runs from 0.444 (43REQ, 126,082 checks) to 0.718 (43REP)." in text_
+    few = verdict({"all_pairs": a, "recent": {"shown": False, "window": {"days": 7}, "burnt": 80, "unburnt": 4000,
+                                              "min_each": 100}})
+    assert "too few field checks for a figure of their own (80 burnt, 4,000 unburnt; 100 of each are needed)" in few
+    seen = verdict({"all_pairs": a, "recent": {**recent, "baselines": {}, "placebos": {
+        "observation_only": {"auc": 0.576, "auc_ci95": [0.519, 0.633]}}}})
+    assert ("The placebo that knows only how often the field was seen scored 0.576 (95% CI 0.519-0.633): above "
+            "0.5, so the backtest's labels also follow how fields were seen") in seen
+    assert "Ranking by how much burnt" not in seen and "not clearly ahead" not in seen
     # per tile: the size-weighted mean of its pairs' AUCs
     t0, t1 = datetime(2026, 10, 1, tzinfo=UTC), datetime(2026, 10, 3, tzinfo=UTC)
     pair = {"t0": t0, "t1": t1, "base_rate": 0.1, "baselines_auc": {"fires_7d_only": 0.5}, "top_k": 1, "top_hits": 0.0,
@@ -316,7 +466,9 @@ def test_route_states_rank_percentile_and_calibrated_probability(client) -> None
                              "('2099-01-01', :m, 2, CAST(:f AS jsonb)) RETURNING id"),
                         {"m": model.MODEL_VERSION, "f": orjson.dumps(shared, option=orjson.OPT_UTC_Z).decode()}).scalar_one()
         report = {"computed_at": "2099-01-01T00:00:00Z", "model": model.MODEL_VERSION, "windows": [{}, {}, {}],
-                  "headline": {"tile": "TEST", "auc": 0.7}, "all_pairs": all_pairs, "verdict": "The ranking is weak.",
+                  "recent": {"shown": True, "auc": 0.61, "auc_ci95": [0.55, 0.66], "pairs": 3},
+                  "latest_pair": {"tile": "TEST", "auc": 0.7},
+                  "all_pairs": all_pairs, "verdict": "The ranking is weak.",
                   "strength": ranking_strength(all_pairs), "calibration": {"bands": bands, "base_rate": 0.15},
                   "tested_order": {"run_id": run, "fields": 2, "spearman_with_risk_score": 0.754, "top_1pct_overlap": 0.494,
                                    "cuts": [{"band": label, "min_tested_score": c}
@@ -363,6 +515,8 @@ def test_route_states_rank_percentile_and_calibrated_probability(client) -> None
         bt = body["backtest"]
         assert bt["verdict"] == "The ranking is weak." and bt["windows"] == 3 and bt["calibration"]["bands"] == bands
         assert bt["tested_order"]["run_id"] == run
+        # the headline is the pooled week; one pair's figure is detail, never under "headline"
+        assert bt["recent"]["auc"] == 0.61 and bt["latest_pair"]["auc"] == 0.7 and "headline" not in bt
     finally:
         with session_scope() as s:
             s.execute(text("DELETE FROM harvest_cluster WHERE id = ANY(:ids) AND model_version = 'test-honesty-risk'"),

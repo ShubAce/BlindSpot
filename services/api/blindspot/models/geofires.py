@@ -9,18 +9,24 @@
   had a GK-2A scan within a few minutes: how many of the polar detections GK-2A also flagged and
   how many GK-2A pixels the polar satellite confirmed. Pooled, these are the hit and false-alarm
   rates every geostationary response carries.
+- geo_fire_static: GK-2A pixels flagged as persistent (non-crop) heat sources, and why. The job
+  rebuilds it on every run; the fire test leaves these pixels out (geofire.detect_fires `exclude`).
+- geo_fire_static_pixel: what the fire test still found on those flagged pixels, scan by scan
+  (same columns as geo_fire_pixel). Kept apart, not deleted: the counts leave them out by default,
+  `include_static=true` shows them, and the night rule needs them to see a source still burning.
 
 Counts are fire *pixels* per scan: an activity index, never a number of fires.
 """
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from geoalchemy2 import Geometry, WKBElement
 from sqlalchemy import (
     BigInteger,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -83,10 +89,8 @@ class GeoFireSlot(Base):
     )
 
 
-class GeoFirePixel(Base):
-    """One GK-2A pixel that passed the fire test, inside Punjab or Haryana."""
-
-    __tablename__ = "geo_fire_pixel"
+class _FirePixelColumns:
+    """The columns of a GK-2A pixel that passed the fire test (shared by two tables)."""
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     slot_utc: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -113,11 +117,54 @@ class GeoFirePixel(Base):
         BigInteger, ForeignKey("source_fetch.id", ondelete="SET NULL"), index=True
     )
 
+
+class GeoFirePixel(_FirePixelColumns, Base):
+    """One GK-2A pixel that passed the fire test, inside Punjab or Haryana."""
+
+    __tablename__ = "geo_fire_pixel"
+
     __table_args__ = (
         UniqueConstraint(
             "slot_utc", "algorithm", "row", "col", name="uq_geo_fire_pixel"
         ),
         Index("ix_geo_fire_pixel_slot", "slot_utc"),
+    )
+
+
+class GeoFireStatic(Base):
+    """A GK-2A pixel flagged as a persistent heat source (a plant, kiln or flare, not a field),
+    by one rule. The job replaces the table on every run (tens of rows)."""
+
+    __tablename__ = "geo_fire_static"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    row: Mapped[int] = mapped_column(Integer)  # full-disk 2 km grid line
+    col: Mapped[int] = mapped_column(Integer)
+    rule: Mapped[str] = mapped_column(String(16))  # firms / gk2a_night
+    lon: Mapped[float]
+    lat: Mapped[float]
+    nights: Mapped[int] = mapped_column(Integer)  # distinct nights of the evidence
+    detections: Mapped[int] = mapped_column(Integer)
+    first_night: Mapped[date | None] = mapped_column(Date)
+    last_night: Mapped[date | None] = mapped_column(Date)
+    evidence: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True))
+    footprint: Mapped[WKBElement | None] = mapped_column(Geometry("POLYGON", srid=4326))
+    computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (UniqueConstraint("row", "col", "rule", name="uq_geo_fire_static"),)
+
+
+class GeoFireStaticPixel(_FirePixelColumns, Base):
+    """A pixel that passed the fire test but is flagged in geo_fire_static: kept, not counted."""
+
+    __tablename__ = "geo_fire_static_pixel"
+
+    rules: Mapped[str] = mapped_column(String(32))  # the geo_fire_static rules, comma-separated
+
+    __table_args__ = (
+        UniqueConstraint(
+            "slot_utc", "algorithm", "row", "col", name="uq_geo_fire_static_pixel"
+        ),
     )
 
 

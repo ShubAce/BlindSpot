@@ -33,6 +33,9 @@ export type GeoDiurnal = Envelope & {
   share_outside_polar_windows: number | null;
   unobserved_gaps_ist: { start: string; end: string; minutes: number; pixel_hours: number }[];
   interpretation: string[];
+  /** The pixels flagged as persistent heat sources; with `included` false they are left out of every
+   *  count. pixels_flagged is null until the job has built them. */
+  static_sources?: { included?: boolean; pixels_flagged?: number | null } | null;
   validation: {
     reference: string;
     period?: [IsoTime, IsoTime];
@@ -70,13 +73,19 @@ export type SmokeValidation = Envelope & {
   t0: IsoTime;
   hours: number;
   method: string;
+  /** The bare sentence for headline_city (absent in answers stored before 2026-11-23: then Delhi). */
   headline: string | null;
+  headline_city?: string | null;
   notes?: string[];
-  period?: { from: IsoTime; to: IsoTime; spinup_h?: number };
+  /** from: the first scored hour; the hindcast starts spinup_h earlier, at hindcast_from. An answer
+   *  stored before 2026-11-23 has no hindcast_from, and its `from` is where the hindcast started. */
+  period?: { from: IsoTime; to: IsoTime; spinup_h?: number; hindcast_from?: IsoTime };
   inputs?: { fires?: number; scars?: number };
   median_r_cams?: number | null;
   median_r_ventilation_only?: number | null;
   median_r_smoke_per_km_mixing_depth?: number | null;
+  /** The medians against both placebos, each on the same hours, in one sentence. */
+  placebo_comparison?: string | null;
   cities: {
     city: string;
     stations?: number;
@@ -93,25 +102,37 @@ export type SmokeValidation = Envelope & {
 export type SmokeCityRow = { city: string; model: number | null; modelLag: number | null; cams: number | null; ventilation: number | null; nEff: number | null; hours: number | null };
 
 export type AucPair = { t0: IsoTime; t1: IsoTime; tile?: string; auc: number | null; base_rate: number | null; burnt: number; unburnt: number };
+/** One ranking over the pooled recent pairs: its AUC, 95% interval, and its AUC minus the score's on the
+ *  same resamples (the random order has neither; an untestable one is null). */
+export type PooledAuc = {
+  auc: number | null;
+  auc_ci95?: [number | null, number | null] | null;
+  minus_score?: { diff: number | null; ci95: [number | null, number | null] | null } | null;
+};
 export type RiskMethod = Envelope & {
   as_of: IsoTime;
   totals: { clusters: number; area_ha: number; scored?: number };
   method: { formula: string; model: string; weights: Record<string, number>; factors: Record<string, string>; note: string } | null;
   backtest: {
     computed_at?: IsoTime;
-    headline: {
-      tile: string;
-      t0: IsoTime;
-      t1: IsoTime;
-      gap_days?: number;
+    /** Every pass pair of the last window.days days on every tile, pooled. burnt and unburnt count field
+     *  checks (one field in one pair), not fields. Null in a report stored before 2026-11-23; with too
+     *  few checks, shown is false and auc null. */
+    recent?: {
+      shown: boolean;
+      window: { from: IsoTime; to: IsoTime; days: number };
+      pairs: number;
+      tiles: number;
       burnt: number;
       unburnt: number;
-      base_rate: number;
-      auc: number;
-      precision_at_k?: Record<string, number>;
-      baselines?: Record<string, { auc: number; precision?: number }>;
-      why_this_pair?: string;
+      auc: number | null;
+      auc_ci95: [number | null, number | null] | null;
+      block_km?: number;
+      baselines?: Record<string, PooledAuc | null>;
+      placebos?: Record<string, PooledAuc | null>;
     } | null;
+    /** The newest pass pair alone, kept for its detail (one pair is one tile's luck). */
+    latest_pair?: { tile: string; t0: IsoTime; t1: IsoTime; burnt: number; unburnt: number; auc: number | null } | null;
     all_pairs: { pairs: number; auc_weighted_mean: number | null; auc_ci95?: [number, number] | null; auc_by_pair: AucPair[] } | null;
     timing_tested?: boolean;
   } | null;

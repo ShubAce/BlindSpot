@@ -4,7 +4,9 @@ Runs after every successful `met` (architecture.md section 6):
 1. Wind: the newest boundary-layer mean wind of each ensemble member (best_match, gfs_seamless).
    SYNTHESIS: two models and a cone, never one path as truth.
 2. Forward run: particles from every FIRMS detection of the last 24 h in the wind grid (released at
-   detection time, weighted by fire radiative power) and from candidate unseen burn scars
+   detection time, weighted by fire radiative power), except those at persistent industrial heat
+   sources (fire_static_site: kilns, factories, flares; the rule the crop-fire counts use, so the
+   back runs' exposure leaves them out too), and from candidate unseen burn scars
    (Sentinel-2 scars no FIRMS detection explains; weighted by area, released across their burn
    window with the evening-peaked profile ISRO SAC found), followed until 48 h after now. A city's
    smoke index = tonnes of burnt residue whose smoke is within 30 km of it.
@@ -13,8 +15,9 @@ Runs after every successful `met` (architecture.md section 6):
    the two-model cone and a verdict hint.
 4. One transaction writes the forward row and one back row per city; older rows lose their trails.
 
-Inputs come from tables other modules fill (fire_detection, burn_cluster, boundary, place). Each is
-read only if it exists; a missing input is reported in the run, never replaced by a made-up one.
+Inputs come from tables other modules fill (fire_detection, fire_static_site, burn_cluster,
+boundary, place). Each is read only if it exists; a missing input is reported in the run, never
+replaced by a made-up one.
 """
 
 from __future__ import annotations
@@ -34,6 +37,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from blindspot.analytics import trajectory as tj
+from blindspot.analytics.fires_stats import STATIC_SQL
 from blindspot.db import session_scope
 from blindspot.geo import AOI_BBOX
 from blindspot.http import FetchError
@@ -273,35 +277,44 @@ def load_labels(
 
 
 def load_fires(
-    session: Session, t_from: datetime, t_to: datetime, bbox: tuple[float, float, float, float]
+    session: Session, t_from: datetime, t_to: datetime, bbox: tuple[float, float, float, float],
+    exclude_static: bool = True,
 ) -> tuple[Fires | None, str]:
-    """FIRMS detections in [t_from, t_to] inside the wind grid; low-confidence ones are dropped
-    (FIRMS flags them for sun glint and other false alarms)."""
+    """FIRMS detections in [t_from, t_to] inside the wind grid. Low-confidence ones are dropped
+    (FIRMS flags them for sun glint and other false alarms), and so are detections at persistent
+    industrial heat sources (fire_static_site: kilns, factories, flares), by the rule the crop-fire
+    counts use (analytics/fires_stats.py STATIC_RULE): they are not crop residue, and their share
+    of the detections grows as the crop fires fade."""
     if not _table_exists(session, "fire_detection"):
         return None, "fire_detection table does not exist yet"
     needed = {"id", "acq_utc", "lat", "lon", "frp_mw", "confidence"}
-    missing = needed - _columns(session, "fire_detection")
+    columns = _columns(session, "fire_detection")
+    missing = needed - columns
     if missing:
         return None, f"fire_detection lacks columns {sorted(missing)}"
+    static = exclude_static and "geom" in columns and _table_exists(session, "fire_static_site")
     rows = session.execute(
         text(
-            """
-            SELECT id, extract(epoch FROM acq_utc)::float8 AS t, lat, lon, frp_mw, confidence,
-                   state, district, fetch_id
-            FROM fire_detection
-            WHERE acq_utc >= :t0 AND acq_utc <= :t1
-              AND lon BETWEEN :w AND :e AND lat BETWEEN :s AND :n
-            ORDER BY acq_utc, id
+            f"""
+            SELECT f.id, extract(epoch FROM f.acq_utc)::float8 AS t, f.lat, f.lon, f.frp_mw,
+                   f.confidence, f.state, f.district, f.fetch_id,
+                   {STATIC_SQL if static else "false"} AS static_site
+            FROM fire_detection f
+            WHERE f.acq_utc >= :t0 AND f.acq_utc <= :t1
+              AND f.lon BETWEEN :w AND :e AND f.lat BETWEEN :s AND :n
+            ORDER BY f.acq_utc, f.id
             """
         ),
         {"t0": t_from, "t1": t_to, "w": bbox[0], "s": bbox[1], "e": bbox[2], "n": bbox[3]},
     ).mappings().all()
-    keep = [r for r in rows if r["confidence"] != "low" and (r["frp_mw"] or 0) > 0]
+    crop = [r for r in rows if not r["static_site"]]
+    keep = [r for r in crop if r["confidence"] != "low" and (r["frp_mw"] or 0) > 0]
     stats = {
         "in_window": len(rows),
         "used": len(keep),
-        "low_confidence_skipped": sum(1 for r in rows if r["confidence"] == "low"),
-        "no_frp_skipped": sum(1 for r in rows if r["confidence"] != "low" and not (r["frp_mw"] or 0) > 0),
+        "static_site_skipped": len(rows) - len(crop) if static else None,
+        "low_confidence_skipped": sum(1 for r in crop if r["confidence"] == "low"),
+        "no_frp_skipped": sum(1 for r in crop if r["confidence"] != "low" and not (r["frp_mw"] or 0) > 0),
     }
     fetch_ids = sorted({r["fetch_id"] for r in keep if r["fetch_id"] is not None}, reverse=True)
     frp = np.array([r["frp_mw"] for r in keep], dtype=np.float64)
@@ -317,7 +330,13 @@ def load_fires(
         fetch_ids=fetch_ids,
         stats=stats,
     )
-    return fires, f"{len(keep)} FIRMS detections ({stats['low_confidence_skipped']} low-confidence skipped)"
+    note = f"{len(keep)} FIRMS detections ({stats['low_confidence_skipped']} low-confidence"
+    if static:
+        note += f" and {stats['static_site_skipped']} at persistent industrial heat sources skipped)"
+    else:
+        note += " skipped; persistent industrial heat sources not filtered"
+        note += ", no fire_static_site table)" if exclude_static else ")"
+    return fires, note
 
 
 def load_scars(
@@ -409,11 +428,45 @@ class Particles:
     sources: list[dict[str, Any]]
 
 
+def allocate_by_mass(tonnes: np.ndarray, budget: int, floor: int = 1) -> np.ndarray:
+    """Particles per source: `budget` in all, in proportion to each source's tonnes, and at least
+    `floor` each (more than `budget` in all only when the floors alone exceed it).
+
+    Particles then carry about equal tonnes. For a fixed number of particles that gives the least
+    Monte Carlo variance of a city's smoke total when a particle of any source is about as likely
+    to reach the city (Neyman allocation); an equal number per source instead turns a big scar
+    into a few heavy particles. The floor keeps every source in the run, so no smoke is dropped.
+    Sources whose share is below the floor get the floor and the rest is shared again among the
+    others (water filling); whole particles by largest remainder."""
+    tonnes = np.asarray(tonnes, dtype=np.float64)
+    counts = np.full(tonnes.size, floor, dtype=np.int64)
+    if tonnes.size == 0 or budget <= floor * tonnes.size or tonnes.sum() <= 0:
+        return counts
+    free = tonnes > 0
+    while True:
+        left = budget - floor * int((~free).sum())
+        quota = np.where(free, left * tonnes / tonnes[free].sum(), 0.0)
+        below = free & (quota < floor)
+        if not below.any():
+            break
+        free &= ~below
+    whole = np.floor(quota[free]).astype(np.int64)
+    rest = left - int(whole.sum())
+    whole[np.argsort(-(quota[free] - whole), kind="stable")[:rest]] += 1
+    counts[free] = whole
+    return counts
+
+
 def build_forward_particles(
-    fires: Fires | None, scars: Scars | None, t_lo: float, t_hi: float, rng: np.random.Generator
+    fires: Fires | None, scars: Scars | None, t_lo: float, t_hi: float, rng: np.random.Generator,
+    *, allocation: str = "equal", budget: int = FWD_PARTICLES, floor: int = PER_SOURCE_MIN,
 ) -> Particles:
-    """Particles for every source whose emission falls in [t_lo, t_hi]: an equal number per source
-    (so every plume is drawn with the same detail), each carrying its share of the tonnes."""
+    """Particles for every source whose emission falls in [t_lo, t_hi], each carrying its share of
+    the source's tonnes. allocation "equal": the same number per source (budget / sources, from
+    `floor` to PER_SOURCE_MAX), so every plume is drawn with the same detail (the forward run's
+    trails). "mass": `budget` particles shared in proportion to the tonnes, at least `floor` per
+    source (allocate_by_mass): the least Monte Carlo noise in the cities' smoke for the particles
+    spent (the validation hindcast, which draws no trails)."""
     plans: list[tuple[str, int, float, float, np.ndarray, np.ndarray, float, str | None, str | None]] = []
     if fires is not None:
         for i in range(len(fires)):
@@ -430,9 +483,15 @@ def build_forward_particles(
     if not plans:
         z = np.zeros(0)
         return Particles(z, z, z, z, z.astype(np.int8), z.astype(np.int64), [])
-    n = int(np.clip(FWD_PARTICLES // len(plans), PER_SOURCE_MIN, PER_SOURCE_MAX))
+    if allocation == "mass":
+        counts = allocate_by_mass(np.array([plan[6] for plan in plans]), budget, floor)
+    elif allocation == "equal":
+        counts = np.full(len(plans), int(np.clip(budget // len(plans), floor, PER_SOURCE_MAX)))
+    else:
+        raise ValueError(f"allocation must be 'equal' or 'mass', not {allocation!r}")
     lat, lon, t_rel, weight, kind, source, meta = [], [], [], [], [], [], []
     for k, (typ, sid, la, lo, hours, shares, dm, state, district) in enumerate(plans):
+        n = int(counts[k])
         if typ == "fire":  # burns for ~30 min after the detection
             times = hours[0] + rng.uniform(0.0, tj.FIRE_DURATION_S, n)
         else:  # a burning hour drawn by its share, then a moment within it
@@ -1054,16 +1113,36 @@ def smoke() -> dict[str, Any]:
 
 # --- validation: modelled smoke vs observed PM2.5 ------------------------------------------------------
 
-VALIDATION_SPINUP_H = 48  # fires this long before the first observation feed the first hours
-VALIDATION_MAX_DAYS = 7
+VALIDATION_SPINUP_H = 48  # the hindcast starts this long before the first scored hour
+VALIDATION_MAX_DAYS = 7  # at most the last week is scored
+# Per member, shared by the sources in proportion to their tonnes. On the 15-22 Nov 2026 hindcast
+# (scripts/smoke_validate_eval.py, 5 seeds) every city's lag-0 r then moves by SD <= 0.032 from
+# seed to seed (24,000: up to 0.079); about 20 s per hindcast on a laptop.
+VALIDATION_PARTICLES = 48_000
+VALIDATION_MIN_PER_SOURCE = 1
+VALIDATION_LAG_H = 12  # leads and lags scanned: the model may be early or late by up to 12 h
 STATION_RADIUS_KM = tj.RECEPTOR_RADIUS_KM
+
+
+def obs_hour(t: float, period_minutes: int, is_model: bool) -> float:
+    """The model hour (unix s) an air_obs row is compared with.
+
+    A model hour h is the mean of the records from h - 30 min to h + 30 min
+    (tj.hourly_from_records), so a row goes to the hour nearest the centre of its period. Measured
+    rows are stamped at the end of their period (OpenAQ's datetimeTo): CPCB hours run :30 to :30
+    UTC (IST clock hours), so the mean ending 06:30Z is centred on 06:00Z and labelled 06:00Z, and a
+    15-minute reading ending 06:45Z (centre 06:37:30Z) is labelled 07:00Z. CAMS rows are the model's
+    instantaneous hourly steps (jobs/air.py), labelled at their own time."""
+    centre = t if is_model else t - period_minutes * 30.0
+    return math.floor(centre / 3600.0 + 0.5) * 3600.0
 
 
 def load_pm25(
     session: Session, receptors: list[Receptor], t_from: datetime, t_to: datetime
 ) -> dict[str, dict[str, Any]]:
-    """Hourly PM2.5 near each receptor: measured (OpenAQ station hourly means within 30 km,
-    averaged over stations) and the CAMS model (nearest model row within 30 km). µg/m³ only: the
+    """Hourly PM2.5 near each receptor for the model hours t_from..t_to: measured (OpenAQ station
+    hourly means within 30 km, averaged over stations) and the CAMS model (nearest model row within
+    30 km), each on the model hour its period is centred on (obs_hour). µg/m³ only: the
     data.gov.in rows are NAQI sub-indices (parameter pm25_subindex) and are never mixed in."""
     if not _table_exists(session, "air_obs"):
         return {}
@@ -1076,11 +1155,12 @@ def load_pm25(
             WHERE parameter = 'pm25' AND observed_at >= :t0 AND observed_at <= :t1
               AND value >= 0 AND value < 2000
             """
-        ),
-        {"t0": t_from, "t1": t_to},
+        ),  # a period that ends up to an hour outside the hours asked for can be centred inside them
+        {"t0": t_from - timedelta(hours=1), "t1": t_to + timedelta(hours=1)},
     ).mappings().all()
     if not rows:
         return {}
+    lo, hi = t_from.timestamp(), t_to.timestamp()
     lat = np.array([r["lat"] for r in rows])
     lon = np.array([r["lon"] for r in rows])
     out: dict[str, dict[str, Any]] = {}
@@ -1094,8 +1174,9 @@ def load_pm25(
         for r in measured:
             if r["station_id"] in hourly_stations and r["period_minutes"] != 60:
                 continue  # that station reports hourly means; skip its 15-minute readings
-            hour = math.ceil(r["t"] / 3600.0) * 3600.0
-            station_hour.setdefault((r["station_id"], hour), []).append(float(r["value"]))
+            hour = obs_hour(r["t"], r["period_minutes"], False)
+            if lo <= hour <= hi:
+                station_hour.setdefault((r["station_id"], hour), []).append(float(r["value"]))
         by_hour: dict[float, list[float]] = {}
         for (_, hour), values in station_hour.items():
             by_hour.setdefault(hour, []).append(float(np.mean(values)))
@@ -1104,8 +1185,9 @@ def load_pm25(
         if model_rows:
             nearest = min(model_rows, key=lambda r: (r["lat"] - rec.lat) ** 2 + (r["lon"] - rec.lon) ** 2)
             for r in model_rows:
-                if r["station_id"] == nearest["station_id"]:
-                    cams[math.ceil(r["t"] / 3600.0) * 3600.0] = float(r["value"])
+                hour = obs_hour(r["t"], r["period_minutes"], True)
+                if r["station_id"] == nearest["station_id"] and lo <= hour <= hi:
+                    cams[hour] = float(r["value"])
         if by_hour:
             out[rec.name] = {
                 "obs": {h: float(np.mean(v)) for h, v in by_hour.items()},
@@ -1120,83 +1202,164 @@ def _lag0_r(entry: dict[str, Any], key: str) -> float | None:
     return ((entry.get(key) or {}).get("lag0") or {}).get("r")
 
 
-@job("smoke_validate", every_minutes=360)
-def smoke_validate() -> dict[str, Any]:
-    """Hindcast the smoke index over the hours with PM2.5 observations and correlate it with them."""
-    started = time.perf_counter()
-    run_at = utcnow()
-    with session_scope() as session:
-        members, notes = load_members(session, run_at)
-        if not members:
-            return {"skipped": "no wind grid stored yet"}
-        bbox = members[0].wind.bbox
-        receptors, receptor_note = load_receptors(session, bbox)
-        t_last = math.floor(run_at.timestamp() / 3600.0) * 3600.0
-        t_first = max(run_at.timestamp() - VALIDATION_MAX_DAYS * 86400.0, max(m.wind.t0 for m in members))
-        t_first = math.ceil(t_first / 3600.0) * 3600.0
-        obs = load_pm25(session, receptors, datetime.fromtimestamp(t_first, UTC), run_at)
-        if not obs:
-            return {"skipped": "no measured PM2.5 near any receptor city yet", "notes": [receptor_note]}
-        first_obs = min(min(o["obs"]) for o in obs.values())
-        t0 = max(t_first, math.floor((first_obs - VALIDATION_SPINUP_H * 3600.0) / 3600.0) * 3600.0)
-        t_end = min(t_last, min(math.floor(m.wind.t_end / 3600.0) * 3600.0 for m in members))
-        window = (datetime.fromtimestamp(t0, UTC), datetime.fromtimestamp(t_end, UTC))
-        fires, fire_note = load_fires(session, *window, bbox)
-        scars, scar_note = load_scars(session, *window, bbox)
-        if fires is None and scars is None:
-            return {"skipped": f"no fire data: {fire_note}; {scar_note}"}
-        primary_run = members[0].run
-        blh_times, blh = load_level(session, primary_run, "10m", ("blh",))
-        bl_times, bl = load_level(session, primary_run, "bl", ("u", "v"))
-        sources = run_sources(session, members, fires, scars, None, receptors)
-    cities = [r for r in receptors if r.name in obs]
-    rng = np.random.default_rng(int(run_at.timestamp()) % 1_000_003)
-    p = build_forward_particles(fires, scars, t0, t_end, rng)
-    n_rec = tj.n_records(t0, t_end)
-    rlat = np.array([r.lat for r in cities])
-    rlon = np.array([r.lon for r in cities])
+def _utc(t: float) -> datetime:
+    return datetime.fromtimestamp(t, UTC)
+
+
+def validation_window(run_at: datetime, wind_t0: float, wind_end: float) -> tuple[float, float, float] | None:
+    """(hindcast start, first scored hour, last scored hour), unix s; None when no hour qualifies.
+
+    Scored: the whole hours of the last VALIDATION_MAX_DAYS days up to `run_at`, but only those
+    with VALIDATION_SPINUP_H hours of hindcast before them. Smoke takes one to three days to reach
+    the cities, so in the first hours of a hindcast the smoke of fires that burned before it is
+    missing, and scoring those hours counts the missing smoke as model error. The met job keeps 9
+    past days of wind (jobs/met.py PAST_DAYS) so a full week can be scored; with less wind the
+    scored window shrinks rather than taking in hours that are still spinning up."""
+    spin = VALIDATION_SPINUP_H * 3600.0
+    now = run_at.timestamp()
+    t_end = min(math.floor(now / 3600.0), math.floor(wind_end / 3600.0)) * 3600.0
+    t_score = max(math.ceil((now - VALIDATION_MAX_DAYS * 86400.0) / 3600.0),
+                  math.ceil((wind_t0 + spin) / 3600.0)) * 3600.0
+    if t_score >= t_end:
+        return None
+    return t_score - spin, t_score, t_end
+
+
+@dataclass
+class ValidationInputs:
+    """What one validation hindcast reads from the database (load_validation_inputs)."""
+
+    run_at: datetime
+    members: list[Member]
+    cities: list[Receptor]  # receptor cities with measured PM2.5 in the scored hours
+    obs: dict[str, dict[str, Any]]  # load_pm25, per city
+    fires: Fires | None
+    scars: Scars | None
+    t0: float  # hindcast start (unix s)
+    t_score: float  # first scored hour: t0 + VALIDATION_SPINUP_H
+    t_end: float  # last scored hour
+    blh_times: np.ndarray  # primary member over the scored hours: boundary-layer height (T, ny, nx)
+    blh: np.ndarray
+    bl_times: np.ndarray  # ... and its boundary-layer mean wind
+    bl_u: np.ndarray
+    bl_v: np.ndarray
+    sources: list[dict[str, Any]] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
+
+
+def load_validation_inputs(session: Session, run_at: datetime) -> ValidationInputs | dict[str, Any]:
+    """The newest wind grids, the scored window, the PM2.5 near each city in it and the fires and
+    scars of the whole hindcast; a {"skipped": why} dict when something is missing."""
+    members, notes = load_members(session, run_at)
+    if not members:
+        return {"skipped": "no wind grid stored yet"}
+    window = validation_window(run_at, max(m.wind.t0 for m in members), min(m.wind.t_end for m in members))
+    if window is None:
+        return {"skipped": f"the wind grids hold no hour with {VALIDATION_SPINUP_H} h of hindcast before it",
+                "notes": notes}
+    t0, t_score, t_end = window
+    bbox = members[0].wind.bbox
+    receptors, receptor_note = load_receptors(session, bbox)
+    obs = load_pm25(session, receptors, _utc(t_score), _utc(t_end))
+    if not obs:
+        return {"skipped": "no measured PM2.5 near any receptor city in the scored hours yet",
+                "notes": [receptor_note]}
+    fires, fire_note = load_fires(session, _utc(t0), _utc(t_end), bbox)
+    scars, scar_note = load_scars(session, _utc(t0), _utc(t_end), bbox)
+    if fires is None and scars is None:
+        return {"skipped": f"no fire data: {fire_note}; {scar_note}"}
+    primary_run = members[0].run
+    blh_times, blh = load_level(session, primary_run, "10m", ("blh",), _utc(t_score), _utc(t_end))
+    bl_times, bl = load_level(session, primary_run, "bl", ("u", "v"), _utc(t_score), _utc(t_end))
+    sources = run_sources(session, members, fires, scars, None, receptors)
+    return ValidationInputs(
+        run_at=run_at, members=members, cities=[r for r in receptors if r.name in obs], obs=obs,
+        fires=fires, scars=scars, t0=t0, t_score=t_score, t_end=t_end,
+        blh_times=blh_times, blh=blh["blh"], bl_times=bl_times, bl_u=bl["u"], bl_v=bl["v"],
+        sources=sources, notes=notes + [receptor_note, fire_note, scar_note],
+    )
+
+
+def validation_seed(t0: float, t_end: float) -> int:
+    """The Monte Carlo seed of a hindcast window, so the same window and inputs give the same
+    numbers on every run (it used to be the clock time of the run)."""
+    return zlib.crc32(f"smoke_validate {int(t0)} {int(t_end)}".encode()) % 1_000_003
+
+
+def validation_hindcast(
+    inp: ValidationInputs, seed: int
+) -> tuple[Particles, list[tuple[str, np.ndarray, np.ndarray, np.ndarray]]]:
+    """Forward hindcast from every source in [t0, t_end]: per member, the scored hours and each
+    city's hourly smoke index in them (all sources, and FIRMS fires alone). `seed` sets every
+    random draw (release times and the random walk)."""
+    rng = np.random.default_rng(seed)
+    p = build_forward_particles(inp.fires, inp.scars, inp.t0, inp.t_end, rng, allocation="mass",
+                                budget=VALIDATION_PARTICLES, floor=VALIDATION_MIN_PER_SOURCE)
+    n_rec = tj.n_records(inp.t0, inp.t_end)
+    rlat = np.array([r.lat for r in inp.cities])
+    rlon = np.array([r.lon for r in inp.cities])
     member_series = []
-    for k, m in enumerate(members):
+    for k, m in enumerate(inp.members):
         rec = tj.ReceptorSeries(rlat, rlon, p.weight, p.kind, np.zeros(p.lat.size, np.int32), 1, n_rec)
-        integ = tj.integrate(m.wind, p.lat, p.lon, p.t_rel, t_start=t0, t_end=t_end, seed=11 + k,
-                             observers=[rec])
+        integ = tj.integrate(m.wind, p.lat, p.lon, p.t_rel, t_start=inp.t0, t_end=inp.t_end,
+                             seed=seed + 11 + k, observers=[rec])
         hours, total = tj.hourly_from_records(rec.total, integ.record_times)
         _, fires_only = tj.hourly_from_records(rec.by_kind[:, 0], integ.record_times)
-        member_series.append((m.model, hours, total, fires_only))
+        scored = hours >= inp.t_score - 1e-6  # the spin-up hours are not scored
+        member_series.append((m.model, hours[scored], total[:, scored], fires_only[:, scored]))
+    return p, member_series
+
+
+def validation_scores(
+    inp: ValidationInputs, p: Particles, member_series: list[tuple[str, np.ndarray, np.ndarray, np.ndarray]]
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Each city's modelled smoke against its measured PM2.5 over the scored hours: (summary, the
+    hourly series per city)."""
+    grid = inp.members[0].run.grid
     results, series_out = [], []
     _, hours, total0, fires0 = member_series[0]
-    for c, city in enumerate(cities):
-        o = obs[city.name]
+    for c, city in enumerate(inp.cities):
+        o = inp.obs[city.name]
         y = np.array([o["obs"].get(h, np.nan) for h in hours])
         cams = np.array([o["cams"].get(h, np.nan) for h in hours])
-        blh_c = np.interp(hours, blh_times, tj.point_series(primary_run.grid, blh["blh"], city.lon, city.lat))
-        u_c = tj.point_series(primary_run.grid, bl["u"], city.lon, city.lat)
-        v_c = tj.point_series(primary_run.grid, bl["v"], city.lon, city.lat)
-        speed = np.interp(hours, bl_times, np.hypot(u_c, v_c))
+        blh_c = np.interp(hours, inp.blh_times, tj.point_series(grid, inp.blh, city.lon, city.lat))
+        u_c = tj.point_series(grid, inp.bl_u, city.lon, city.lat)
+        v_c = tj.point_series(grid, inp.bl_v, city.lon, city.lat)
+        speed = np.interp(hours, inp.bl_times, np.hypot(u_c, v_c))
         ventilation = np.maximum(blh_c, tj.BL_FLOOR_M) * np.maximum(speed, 0.1)
         log_vent = np.log(ventilation)
         smoke = total0[c]
         dilute = smoke / np.maximum(blh_c, tj.BL_FLOOR_M) * 1000.0  # tonnes per km of mixing depth
+        lags = {"min_lag": -VALIDATION_LAG_H, "max_lag": VALIDATION_LAG_H}
         entry: dict[str, Any] = {
             "city": city.name, "lat": round(city.lat, 4), "lon": round(city.lon, 4),
             "stations": o["stations"], "hours_observed": int(np.isfinite(y).sum()),
-            "smoke_index": tj.lagged_correlations(smoke, y, log_vent),
-            "smoke_per_km_mixing_depth": tj.lagged_correlations(dilute, y, log_vent),
-            "ventilation_only": tj.lagged_correlations(-log_vent, y),
+            "smoke_index": tj.lagged_correlations(smoke, y, log_vent, **lags),
+            "smoke_per_km_mixing_depth": tj.lagged_correlations(dilute, y, log_vent, **lags),
+            "ventilation_only": tj.lagged_correlations(-log_vent, y, **lags),
             "cams_baseline": tj.lagged_correlations(cams, y, max_lag=0),
+            # Placebos for the proxy: 1/BLH with the smoke held constant, and the modelled smoke
+            # moved by 1-3 days. The proxy beats them only if the timing of its smoke adds skill.
+            "placebos": {
+                "constant_smoke": tj.lagged_correlations(1000.0 / np.maximum(blh_c, tj.BL_FLOOR_M), y,
+                                                         log_vent, **lags),
+                "day_shift": tj.day_shift_placebo(smoke, blh_c, y),
+            },
             "members": {},
         }
         for model, _, total_m, _ in member_series[1:]:
-            entry["members"][model] = tj.lagged_correlations(total_m[c], y, log_vent)["lag0"]
+            entry["members"][model] = tj.lagged_correlations(total_m[c], y, log_vent, max_lag=0)["lag0"]
         if float(np.nansum(total0[c] - fires0[c])) > 0:  # scars contributed: the key experiment
-            entry["firms_only"] = tj.lagged_correlations(fires0[c], y, log_vent)
+            entry["firms_only"] = tj.lagged_correlations(fires0[c], y, log_vent, **lags)
         lag0 = entry["smoke_per_km_mixing_depth"]["lag0"]
         entry["summary"] = tj.describe_r(lag0.get("r"), lag0.get("n_eff"))
+        entry["placebo_summary"] = tj.describe_placebos(
+            lag0.get("r"), _lag0_r(entry["placebos"], "constant_smoke"), entry["placebos"]["day_shift"])
         results.append(entry)
         series_out.append({
             "city": city.name,
             "series": [
-                {"t": datetime.fromtimestamp(h, UTC), "smoke_index": round(float(smoke[i]), 3),
+                {"t": _utc(h), "smoke_index": round(float(smoke[i]), 3),
                  "smoke_per_km_mixing_depth": round(float(dilute[i]), 3),
                  "pm25_obs": None if not np.isfinite(y[i]) else round(float(y[i]), 1),
                  "n_stations": o["n_stations"].get(h),
@@ -1209,31 +1372,98 @@ def smoke_validate() -> dict[str, Any]:
     rs = [r for r in (_lag0_r(e, "smoke_per_km_mixing_depth") for e in results) if r is not None]
     cams_rs = [r for r in (_lag0_r(e, "cams_baseline") for e in results) if r is not None]
     vent_rs = [r for r in (_lag0_r(e, "ventilation_only") for e in results) if r is not None]
+    const_rs = [r for r in (_lag0_r(e["placebos"], "constant_smoke") for e in results) if r is not None]
+    # The day-shifted copies cover fewer hours than the window, so each city's copies are compared
+    # with the model's r on the same hours (model_mean_r_same_hours), never with its lag-0 r.
+    shifts = [e["placebos"]["day_shift"] for e in results if e["placebos"]["day_shift"]["mean_r"] is not None]
+    shift_rs = [d["mean_r"] for d in shifts]
+    shift_model_rs = [d["model_mean_r_same_hours"] for d in shifts]
+
+    def median(values: list[float]) -> float | None:
+        return None if not values else round(float(np.median(values)), 3)
+
+    day_shift_higher = {
+        "cities": sum(1 for d in shifts if d["model_mean_r_same_hours"] > d["mean_r"]),
+        "cities_compared": len(shifts),
+        "shifts": sum(d["model_higher"] for d in shifts),
+        "shifts_compared": sum(d["compared"] for d in shifts),
+    }
+    paired_medians = {"mean_r": median(shift_rs), "model_mean_r_same_hours": median(shift_model_rs),
+                      "model_higher": day_shift_higher["cities"], "compared": len(shifts)}
     summary = {
-        "period": {"from": window[0], "to": window[1], "spinup_h": VALIDATION_SPINUP_H},
+        "period": {"from": _utc(inp.t_score), "to": _utc(inp.t_end), "spinup_h": VALIDATION_SPINUP_H,
+                   "hindcast_from": _utc(inp.t0)},
         "inputs": {"fires": sum(1 for s_ in p.sources if s_["type"] == "fire"),
                    "scars": sum(1 for s_ in p.sources if s_["type"] == "scar")},
+        # The first city is Delhi when Delhi has measurements, else the city with the most hours.
+        # `headline` stays the bare sentence, as pages that print "Delhi: " before it expect;
+        # headline_city says whose result it is, and headline_text is the sentence with its city.
         "headline": results[0]["summary"] if results else None,
-        "median_r_smoke_per_km_mixing_depth": None if not rs else round(float(np.median(rs)), 3),
-        "median_r_ventilation_only": None if not vent_rs else round(float(np.median(vent_rs)), 3),
-        "median_r_cams": None if not cams_rs else round(float(np.median(cams_rs)), 3),
+        "headline_city": results[0]["city"] if results else None,
+        "headline_text": f"{results[0]['city']}: {results[0]['summary']}" if results else None,
+        "headline_placebos": results[0]["placebo_summary"] if results else None,
+        "median_r_smoke_per_km_mixing_depth": median(rs),
+        "median_r_ventilation_only": median(vent_rs),
+        "median_r_cams": median(cams_rs),
+        "median_r_placebo_constant_smoke": median(const_rs),
+        "median_r_placebo_day_shift": median(shift_rs),
+        "median_r_model_same_hours_as_day_shift": median(shift_model_rs),
+        "day_shift_model_higher": day_shift_higher,
+        "placebo_comparison": "Median across cities: " + tj.describe_placebos(
+            median(rs), median(const_rs), paired_medians, unit="cities") if rs else None,
         "cities": results,
         "method": (
-            "Forward hindcast from every FIRMS detection (and candidate unseen scar) in the period; "
-            "hourly smoke index within 30 km of each city, also divided by the boundary-layer depth "
-            "(a concentration proxy), against the hourly mean of OpenAQ PM2.5 stations within 30 km. "
-            "Pearson r and Spearman rho at model leads of 0-12 h; partial r controls for log "
-            "ventilation (BLH x transport wind), since stagnant air alone raises PM2.5; "
-            "'ventilation_only' and CAMS are the baselines to beat. Correlation is not attribution: "
-            "local sources dominate city PM2.5."
+            "Forward hindcast from every FIRMS detection outside known industrial heat sources (and "
+            "candidate unseen scar) in the period, "
+            f"started {VALIDATION_SPINUP_H} h before the first scored hour so the smoke of earlier "
+            "fires has arrived; hourly smoke index within 30 km of each city, also divided by the "
+            "boundary-layer depth (a concentration proxy), against the hourly mean of OpenAQ PM2.5 "
+            "stations within 30 km, each on the model hour its measuring period is centred on. "
+            "Pearson r and Spearman rho with the model leading or trailing by up to 12 h; partial r "
+            "controls for log ventilation (BLH x transport wind), each series at its own hour, "
+            "since stagnant air alone raises PM2.5; 'ventilation_only' and CAMS are the baselines "
+            "to beat. Two placebos test the proxy itself: 1/BLH with the smoke held constant, and "
+            "the modelled smoke moved by 1 to 3 days (BLH kept at its own hour), each compared with "
+            "the model on the same hours; the smoke model shows skill at timing smoke only where "
+            "its r is clearly above both. Correlation is not "
+            "attribution: local sources dominate city PM2.5."
         ),
-        "notes": notes + [receptor_note, fire_note, scar_note],
+        "notes": inp.notes,
     }
-    columns = {"params": {"method": method_params(), "sources": sources}, "summary": summary,
+    return summary, series_out
+
+
+def run_validation(
+    inp: ValidationInputs, seed: int | None = None
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Hindcast and scores for loaded inputs, without the database: (summary, per-city series).
+    The seed is the window's own (validation_seed) unless one is given."""
+    seed = validation_seed(inp.t0, inp.t_end) if seed is None else seed
+    p, member_series = validation_hindcast(inp, seed)
+    summary, series = validation_scores(inp, p, member_series)
+    summary["monte_carlo"] = {
+        "seed": seed, "particles_per_member": int(p.lat.size),
+        "allocation": f"in proportion to tonnes, at least {VALIDATION_MIN_PER_SOURCE} per source",
+    }
+    return summary, series
+
+
+@job("smoke_validate", every_minutes=360)
+def smoke_validate() -> dict[str, Any]:
+    """Hindcast the smoke index over the hours with PM2.5 observations and correlate it with them."""
+    started = time.perf_counter()
+    run_at = utcnow()
+    with session_scope() as session:
+        inp = load_validation_inputs(session, run_at)
+    if isinstance(inp, dict):
+        return inp
+    summary, series_out = run_validation(inp)
+    results = summary["cities"]
+    columns = {"params": {"method": method_params(), "sources": inp.sources}, "summary": summary,
                "receptors": series_out}
     with session_scope() as session:
-        row = SmokeRun(kind="validation", city=None, run_at=run_at, t0=window[0],
-                       hours=(t_end - t0) / 3600.0, met_run_ids=[m.run.id for m in members],
+        row = SmokeRun(kind="validation", city=None, run_at=run_at, t0=_utc(inp.t0),
+                       hours=(inp.t_end - inp.t0) / 3600.0, met_run_ids=[m.run.id for m in inp.members],
                        trails=None, **columns)
         session.add(row)
         session.flush()
@@ -1248,6 +1478,9 @@ def smoke_validate() -> dict[str, Any]:
         "id": row_id,
         "bodies": bodies,
         "cities": len(results),
+        "scored": summary["period"],
+        "headline": summary["headline"],
+        "headline_city": summary["headline_city"],
         "delhi": None if delhi is None else {
             "r_smoke_index": _lag0_r(delhi, "smoke_index"),
             "r_per_mixing_depth": _lag0_r(delhi, "smoke_per_km_mixing_depth"),
@@ -1255,10 +1488,17 @@ def smoke_validate() -> dict[str, Any]:
             "best_lag": delhi["smoke_per_km_mixing_depth"]["best_lag"],
             "r_ventilation_only": _lag0_r(delhi, "ventilation_only"),
             "r_cams": _lag0_r(delhi, "cams_baseline"),
+            "r_placebo_constant_smoke": _lag0_r(delhi["placebos"], "constant_smoke"),
+            "r_placebo_day_shift_mean": delhi["placebos"]["day_shift"]["mean_r"],
+            "r_model_same_hours_as_day_shift": delhi["placebos"]["day_shift"]["model_mean_r_same_hours"],
             "summary": delhi["summary"],
         },
         "median_r": summary["median_r_smoke_per_km_mixing_depth"],
         "median_r_ventilation_only": summary["median_r_ventilation_only"],
         "median_r_cams": summary["median_r_cams"],
+        "median_r_placebo_constant_smoke": summary["median_r_placebo_constant_smoke"],
+        "median_r_placebo_day_shift": summary["median_r_placebo_day_shift"],
+        "median_r_model_same_hours_as_day_shift": summary["median_r_model_same_hours_as_day_shift"],
+        "day_shift_model_higher": summary["day_shift_model_higher"],
         "runtime_s": round(time.perf_counter() - started, 1),
     }

@@ -81,7 +81,8 @@ the share or area.
 - Never quote burn-risk scores (risk_score, max_risk_score, score, points, risk-weighted \
 hectares): they are a relative index from 0 to 100, not a probability. Name the villages ranked \
 highest instead; to say how reliable the ranking is, use the backtest over all pass pairs \
-(all_pairs AUC with its interval; never one pair's, the village or a baseline AUC), or burn_probability \
+(all_pairs AUC with its interval; never one pair's, the last 7 days' (recent), the village or a \
+baseline AUC), or burn_probability \
 (the share of similar fields that burnt by the next clear pass).
 - Name villages and districts only. Never name, guess or blame an individual person or farmer, \
 and never give personal information.
@@ -211,8 +212,9 @@ hectares): the score is a relative index, not a probability, and a number like 9
 certainty. Name the villages ranked highest instead. To say how reliable the ranking is, use the \
 backtest over all pass pairs (all_pairs: auc_weighted_mean with its auc_ci95 in the same sentence \
 when given, the number of pairs, and that 0.5 is chance) and the words of the method note (for \
-example "weak"); never give the AUC of one pass pair (headline), of the village ranking or of a \
-baseline at all: an automatic check rejects them.
+example "weak"); never give the AUC of one pass pair (latest_pair), of the last 7 days of pairs \
+(recent), of the village ranking, of a baseline or of a placebo at all: an automatic check rejects \
+them.
 - Name villages and districts only; never individuals. Neutral, public-service tone: no blame.
 - A title (at most 12 words), a two-sentence summary, and 3 to 5 sections with short headings, \
 in this order where there is data: air quality now; fires in the last 24 hours; wind and smoke \

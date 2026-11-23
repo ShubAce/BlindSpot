@@ -2,38 +2,49 @@
 
 - GET /api/geostationary/diurnal?days=3: fire pixels per 10-minute GK-2A scan over Punjab +
   Haryana, the mean per IST hour, the IST times of day when a polar satellite looked (from FIRMS
-  detections in fire_detection), the share of fire activity outside those windows, and how well
-  GK-2A agrees with VIIRS and MODIS (geo_fire_validation).
+  detections in fire_detection), the share of fire activity outside those windows (each scan
+  counted by the share of its 10 minutes outside them; also for other pads and day by day), and
+  how well GK-2A agrees with VIIRS and MODIS (geo_fire_validation).
 - GET /api/geostationary/latest: the newest analysed scan and its fire pixels as GeoJSON
   (pixel footprints, ~12 km2: centres ~4.5 km apart along a row, ~3.6 km down a column).
 
 Counts are fire pixels, an activity index, never a number of fires: one pixel covers ~12 km2 and
-may hold one fire or many, and GK-2A misses most small midday fires (see `validation`).
+may hold one fire or many, and GK-2A misses most small midday fires (see `validation`). Pixels
+flagged as persistent heat sources (geofire.STATIC_RULE) are left out of both unless
+include_static=true, as the FIRMS counts leave out FIRMS's static sites.
 """
 
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 from typing import Annotated, Any
 
 import numpy as np
 from fastapi import APIRouter, HTTPException, Query
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from blindspot.analytics import geofire as gf
 from blindspot.api import SessionDep, respond
 from blindspot.api.cache import cached_route
-from blindspot.models.geofires import GeoFireSlot, GeoFireValidation
+from blindspot.db import table_exists
+from blindspot.models.geofires import (
+    GeoFireSlot,
+    GeoFireStatic,
+    GeoFireStaticPixel,
+    GeoFireValidation,
+)
 from blindspot.provenance import latest_refs, ref_for_fetch, utcnow
 from blindspot.sources import gk2a  # noqa: F401  (registers the gk2a source label)
 
 router = APIRouter(prefix="/api/geostationary", tags=["geostationary"])
 
-SCAN_MINUTES = 10  # GK-2A full-disk repeat cycle: each scan stands for 10 minutes
+SCAN_MINUTES = gf.SCAN_MINUTES  # GK-2A full-disk repeat cycle: each scan stands for 10 minutes
 POLAR_PAD_MIN = (
     15  # a polar look is its detections' time span, padded this much each side
 )
+PAD_SENSITIVITY_MIN = (0, 5, 10, 15)  # the outside share is also given for these pads
 REGION_ISOS = ["IN-PB", "IN-HR"]
 UNIT = (
     "GK-2A fire pixels (~12 km2 each) per 10-minute scan inside Punjab and Haryana (India's state "
@@ -124,24 +135,96 @@ def _validation(session: Session) -> dict[str, Any]:
     }
 
 
+def _static_tables_ready(session: Session) -> bool:
+    """Whether the job has created the static-source tables yet. Production runs the API with
+    INIT_DB_ON_STARTUP=false and only the jobs run init_db, so right after a deploy they can be
+    missing; the endpoints then answer with nothing flagged instead of failing."""
+    return table_exists(session, "geo_fire_static", "geo_fire_static_pixel")
+
+
+def _static_sources(
+    session: Session, since: datetime, include: bool
+) -> tuple[dict[datetime, dict[str, int]], dict[str, Any]]:
+    """Fire pixels found on flagged persistent heat sources per slot and state, and the block that
+    says what was left out (or, with include, added back)."""
+    if not _static_tables_ready(session):
+        return {}, {
+            "rule": gf.STATIC_RULE,
+            "included": include,
+            "pixels_flagged": None,
+            "pixels_flagged_by_rule": {},
+            "pixel_hours": None,
+            "reason": "persistent heat sources not built yet (job geostationary)",
+        }
+    rows = session.execute(
+        select(GeoFireStaticPixel.slot_utc, GeoFireStaticPixel.state, func.count())
+        .where(
+            GeoFireStaticPixel.algorithm == gf.ALGORITHM_VERSION,
+            GeoFireStaticPixel.slot_utc >= since,
+        )
+        .group_by(GeoFireStaticPixel.slot_utc, GeoFireStaticPixel.state)
+    ).all()
+    per_slot: dict[datetime, dict[str, int]] = {}
+    for slot, state, n in rows:
+        per_slot.setdefault(slot, {})[state or ""] = int(n)
+    by_rule = dict(
+        session.execute(
+            select(GeoFireStatic.rule, func.count()).group_by(GeoFireStatic.rule)
+        ).all()
+    )
+    flagged = session.execute(
+        select(func.count()).select_from(
+            select(GeoFireStatic.row, GeoFireStatic.col).distinct().subquery()
+        )
+    ).scalar_one()
+    total = sum(n for states in per_slot.values() for n in states.values())
+    return per_slot, {
+        "rule": gf.STATIC_RULE,
+        "included": include,
+        "pixels_flagged": int(flagged),
+        "pixels_flagged_by_rule": {k: int(v) for k, v in by_rule.items()},
+        "pixel_hours": round(total * SCAN_MINUTES / 60, 1),
+    }
+
+
 @router.get("/diurnal")
 @cached_route(ttl=60)
-def diurnal(session: SessionDep, days: Annotated[int, Query(ge=1, le=7)] = 3) -> Any:
+def diurnal(
+    session: SessionDep,
+    days: Annotated[int, Query(ge=1, le=7)] = 3,
+    include_static: Annotated[
+        bool, Query(description="count pixels flagged as persistent heat sources too")
+    ] = False,
+) -> Any:
     """Fire activity through the day from GK-2A's 10-minute scans, against the polar windows."""
     now = utcnow()
     since = now - timedelta(days=days)
-    slots = session.execute(  # the columns used here, not each scan's stats (Neon egress)
-        select(GeoFireSlot.status, GeoFireSlot.t_utc, GeoFireSlot.count, GeoFireSlot.count_pb,
-               GeoFireSlot.count_hr, GeoFireSlot.clear_frac)
+    rows = session.execute(  # the columns used here, not each scan's stats (Neon egress)
+        select(GeoFireSlot.slot_utc, GeoFireSlot.status, GeoFireSlot.t_utc, GeoFireSlot.count,
+               GeoFireSlot.count_pb, GeoFireSlot.count_hr, GeoFireSlot.clear_frac)
         .where(
             GeoFireSlot.algorithm == gf.ALGORITHM_VERSION, GeoFireSlot.slot_utc >= since
         )
         .order_by(GeoFireSlot.slot_utc)
     ).all()
+    static, static_block = _static_sources(session, since, include_static)
     ok, failed = [], 0
-    for s in slots:
+    for s in rows:
         if s.status == "ok" and s.t_utc is not None and s.count is not None:
-            ok.append(s)
+            extra = static.get(s.slot_utc, {}) if include_static else {}
+            ok.append(
+                SimpleNamespace(
+                    t_utc=s.t_utc,
+                    count=s.count + sum(extra.values()),
+                    # a state's count stays None (unknown) unless flagged pixels are added to it
+                    count_pb=((s.count_pb or 0) + extra["Punjab"])
+                    if "Punjab" in extra else s.count_pb,
+                    count_hr=((s.count_hr or 0) + extra["Haryana"])
+                    if "Haryana" in extra else s.count_hr,
+                    count_static=sum(static.get(s.slot_utc, {}).values()),
+                    clear_frac=s.clear_frac,
+                )
+            )
         else:
             failed += 1
     sources = latest_refs(session, ["gk2a", "firms"])
@@ -161,10 +244,12 @@ def diurnal(session: SessionDep, days: Annotated[int, Query(ge=1, le=7)] = 3) ->
                 "count": s.count,
                 "count_pb": s.count_pb,
                 "count_hr": s.count_hr,
+                "count_static": s.count_static,
                 "clear_frac": s.clear_frac,
             }
             for s in ok
         ],
+        "static_sources": static_block,
         "hourly_ist": gf.hourly_means([(s.t_utc, s.count) for s in ok]),
         "polar_windows_ist": windows,
         "polar_passes": len(passes),
@@ -173,6 +258,7 @@ def diurnal(session: SessionDep, days: Annotated[int, Query(ge=1, le=7)] = 3) ->
         "pixel_hours": None,
         "pixel_hours_outside_polar_windows": None,
         "share_outside_polar_windows": None,
+        "outside_share_by_pad": [],
         "unobserved_gaps_ist": [],
         "interpretation": [],
         "validation": validation,
@@ -194,25 +280,23 @@ def diurnal(session: SessionDep, days: Annotated[int, Query(ge=1, le=7)] = 3) ->
             "no FIRMS detections in fire_detection for this period: polar windows unknown"
         )
     elif total:
-        outside = sum(
-            s.count
-            for s in ok
-            if not gf.inside_windows(gf.ist_minute_of_day(s.t_utc), windows)
-        )
+        # Each scan counts by the share of its 10 minutes outside the windows (gf.scan_overlap),
+        # so the gaps below add up to exactly this total and a boundary scan is never split
+        # all-or-nothing, nor counted twice.
+        spans = gf.window_spans(windows)
+        outside = sum(s.count * (1 - gf.scan_overlap(gf.ist_minutes(s.t_utc), spans)) for s in ok)
         payload["pixel_hours_outside_polar_windows"] = round(
             outside * SCAN_MINUTES / 60, 1
         )
         payload["share_outside_polar_windows"] = round(outside / total, 4)
+        payload["outside_share_by_pad"] = gf.outside_shares(
+            [(s.t_utc, s.count) for s in ok], passes, PAD_SENSITIVITY_MIN
+        )
     gaps = _gaps(windows)
     for g in gaps:  # GK-2A activity inside each unobserved span
         lo = int(g["start"][:2]) * 60 + int(g["start"][3:])
         hi = lo + g["minutes"]
-        inside = sum(
-            s.count
-            for s in ok
-            if lo <= gf.ist_minute_of_day(s.t_utc) < hi
-            or lo <= gf.ist_minute_of_day(s.t_utc) + 1440 < hi
-        )
+        inside = sum(s.count * gf.scan_overlap(gf.ist_minutes(s.t_utc), [(lo, hi)]) for s in ok)
         g["pixel_hours"] = round(inside * SCAN_MINUTES / 60, 1)
     payload["unobserved_gaps_ist"] = gaps
     payload["interpretation"] = _interpretation(payload)
@@ -266,10 +350,19 @@ def _interpretation(p: dict[str, Any]) -> list[str]:
             "counts are not reliable."
         )
     if p.get("share_outside_polar_windows") is not None:
+        # Pads under 10 minutes are left out of the spread: with none, a pass's ~2-minute detection
+        # span is compared with 10-minute scans and nearly everything falls outside by construction.
+        shares = [x for b in p.get("outside_share_by_pad") or [] if b["pad_min"] >= 10
+                  for x in (b["union"], b["per_day"]) if x is not None]  # fmt: skip
+        spread = (
+            f" ({_pct(min(shares))}-{_pct(max(shares))} with windows padded 10-15 minutes, on one "
+            "clock or day by day)"
+            if shares else ""
+        )
         out.append(
             f"{_pct(p['share_outside_polar_windows'])} of GK-2A fire pixel-hours "
             f"({p['pixel_hours_outside_polar_windows']} of {p['pixel_hours']}) fell outside the "
-            f"times a polar satellite looked; activity peaked {p['peak_ist']} IST."
+            f"times a polar satellite looked{spread}; activity peaked {p['peak_ist']} IST."
         )
     gaps = [g for g in p.get("unobserved_gaps_ist") or [] if g.get("pixel_hours")]
     if gaps:
@@ -291,8 +384,15 @@ def latest(
     slot: Annotated[
         datetime | None, Query(description="a scan slot (UTC); default: the newest")
     ] = None,
+    include_static: Annotated[
+        bool, Query(description="also the pixels flagged as persistent heat sources")
+    ] = False,
 ) -> Any:
-    """The newest analysed GK-2A scan (or the one asked for) and its fire pixels as GeoJSON."""
+    """The newest analysed GK-2A scan (or the one asked for) and its fire pixels as GeoJSON.
+
+    The scan's counts are as stored, for every confidence: count* leave flagged heat sources out
+    and count_static is what the fire test still found on them. min_confidence and include_static
+    change only the features (include_static adds the flagged pixels, with static=true)."""
     query = select(GeoFireSlot).where(
         GeoFireSlot.algorithm == gf.ALGORITHM_VERSION, GeoFireSlot.status == "ok"
     )
@@ -314,23 +414,29 @@ def latest(
             latest_refs(session, ["gk2a"]),
             max_age=60,
         )
-    features = (
-        session.execute(
-            text(
-                "SELECT json_build_object('type', 'Feature', "
-                "'geometry', ST_AsGeoJSON(coalesce(footprint, geom), 5)::json, "
-                "'properties', json_build_object('lon', lon, 'lat', lat, 'state', state, "
-                "'confidence', CASE confidence WHEN 2 THEN 'high' ELSE 'nominal' END, "
-                "'frp_mw', frp_mw, 'excess_k', excess_k, 'bt38_k', bt38_k, 'bt11_k', bt11_k, "
-                "'area_km2', area_km2, 'absolute_test', absolute)) "
-                "FROM geo_fire_pixel WHERE slot_utc = :slot AND algorithm = :alg "
-                "AND confidence >= :conf ORDER BY frp_mw DESC NULLS LAST"
-            ),
-            {"slot": row.slot_utc, "alg": gf.ALGORITHM_VERSION, "conf": min_confidence},
+    def features_of(table: str, static_rules: str) -> list[Any]:
+        return list(
+            session.execute(
+                text(
+                    "SELECT json_build_object('type', 'Feature', "
+                    "'geometry', ST_AsGeoJSON(coalesce(footprint, geom), 5)::json, "
+                    "'properties', json_build_object('lon', lon, 'lat', lat, 'state', state, "
+                    "'confidence', CASE confidence WHEN 2 THEN 'high' ELSE 'nominal' END, "
+                    "'frp_mw', frp_mw, 'excess_k', excess_k, 'bt38_k', bt38_k, 'bt11_k', bt11_k, "
+                    f"'area_km2', area_km2, 'absolute_test', absolute, {static_rules})) "
+                    f"FROM {table} WHERE slot_utc = :slot AND algorithm = :alg "
+                    "AND confidence >= :conf ORDER BY frp_mw DESC NULLS LAST"
+                ),
+                {"slot": row.slot_utc, "alg": gf.ALGORITHM_VERSION, "conf": min_confidence},
+            )
+            .scalars()
+            .all()
         )
-        .scalars()
-        .all()
-    )
+
+    features = features_of("geo_fire_pixel", "'static', false")
+    if include_static and _static_tables_ready(session):
+        features += features_of("geo_fire_static_pixel", "'static', true, 'static_rules', rules")
+    count_static = int((row.stats or {}).get("static_fires") or 0)
     ref = ref_for_fetch(session, row.fetch_id)
     sources = [ref] if ref is not None else latest_refs(session, ["gk2a"])
     age = (utcnow() - row.t_utc).total_seconds() / 60 if row.t_utc else None
@@ -344,6 +450,7 @@ def latest(
                 "count_pb": row.count_pb,
                 "count_hr": row.count_hr,
                 "count_high": row.count_high,
+                "count_static": count_static,
                 "frp_sum_mw": row.frp_sum_mw,
                 "clear_frac": row.clear_frac,
                 "sza_deg": row.sza_deg,
@@ -351,7 +458,8 @@ def latest(
                 "algorithm": row.algorithm,
             },
             "unit": UNIT,
-            "fires": {"type": "FeatureCollection", "features": list(features)},
+            "static_sources": {"rule": gf.STATIC_RULE, "included": include_static},
+            "fires": {"type": "FeatureCollection", "features": features},
         },
         sources,
         max_age=60,

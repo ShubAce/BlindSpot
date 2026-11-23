@@ -127,12 +127,12 @@ export const count = (v: number | null | undefined) => number(v);
 /** The word for a count: `plural(1, 'burn')` is "burn", any other count "burns" (or `many`). */
 export const plural = (n: number | null | undefined, one: string, many = `${one}s`) => (n === 1 ? one : many);
 
-// A range never breaks at its dash (a word joiner after the en dash), and "n = 23" never splits.
+// A range never breaks at its dash (a word joiner after the en dash), and "n = 18" never splits.
 const WJ = '⁠';
 const ciText = (ci: [number, number] | null | undefined, f: (x: number) => string) =>
   ci && ci.length === 2 && ci.every((x) => Number.isFinite(x)) ? `${f(ci[0])}–${WJ}${f(ci[1])}` : null;
 
-/** "audit precision 87% (95% CI 68–96%, n = 23)", or null when the API states no audit. */
+/** "audit precision 83% (95% CI 61–94%, n = 18)", or null when the API states no audit. */
 export function auditPhrase(a: BriefAudit | null | undefined): string | null {
   if (!a || a.precision == null || !Number.isFinite(a.precision)) return null;
   const ci = ciText(a.precision_ci95, (x) => percent(x).replace('%', ''));

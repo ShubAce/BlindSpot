@@ -105,6 +105,68 @@ def half_swath_from_scan(half_angle_deg: float, altitude_km: float) -> float:
     return EARTH_RADIUS_KM * (math.asin(ratio) - eta)
 
 
+def scan_angle_deg(distance_km: Any, altitude_km: Any) -> Any:
+    """Scan angle at the satellite (degrees off nadir) of the line of sight to a ground point
+    `distance_km` (great circle) from the point under the satellite, on a spherical Earth.
+
+    This is the angle a cross-track scanner turns its mirror to, not the view zenith angle at the
+    ground (which is larger: MODIS's 55 deg scan edge is ~65 deg zenith). It sets the pixel size:
+    MODIS pixels are 1 km at nadir, ~1.9 km along the scan at 40 deg and ~4.8 km at 55 deg.
+    """
+    lam = np.asarray(distance_km, dtype=float) / EARTH_RADIUS_KM
+    ratio = (EARTH_RADIUS_KM + np.asarray(altitude_km, dtype=float)) / EARTH_RADIUS_KM
+    return np.degrees(np.arctan2(np.sin(lam), ratio - np.cos(lam)))
+
+
+def along_scan_pixel_km(angle_deg: Any, altitude_km: float, nadir_km: float = 1.0) -> Any:
+    """Along-scan pixel size at a scan angle, for a scanner whose pixel is `nadir_km` at nadir:
+    the ground arc swept per unit of scan angle, relative to nadir (spherical Earth). MODIS
+    (705 km, 1 km at nadir): 1.9 km at 40 deg, 4.8 km at 55 deg. FIRMS reports this size as `scan`,
+    so it checks a predicted scan angle (tests/test_geostationary.py)."""
+    k = (EARTH_RADIUS_KM + altitude_km) / EARTH_RADIUS_KM
+    th = np.radians(np.asarray(angle_deg, dtype=float))
+    with np.errstate(invalid="ignore"):
+        darc = EARTH_RADIUS_KM * (k * np.cos(th) / np.sqrt(1 - (k * np.sin(th)) ** 2) - 1)
+    return nadir_km * darc / altitude_km
+
+
+def pass_scan_angles(
+    satrec: Satrec,
+    mid: datetime,
+    lat: np.ndarray,
+    lon: np.ndarray,
+    *,
+    half_window_s: float = 600.0,
+    step_s: float = 2.0,
+    chunk: int = 2048,
+) -> tuple[np.ndarray, np.ndarray]:
+    """For each ground point, how the satellite saw it on the pass closest to `mid`: the smallest
+    distance (km) from the ground track within +/- half_window_s, and the scan angle (degrees off
+    nadir, scan_angle_deg) at that moment. NaN when the orbit could not be propagated.
+
+    Pass `mid` from the FIRMS detections of the pass (accurate to ~2 min, see the module notes);
+    the window then holds the closest approach of every point of Punjab and Haryana.
+    """
+    lat_a = np.asarray(lat, dtype=float).ravel()
+    lon_a = np.asarray(lon, dtype=float).ravel()
+    dist = np.full(lat_a.size, np.nan)
+    angle = np.full(lat_a.size, np.nan)
+    offsets = np.arange(0.0, 2 * half_window_s + step_s / 2, step_s)
+    tr = track(satrec, mid - timedelta(seconds=half_window_s), offsets)
+    ok = np.isfinite(tr.lat)
+    if not ok.any() or lat_a.size == 0:
+        return dist, angle
+    tlat, tlon = tr.lat[ok], tr.lon[ok]
+    altitude = np.linalg.norm(tr.xyz[ok], axis=1) - EARTH_RADIUS_KM
+    for s in range(0, lat_a.size, chunk):
+        d = ground_km(lat_a[s : s + chunk, None], lon_a[s : s + chunk, None], tlat[None, :],
+                      tlon[None, :])  # fmt: skip
+        j = np.argmin(d, axis=1)
+        dist[s : s + chunk] = d[np.arange(j.size), j]
+        angle[s : s + chunk] = scan_angle_deg(dist[s : s + chunk], altitude[j])
+    return dist, angle
+
+
 def ground_km(lat1: Any, lon1: Any, lat2: Any, lon2: Any) -> Any:
     """Great-circle distance in km (haversine on the mean-radius sphere); works on numpy arrays."""
     p1, p2 = np.radians(lat1), np.radians(lat2)

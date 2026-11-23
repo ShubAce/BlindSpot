@@ -1,11 +1,11 @@
 'use client';
 
 import { ErrorNote, Skeleton } from '@/components/ui/states';
-import { dateIST, metricText, number } from '@/lib/format';
+import { dateIST, listJoin, metricText, number } from '@/lib/format';
 import { CADENCE, useApi } from '@/lib/live';
 import { PATHS } from '@/lib/api';
 
-import { listJoin, precisionText, useLiveHeadline } from './data';
+import { precisionText, useLiveHeadline } from './data';
 import styles from './styles';
 import type { LiveHeadline, ScarsSummaryLive } from './types';
 
