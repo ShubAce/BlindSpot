@@ -245,6 +245,8 @@ def test_district_brief_lists_villages_and_the_watchlist(client: TestClient, row
     assert [w["best_rank"] for w in body["watchlist"][:3]] == [2, 1, 4]
     assert [w["village"] for w in body["watchlist"][3:]] == ["Zeta", None]
     assert body["watchlist_total"] == 5 and body["villages_total"] == 4
+    # rows against named villages, as the totals count them (a page says "3 villages and 1 place")
+    assert body["watchlist_villages"] == 4 and body["totals"]["villages"] == 3
     # the villages after the top tenth are listed by best rank, and flagged so nobody calls them top tenth
     assert [w["in_top_tenth"] for w in body["watchlist"]] == [True, True, False, False, False]
     assert body["watchlist_in_top_tenth"] == 2 and "in_top_tenth false" in body["watchlist_order"]
