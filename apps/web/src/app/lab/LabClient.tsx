@@ -130,8 +130,13 @@ export function LabClient() {
   const tle = useOrbitsTle();
   const sources = useSources();
   const sourceCadence = useSourceCadence();
-  const staleRule = (l: { id: MapLayerId; cadenceMs: number }) =>
-    DAILY_LAYERS.includes(l.id) ? { staleAfterMs: DAILY_RUN_STALE_MS } : { cadenceMs: sourceCadence(LAYER_SOURCE[l.id] ?? '') ?? l.cadenceMs };
+  // A layer with a source is judged by that source's schedule only: none while GET /api/sources
+  // loads, so nothing is called stale meanwhile (as on the live map). The rest keep the registry's.
+  const staleRule = (l: { id: MapLayerId; cadenceMs: number }) => {
+    if (DAILY_LAYERS.includes(l.id)) return { staleAfterMs: DAILY_RUN_STALE_MS };
+    const source = LAYER_SOURCE[l.id];
+    return { cadenceMs: source ? sourceCadence(source) : l.cadenceMs };
+  };
 
   const sats: Satellite[] = useMemo(() => parseTles(tle.data), [tle.data]);
   const item = featured.data?.frames?.[0]?.item_id ?? null;
