@@ -965,9 +965,15 @@ def day_shift_placebo(
     }
 
 
+def _r2(r: float) -> str:
+    """r to two decimals, with no minus sign on a value that rounds to zero."""
+    text = f"{r:.2f}"
+    return "0.00" if text == "-0.00" else text
+
+
 def _versus(a: float, b: float) -> str:
     """How a compares with b, in the words of a sentence that prints both to two decimals."""
-    if round(a, 2) == round(b, 2):
+    if _r2(a) == _r2(b):
         return "level with"
     return "higher than" if a > b else "not higher than"
 
@@ -983,9 +989,9 @@ def describe_placebos(
     model_higher and compared counting cities: `unit`)."""
     if r_model is None:
         return "not enough overlapping hours"
-    parts = [f"smoke model r = {r_model:.2f}"]
+    parts = [f"smoke model r = {_r2(r_model)}"]
     if r_constant is not None:
-        parts.append(f"{_versus(r_model, r_constant)} 1/BLH alone (r = {r_constant:.2f})")
+        parts.append(f"{_versus(r_model, r_constant)} 1/BLH alone (r = {_r2(r_constant)})")
     ds = day_shift or {}
     r_shift, r_same = ds.get("mean_r"), ds.get("model_mean_r_same_hours")
     if r_shift is not None and r_same is not None:
@@ -993,7 +999,7 @@ def describe_placebos(
             unit = {"cities": "city", "shifts": "shift"}.get(unit, unit)
         parts.append(
             f"against the same smoke moved by 1 to 3 days, on the same hours: smoke model mean r = "
-            f"{r_same:.2f}, {_versus(r_same, r_shift)} the moved smoke's {r_shift:.2f} "
+            f"{_r2(r_same)}, {_versus(r_same, r_shift)} the moved smoke's {_r2(r_shift)} "
             f"(higher in {ds['model_higher']} of {ds['compared']} {unit})")
     if len(parts) == 1:
         parts.append("no placebo could be scored")
@@ -1007,7 +1013,7 @@ def describe_r(r: float | None, n_eff: float | None) -> str:
     size = abs(r)
     words = "no" if size < 0.1 else "a weak" if size < 0.3 else "a moderate" if size < 0.6 else "a strong"
     sign = "" if size < 0.1 else (" positive" if r > 0 else " negative")
-    text = f"{words}{sign} correlation (r = {r:.2f})"
+    text = f"{words}{sign} correlation (r = {_r2(r)})"
     if n_eff is not None and n_eff < 20:
         text += f"; only ~{n_eff:.0f} independent hours, so not statistically robust"
     return text

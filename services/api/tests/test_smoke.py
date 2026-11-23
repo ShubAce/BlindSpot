@@ -363,6 +363,8 @@ def test_day_shift_placebo_is_paired_and_needs_day_to_day_signal():
     assert "not higher than 1/BLH alone (r = 0.40)" in words
     assert "smoke model mean r = 0.35, higher than the moved smoke's 0.10 (higher in 5 of 6 shifts)" in words
     assert "level with 1/BLH alone" in tj.describe_placebos(0.301, 0.298)
+    assert tj.describe_placebos(-0.001, 0.2).startswith("smoke model r = 0.00;")  # no "-0.00"
+    assert tj.describe_r(-0.004, 30.0) == "no correlation (r = 0.00)"
 
 
 def test_day_shift_placebo_is_compared_on_its_own_hours():
