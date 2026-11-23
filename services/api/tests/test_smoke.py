@@ -387,8 +387,8 @@ def test_obs_hour_labels_each_period_by_its_centre():
     payload = orjson.loads((FIX.parent / "air" / "openaq_hourly_50.json").read_bytes())
     readings = openaq.parse_hourly(payload, location_id=50, sensor_id=12234796, parameter="pm25")
     starts = {
-        datetime.fromisoformat(x["period"]["datetimeTo"]["utc"].replace("Z", "+00:00")):
-        datetime.fromisoformat(x["period"]["datetimeFrom"]["utc"].replace("Z", "+00:00"))
+        datetime.fromisoformat(x["period"]["datetimeTo"]["utc"]):
+        datetime.fromisoformat(x["period"]["datetimeFrom"]["utc"])
         for x in payload["results"]
     }
     assert readings
