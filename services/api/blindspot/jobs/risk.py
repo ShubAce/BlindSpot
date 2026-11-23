@@ -118,10 +118,12 @@ def fill_neighbourhood(session: Session, table: str, t_end: datetime | None, whe
     field it is compared with; one pass over the scars gives both the unseen count and the hectares.
 
     Until 2026-11-23 the distances were metres on the ellipsoid (geography). On the 22 Nov snapshot
-    (243,450 fields, 147,993 scars in the week) that statement took 384 s on a desktop's Postgres 18,
-    and on the 1 GB server the job's run of 22 Nov lost its database connection inside it, 19.9
-    minutes into the run. This one took 52-62 s on the same desktop (three runs) and changes no field's score by
-    more than 0.66 points (Spearman 0.999999, the same top 1%; scripts/risk_neighbourhood_bench.py).
+    (243,450 fields, 147,993 scars in the week) that statement took 384 s on a desktop's Postgres 18.
+    On the 1 GB server the job's run of 22 Nov failed 19.9 minutes in with "server closed the
+    connection unexpectedly" (job_run); the log does not name the statement that was running, so
+    that it was this slow one is an inference. The planar statement took 52-62 s on the same desktop
+    (three runs) and changes no field's score by more than 0.66 points (Spearman 0.999999, the same
+    top 1%; scripts/risk_neighbourhood_bench.py).
     The week's scars are found by burn_before through ix_burn_cluster_window (B-tree skip scan on
     Postgres 18: 0.12 s for 147,993 scars), so no index was added. Scar centroids instead of
     polygons would save only a sixth more and undercount nearby hectares by 7.5% on average (a
