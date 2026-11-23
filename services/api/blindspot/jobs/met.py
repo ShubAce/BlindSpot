@@ -8,8 +8,8 @@ section 1; the two-model ensemble is a SYNTHESIS decision):
 2. If so (or the stored run is old, or the grid changed), fetch the member's whole grid with one
    POST: winds at 10 m / 950 / 925 / 850 hPa, boundary-layer height, surface pressure, 2 m
    temperature, plus precipitation (best_match) or 925 hPa temperature (gfs_seamless, so the
-   inversion diagnostic compares two temperatures from the same model). 7 past days + 5 forecast
-   days cost the same as fewer days (Open-Meteo counts in 14-day units).
+   inversion diagnostic compares two temperatures from the same model). 9 past days + 5 forecast
+   days cost the same as fewer days (Open-Meteo counts in 14-day units, see _call_weight).
 3. Compute each pressure level's height above ground (hypsometric equation) and the
    boundary-layer mean wind, and store everything as a new met_run with its met_grid rows, in one
    transaction. Keep the newest few runs per model.
@@ -60,14 +60,18 @@ META_DOMAINS: dict[str, tuple[str, ...]] = {
     "best_match": ("ecmwf_ifs", "dwd_icon"),
     "gfs_seamless": ("ncep_gfs013", "ncep_gfs025"),
 }
-PAST_DAYS = 7  # back runs need 72 h; the validation hindcast uses the whole week
+# Back runs need 72 h. The validation hindcast scores the last week and starts 48 h before it
+# (jobs/smoke.py VALIDATION_SPINUP_H), so smoke from earlier fires has arrived by the first scored
+# hour: 7 + 2 days. 9 + 5 = 14 days is still one 14-day unit, so the call weight is unchanged
+# (1.2 per point for 12 variables); the kept run grows from 12 to 14 days of met_grid rows.
+PAST_DAYS = 9
 FORECAST_DAYS = 5  # forward runs need 48 h ahead of any time on the fetch day
 MIN_REFRESH = timedelta(hours=5)  # never refetch a member sooner (upstream runs are 6 h apart)
 MAX_AGE = timedelta(hours=9)  # always refetch a run older than this, new upstream run or not
 STALE_FAIL = timedelta(hours=24)  # fail the job if the primary member is older and cannot refresh
 # Stored runs per model. Every reader takes the newest run of each model (models/met.latest_runs:
 # the smoke job, smoke_validate, GET /api/met/*); GET /api/scars/{id} takes the newest grid of each
-# valid hour, which the newest run covers for its 7 past days, and the daily prune job kept only
+# valid hour, which the newest run covers for its 9 past days, and the daily prune job kept only
 # the newest run anyway. Older runs only cost storage and the delete.
 KEEP_RUNS = 1
 PACE_S = 61.0  # seconds between member POSTs (600 calls/min)

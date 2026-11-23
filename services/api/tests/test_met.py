@@ -228,3 +228,15 @@ def test_met_routes(stored_runs):
         assert len(wf["u"]) == len(wf["v"]) == 30 and wf["level"] == "bl"
         assert wf["sources"] and wf["generated_at"].endswith("Z")
         assert client.get("/api/met/wind-field", params={"level": "300hPa"}).status_code == 400
+
+
+def test_nine_past_days_cost_no_more_calls():
+    """The validation hindcast's 48 h spin-up needs 9 past days of wind (7 scored + 2); 9 + 5 days
+    is still one 14-day unit, so each member's fetch costs the same calls as 7 + 5 did."""
+    from blindspot.jobs import met as met_job
+
+    spec = GridSpec.covering((70.0, 26.0, 80.0, 34.0))
+    assert met_job.PAST_DAYS == 9 and met_job.PAST_DAYS + met_job.FORECAST_DAYS <= 14
+    for variables in met_job.MEMBERS.values():
+        now = met_job._call_weight(spec, len(variables), met_job.PAST_DAYS + met_job.FORECAST_DAYS)
+        assert now == met_job._call_weight(spec, len(variables), 7 + 5) == pytest.approx(1.2 * spec.n)
