@@ -129,9 +129,45 @@ export type ScarMethod = {
   };
 };
 
+/** How another scar in the case's pictures stands to them: `same` = first seen burnt after the
+ *  before picture and at the latest on the after picture (new in the after picture); `earlier` =
+ *  seen burnt by the before picture's pass (dark in both); `later` = first seen after the after
+ *  picture (burnt in neither, so never drawn). */
+export type OtherScarRelation = 'same' | 'earlier' | 'later';
+
+export type OtherScar = {
+  id: number;
+  relation: OtherScarRelation;
+  burn_after: IsoTime;
+  burn_before: IsoTime;
+  unseen: boolean | null;
+  confidence: number | null;
+  area_ha: number;
+  /** Simplified by the API to one picture pixel, 5 decimals. */
+  outline: PolygonGeometry | MultiPolygonGeometry | null;
+};
+
+export type OtherScarTotals = { scars: number; area_ha: number };
+
+/** The other stored scars inside imagery.bbox, with the live map's confidence cut. `totals` and
+ *  `total` count every match; `scars` holds at most `limit` (same first, then earlier, then later,
+ *  larger first). Added to the API on 2026-11-23: an older answer has no such key. */
+export type OtherScars = {
+  bbox?: [number, number, number, number] | null;
+  model_version?: string;
+  min_confidence?: number | null;
+  totals?: Partial<Record<OtherScarRelation, OtherScarTotals>>;
+  total?: number;
+  returned?: number;
+  truncated?: boolean;
+  limit?: number;
+  scars?: OtherScar[];
+};
+
 export type CaseFile = Envelope & {
   case: CaseProps;
   imagery: { bbox: [number, number, number, number] | null; pre: CaseImageryPass | null; post: CaseImageryPass | null } | null;
+  other_scars?: OtherScars | null;
   fires_nearby: CaseFire[];
   weather_at_burn: CaseWeather | null;
   method?: ScarMethod | null;

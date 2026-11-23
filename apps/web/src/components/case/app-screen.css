@@ -313,6 +313,59 @@
   --photo-fire: #ea5a2e; /* the dark theme's fire: light's deeper red would sink into a burnt field */
   --photo-ring: #0c0a08;
   --photo-ground: #2b2620; /* a picture in miniature, for the key on light (below) */
+  /* The other scars in the picture, thinner than the case's own: yellow those first seen between
+     the same two passes, cyan those that had burnt by the first picture. Yellow and cyan stay apart
+     for red-green colour blindness too, and both hold on dark burnt ground, tan fields and the pale
+     green of short-wave infrared over a thin dark casing. Cyan is a mark as solid as the yellow: an
+     earlier burn is a detection like any other, not a miss. */
+  --photo-same: #ffd23f;
+  --photo-earlier: #5ee6ff;
+}
+
+/* the outlines drawn over the pictures keep their width whatever the picture's size */
+.chip__overlay path {
+  vector-effect: non-scaling-stroke;
+  stroke-linejoin: round;
+}
+.chip__casing {
+  fill: none;
+  stroke: var(--photo-ring);
+  stroke-opacity: 0.45;
+  stroke-width: 3.5px;
+}
+.chip__casing--case {
+  stroke-opacity: 0.8;
+  stroke-width: 7px;
+}
+/* Each other scar is a link to its own case file. Its fill is transparent but painted, so a click
+   anywhere inside the field opens it (the overlay itself lets clicks through). */
+.chip__others path {
+  fill: transparent;
+  stroke-width: 1.5px;
+  pointer-events: visiblePainted;
+  cursor: pointer;
+}
+.chip__others--same path {
+  stroke: var(--photo-same);
+}
+.chip__others--earlier path {
+  stroke: var(--photo-earlier);
+}
+.chip__others a:hover path {
+  stroke-width: 3px;
+}
+.chip__others--same a:hover path {
+  fill: rgb(255 210 63 / 0.25);
+}
+.chip__others--earlier a:hover path {
+  fill: rgb(94 230 255 / 0.25);
+}
+.evidence__others {
+  margin: 12px 0 0;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+  max-width: 72ch;
 }
 
 .evidence__grid {
@@ -376,12 +429,19 @@
 }
 .evidence__key {
   display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 16px;
+}
+.evidence__keyitem {
+  display: inline-flex;
   align-items: center;
   gap: 6px;
 }
 /* The key shows each mark exactly as the pictures carry it. On dark the card is as dark as a
    picture, so the swatches sit on it as they are; on light a white outline would vanish into the
-   white card, so each swatch gets a small dark tile (white 15:1, gold 6.4:1, fire 4.3:1 on it). The
+   white card, so each swatch gets a small dark tile (white 15:1, gold 6.4:1, fire 4.3:1, the other
+   scars' yellow 10.4:1 and cyan 10.2:1 on it). The
    tile's margin is a spread shadow, not padding, so it takes no room: the key wraps exactly as on
    dark (with padding it no longer fitted beside the switch on a phone and took a row of its own).
    2px of it leaves the label 4px clear of the tile. */
@@ -676,6 +736,16 @@
   }
   .evidence__grid {
     gap: 10px;
+  }
+  /* a picture half as wide: the other scars' outlines thinner, or they cover the fields */
+  .chip__others path {
+    stroke-width: 1px;
+  }
+  .chip__casing {
+    stroke-width: 2.5px;
+  }
+  .chip__casing--case {
+    stroke-width: 6px;
   }
   .evidence-figs {
     grid-template-columns: 1fr;
