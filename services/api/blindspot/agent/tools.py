@@ -675,7 +675,7 @@ def unseen_audit_block(summary: Any) -> dict[str, Any] | None:
         return None
     return {
         "precision": unseen["precision"], "precision_ci95": unseen["precision_ci95"],
-        # the same numbers as percentages, for the answer's wording (the site writes 87%, 68%-96%)
+        # the same numbers as percentages, for the answer's wording (e.g. 83%, 61%-94%)
         "precision_pct": round(unseen["precision"] * 100, 1),
         "precision_ci95_pct": [round(v * 100, 1) for v in unseen["precision_ci95"]],
         "audited": unseen.get("audited"), "method": audit.get("method"),
