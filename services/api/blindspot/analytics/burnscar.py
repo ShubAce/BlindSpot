@@ -21,17 +21,6 @@ an upper-bound FPR of 0.35, doc section 3.5); tillage can still mimic it, so res
 
 Each pixel remembers its last clear observation (BlockState), so a pixel hidden by cloud on one
 pass is compared with the pass before that, and each job run only reads the new passes.
-
-A smoke-hazy pass may open a burn but never use one up (s2burn-rules-3). Haze brightens the visible
-and near-infrared bands, so a field burnt just before a hazy pass often fails the char test there;
-if that pass then became the field's memory, the next clear pass would see no new darkening and the
-burn was lost for good. So on a hazy pass a pixel that darkened in short-wave infrared (dB11, dB12:
-haze barely moves them, while it biases dB8A) but is not a burn keeps its earlier view as its
-memory, "pending", and the next pass within 6 days of the hazy one judges it against that kept
-view: a burn if it passes the whole rule there and its post-burn NBR is negative, otherwise it is
-released (a clear pass becomes its memory as usual; another hazy pass leaves it pending). A pass
-counts as hazy here only if the block's blue-rise flag and a dark-target estimate both say so
-(dark_target_haze), because the flag can stay stuck on after one wrong call.
 """
 
 from __future__ import annotations
@@ -89,22 +78,14 @@ class BurnRule:
     haze_b02_rise: float = 0.03  # blue rise on unchanged ground that marks a smoke-hazy pass (doc 3.8)
     haze_stable_b12: float = 0.02  # "unchanged ground": SWIR-2 within this of the last clear pass
     haze_min_px: int = 500  # need this many unchanged pixels in a block to judge haze
-    # A hazy pass leaves pixels pending only if the dark-target estimate agrees (dark_target_haze
-    # above this): the flag above compares with the last pass it called clear, so once it calls one
-    # hazy wrongly it can keep doing so (2026: 43REP block r4096_c1024 was "hazy" on every pass from
-    # 15 Oct, including 18 and 28 Oct, which were clear by this estimate, 0.009).
-    haze_dark_target: float = 0.04
     # Cluster-level look-alike filter, added after the visual audit of 2026-10-31: char keeps SWIR-2
     # at or above NIR, so a burnt field's mean post-burn NBR is negative. Every audited cluster with
     # mean post NBR >= 0 was a flood-irrigated field (black in SWIR) or a cloud shadow SCL missed.
     nbr_post_max: float = 0.0
-    # A hazy pass opens pending pixels instead of becoming their memory (module docstring). False
-    # gives the per-pixel rule of s2burn-rules-1/-2, for replays that compare the two.
-    defer_hazy: bool = True
-    # The block memory on disk is keyed on pixel_version, the per-pixel rule, so a cluster-level
-    # change alone (as s2burn-rules-2 was) does not force reprocessing the season.
-    pixel_version: str = "s2burn-rules-3"
-    version: str = "s2burn-rules-3"
+    # The per-pixel rule (above) is unchanged since s2burn-rules-1, so the block memory on disk is
+    # keyed on pixel_version and a cluster-level change does not force reprocessing the season.
+    pixel_version: str = "s2burn-rules-1"
+    version: str = "s2burn-rules-2"
 
     def keeps(self, nbr_post_mean: float | None) -> bool:
         """Cluster-level filter: drop water / cloud-shadow look-alikes (mean post NBR >= 0)."""
@@ -269,10 +250,6 @@ STATE_FIELDS: dict[str, Any] = {
     "harv_before": np.uint16,  # first clear day showing it harvested (0 = not seen harvested)
     "burn_day": np.uint16,  # pass on which a burn was detected (0 = never)
     "tilled_day": np.uint16,  # darkened without char after harvest: residue worked in
-    "pend_day": np.uint16,  # hazy pass that left this pixel pending (0 = not pending): last_* still
-    #                         hold the view before it, which the next passes judge it against
-    "last_hazy": np.uint8,  # 1 when last_day is a smoke-hazy pass (kept for judging dB8A against a
-    #                         hazy view, whose NIR haze inflates it; the rule does not use it yet)
 }
 
 
@@ -333,14 +310,6 @@ class PassResult:
     post_item: np.ndarray | None = None
     evidence: dict[str, np.ndarray] = field(default_factory=dict)  # float32 per-pixel features
     hazy: bool = False
-    # bool: burn pixels judged against a view kept through a hazy pass (pending), and pixels this
-    # pass left pending
-    deferred: np.ndarray | None = None
-    opened: np.ndarray | None = None
-    # uint16 day that groups burn pixels into clusters: pre_day, except that a pixel judged against a
-    # view kept through a hazy pass takes that pass's day, so it joins the pixels of its field whose
-    # previous view is the hazy pass (the burn window then runs from the earliest pre pass)
-    key: np.ndarray | None = None
 
 
 def _median(values: np.ndarray) -> float | None:
@@ -372,19 +341,6 @@ def haze_check(
         return False, None
     rise = _median((refl["B02"] - ref_b02)[stable])
     return bool(rise is not None and rise > rule.haze_b02_rise), (round(rise, 4) if rise is not None else None)
-
-
-def dark_target_haze(refl: dict[str, np.ndarray], valid: np.ndarray, min_px: int = 200) -> float | None:
-    """Haze over a block without any earlier pass: median(B02 - 0.25 B12) over pixels dark in
-    SWIR-2 (0.01 < B12 < 0.13). Over such dark targets surface blue reflectance is about a quarter
-    of the 2.1 um one (the MODIS dark-target relation), so the excess is mostly path radiance: about
-    0 to +0.03 on clear 2026 passes in Punjab, +0.05 to +0.14 on smoke-hazy ones. None if fewer than
-    `min_px` such pixels."""
-    with np.errstate(invalid="ignore"):
-        dark = valid & (refl["B12"] > 0.01) & (refl["B12"] < 0.13) & np.isfinite(refl["B02"])
-    if int(dark.sum()) < min_px:
-        return None
-    return round(float(np.median((refl["B02"] - 0.25 * refl["B12"])[dark])), 4)
 
 
 def registry_index(registry: list[str], item_id: str) -> int:
@@ -432,11 +388,7 @@ def apply_pass(
         return PassResult(False, f"implausible cropland B12 median {b12_med}", stats)
     a = state.arrays
     hazy, haze_rise = haze_check(a, refl, valid, rule)
-    ddv = dark_target_haze(refl, valid)
-    # Low trust (pixels may be left pending): hazy by the flag, and by the dark-target estimate
-    # where it can be computed.
-    deferring = rule.defer_hazy and hazy and (ddv is None or ddv > rule.haze_dark_target)
-    stats.update(hazy=hazy, haze_b02_rise=haze_rise, haze_dark_target=ddv, deferring=deferring)
+    stats.update(hazy=hazy, haze_b02_rise=haze_rise)
 
     post_ndvi = ndvi(refl)
     post_nbr = nbr(refl)
@@ -458,29 +410,8 @@ def apply_pass(
     burn_day = a["burn_day"].astype(np.int32)
     rearmed = (burn_day == 0) | (day - burn_day > rule.rearm_days)
     candidate = has_prev & (gap <= rule.max_gap_days) & darkened & charred & rearmed
-    # Pending pixels (left so by a hazy pass, module docstring): their last_* are still the view
-    # before that pass, so the deltas above are already measured against it. Within max_gap_days
-    # of the hazy pass they burn by the whole rule plus a negative post-burn NBR (char keeps SWIR-2
-    # above NIR), however far back the kept view is.
-    pend_day = a["pend_day"].astype(np.int32)
-    pending = valid & (pend_day > 0) & (day - pend_day <= rule.max_gap_days)
-    with np.errstate(invalid="ignore"):
-        deferred = pending & darkened & charred & (post_nbr < 0) & rearmed
-    candidate |= deferred
     # The opening may not add pixels that failed the rule.
     burn = (_open_2x2(candidate) & candidate) if res_m <= 20 else candidate
-    deferred &= burn
-    # What stays pending (its memory not replaced by this pass): on a low-trust (hazy) pass, pixels
-    # still pending, and pixels that darkened in SWIR since a recent view without burning now. Any
-    # other pass releases every pending pixel it sees, and so does a pass more than max_gap_days
-    # after the hazy one, so a pixel is never held longer than that.
-    if deferring:
-        with np.errstate(invalid="ignore"):
-            swir_dark = (d_b11 > rule.d_b11) & (d_b12 > rule.d_b12)
-        opened = has_prev & (gap <= rule.max_gap_days) & swir_dark & rearmed & ~pending & ~burn
-        hold = (pending & ~burn) | opened
-    else:
-        opened = hold = np.zeros_like(valid)
 
     # Harvest bookkeeping: standing -> harvested, and harvested -> tilled (dark without char).
     # Smoke haze lowers NDVI and brightens the visible bands (so TBI rises), which would fake
@@ -495,9 +426,7 @@ def apply_pass(
         harvested_now = harvested_between(pre_ndvi, post_ndvi, pre_b11, refl["B11"], comparable, harvest)
         a["harv_after"][harvested_now] = a["ndvi_day"][harvested_now]
         a["harv_before"][harvested_now] = day
-        # (a pending pixel that darkened without char since its kept view was tilled meanwhile)
-        tilled_now = ((has_prev & (gap <= rule.max_gap_days)) | pending) & darkened & ~charred
-        tilled_now &= a["harv_before"] > 0
+        tilled_now = has_prev & (gap <= rule.max_gap_days) & darkened & ~charred & (a["harv_before"] > 0)
         a["tilled_day"][tilled_now & ~burn] = day
     a["burn_day"][burn] = day
 
@@ -508,29 +437,24 @@ def apply_pass(
         "dnbr": a["last_nbr"].astype(np.float32) - post_nbr, "nbr_post": post_nbr,
         "bais2_post": post_bais2, "tbi_post": post_tbi, "ndvi_pre": pre_ndvi, "ndvi_post": post_ndvi,
     }
-    # Remember this pass for every clear pixel that is not (still) pending.
+    # Remember this pass for every clear pixel.
     global_items = np.array([registry_index(registry, i) for i in item_ids] + [0], dtype=np.uint16)
     post_item = global_items[np.minimum(item_index, len(item_ids))]
-    seen = valid & ~hold
-    a["pend_day"][valid & (pend_day > 0) & ~hold] = 0
-    a["pend_day"][opened] = day
-    a["last_day"][seen] = day
-    a["last_hazy"][seen] = hazy
-    a["last_item"][seen] = post_item[seen]
-    a["last_b8a"][seen] = refl["B8A"][seen]
-    a["last_b11"][seen] = refl["B11"][seen]
-    a["last_b12"][seen] = refl["B12"][seen]
-    a["last_nbr"][seen] = post_nbr[seen]
+    a["last_day"][valid] = day
+    a["last_item"][valid] = post_item[valid]
+    a["last_b8a"][valid] = refl["B8A"][valid]
+    a["last_b11"][valid] = refl["B11"][valid]
+    a["last_b12"][valid] = refl["B12"][valid]
+    a["last_nbr"][valid] = post_nbr[valid]
     if not hazy:
         a["last_ndvi"][valid] = post_ndvi[valid]
         a["ndvi_day"][valid] = day
+    if not hazy:
         a["clear_b02"][valid] = refl["B02"][valid]
         a["clear_b12"][valid] = refl["B12"][valid]
     stats.update(burn_px=int(burn.sum()), harvested_px=int(harvested_now.sum()),
-                 tilled_px=int(tilled_now.sum()), deferred_burn_px=int(deferred.sum()),
-                 opened_px=int(opened.sum()), pending_px=int(hold.sum()))
-    key = np.where(deferred, pend_day, pre_day).astype(np.uint16)
-    return PassResult(True, None, stats, burn, pre_day, pre_item, post_item, evidence, hazy, deferred, opened, key)
+                 tilled_px=int(tilled_now.sum()))
+    return PassResult(True, None, stats, burn, pre_day, pre_item, post_item, evidence, hazy)
 
 
 def harvest_candidates(state: BlockState, scope: np.ndarray, newest_day: int,
