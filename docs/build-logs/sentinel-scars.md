@@ -87,3 +87,79 @@
 - These are model judgements on replay strata, not comparable with the hand audit in AUDIT. The old
   stratum's 17/26 (14 of 40 unsure) is a reason for a fresh random audit of stored rules-2 clusters.
 - Code and scripts: commit d4c84b2, reverted by 77a9f09 (branch models/burnscars).
+
+## s2burn-rules-4 (seed and grow): tried, not shipped (2026-11-24)
+- Idea: pixels that pass every strict rules-2 test (after the 2x2 opening at 20 m) are seeds. A
+  pixel that passes looser tests for the same pass pair (dB8A > 0.04, dB11 > 0.04, dB12 > 0.02,
+  BAIS2 >= 0.70, brightness <= 0.40, post NBR < 0; same gap, re-arm, cropland and clear-sky rules)
+  joins a burn when it is 4-connected to a seed through such pixels. The 2x2 opening runs again on
+  the grown burn at 20 m, and the look-alike filter judges a cluster's seed pixels.
+- Pre-registered bar (in the eval script's docstring, committed before the first evaluation
+  replay); all four were required: (a) added area >= 10% of rules-2 in 3 of 6 windows; (b) blind
+  audit 'added' precision >= max(0.6, rules-2 precision - 0.10); (c) the audit is valid: >= 70% of
+  positive controls judged burnt and >= 70% of negative controls not burnt (decided chips); (d) the
+  daily sentinel run stays within SENTINEL_BUDGET_MIN = 100 min.
+- Development window only (Kaithal 43RFP, 40 m): without the per-pixel NBR test, grown pixels
+  pushed seed clusters' mean NBR over 0 and the filter dropped their seeds (1482 px vs 129 under
+  rules-2; 67 ha of rules-2 area lost). With the NBR test and the seed-based filter: 2.9 ha lost.
+- Replays (scripts/burn_grow_eval.py) of season masks from 1 Oct to the 22 Nov pass, inner
+  windows, production stage and resolution, on cached Earth Search reads:
+  window                                   res   rules-2 ha  rules-4 ha  added ha (share)  removed ha
+  W1 case 4723594 Agwar Gujjran 43REQ      20 m      92.9       184.2      91.2 (98.2%)       0.0
+  W2 case 4936479 Ratta Theh 43REN         40 m     721.4       896.0     174.6 (24.2%)       0.0
+  W3 case 4939467 Kalwan 43REN             40 m     239.4       336.8      97.4 (40.7%)       0.0
+  W4 Fazilka 43RDP                         20 m    1477.4      1679.6     202.8 (13.7%)       0.6
+  W5 Barnala 43REP                         20 m    2637.0      3808.2    1176.5 (44.6%)       5.3
+  W6 Tarn Taran 43REQ                      20 m    1621.5      2550.2     945.4 (58.3%)      16.8
+  Bar (a): met in 6 of 6.
+- The recall gain was real. The case windows' visibly charred ground of the 17 -> 22 Nov pair
+  outside every stored scar (20 m: BAIS2 >= 0.70, TBI <= 0.40, dB12 > 0.02, dB8A > 0.04, clear on
+  both passes): W1 96.0 ha, of which rules-2 replayed outlines 0.0 and rules-4 72.9 (76%); W2
+  116.2 ha, 3.6 vs 52.4 (45%); W3 56.3 ha, 1.4 vs 29.5 (52%).
+- Runtime: apply_pass on a full 1024 px block (43REP r4096_c1024, 13 passes, 3 repeats) took
+  0.026 s more per block-pass with growth (mean; 0.031 s median); an independent re-measurement
+  gave 0.028 s (0.038 s median). Job run 2065 (23 Nov, 54.6 min) read 4188 block-passes, so,
+  doubled for a slower runner, about 58-60 of the 100 min. Bar (d): met.
+- Blind audit of 70 chips (scripts/burn_grow_chips.py, seed 20261123; true colour and SWIR on the
+  outline's own pre and post passes), judged blind by a vision model, three votes per chip,
+  majority verdict. Strata: 30 added pieces, 20 rules-2 replay clusters, 10 positive controls
+  (stored scars with a FIRMS detection within about 1 km) and 10 negative controls (real cluster
+  shapes moved onto calm, clear cropland).
+  Burnt / not burnt / unsure: added 10 / 10 / 10, rules-2 15 / 3 / 2, positive 5 / 4 / 1,
+  negative 0 / 10 / 0.
+  Bar (b): added 10/20 = 0.50 (Wilson 0.30-0.70) against max(0.6, 15/18 - 0.10) = 0.733. Failed,
+  even at the top of the interval (0.33 with unsure counted as not burnt). Bar (c): positive
+  controls 5/9 = 0.56 (0.27-0.81), below 0.70. Failed, so the audit is not valid either. Negative
+  controls: 0 of 10 burnt. Not shipped: reverted by ed08024.
+- Why it failed (chip review and the replays):
+  - Growth leaks into neighbouring straw fields. chip_065, a 2.0 ha piece of a 67.5 ha Barnala
+    cluster (2 -> 7 Nov), stays straw-coloured in true colour and SWIR, while the fields around
+    it turn black; chip_016 (Fazilka) looks the same. When either pass is hazy, the loose tests
+    (NBR < 0 included) do not separate dry straw from char.
+  - Growth also rescued seed clusters below the minimum size (13 px at 20 m). 10 of the 30 added
+    chips were wholly new clusters, judged 3 / 5 / 2. By size (exploratory, not pre-registered):
+    added pieces under 1 ha 1 / 7 / 4, pieces of 1 ha or more 9 / 3 / 6.
+  - What the website shows was not in the bar. The scar list keeps confidence >= 0.5
+    (scars.WEBSITE_LIST), and the job scores confidence on cluster means that include grown
+    pixels, against the strict cut-offs, so grown clusters lose confidence. Recomputed from the
+    replay clusters (burnscar.confidence on each cluster's means, size, haze flag and gap), the site
+    would lose rules-2 area it shows today: W1 3.0, W2 6.9, W3 7.2, W4 14.7, W5 144.3 (5.9% of
+    the 2448.2 ha shown) and W6 38.8 ha. Its gain was smaller than the gain over all clusters
+    (W5 +614.0 ha against +1176.5 ha).
+  - Growth merges seed clusters (pooling their seed NBR means) and sets burn_day on grown pixels,
+    which blocks re-arming for rearm_days. W5 has 7 rules-2 clusters (4.4 ha) and W6 18 (12.1 ha)
+    with no rules-4 cluster on the same pass. A later real burn on grown ground could be dated to
+    the grown pass; not measured.
+- The positive-control definition was weak. A FIRMS detection within about 1 km says little about
+  the scar itself in fire-dense districts. 4 of the 5 failed positives are under 1 ha, and two
+  (chip_005, chip_064) have hazy pre passes and look like genuine rules-2 false positives. A future
+  audit should pre-register stronger positives: a FIRMS pixel inside or within 200 m of the
+  outline, at least 2 ha, clear passes.
+- For a next candidate (not tried): score area at confidence >= 0.5, as the website shows it;
+  keep the minimum cluster size on the seeds before growth; do not grow when either pass is hazy.
+- These are model judgements on replay strata, not comparable with the hand audit in AUDIT (the
+  rules-2 stratum's 15/18 only happens to equal it).
+- Code and scripts: commits 3e41bf6 (rule), 68c52ee and db380b6 (scripts/burn_grow_eval.py,
+  scripts/burn_grow_chips.py), 1ea35a2 and d908ab3 (docs), all reverted by ed08024 (branch
+  w3/grow). Of 1ea35a2, only the README label of the hand-audit row (rule s2burn-rules-2, 31 Oct
+  2026) was kept (d04ff5d).
