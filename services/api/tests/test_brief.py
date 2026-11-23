@@ -341,10 +341,13 @@ def test_csv_opens_in_excel_with_links_in_three_languages(client: TestClient, ro
     window, audit = brief.Window.ending_at(NEWEST, 7), brief.candidate_unseen_audit()
     assert header == brief.csv_header("en", audit, window) and len(header) == 10
     # a saved file still says the counts and areas are upper bounds, with the audit and the passes
+    # The audit judged the earlier rule s2burn-rules-2, so the file says so (audit "current" false).
+    older = "; that audit, of 2026-10-31, judged the earlier rule s2burn-rules-2, not the current one"
+    assert audit["current"] is False and audit["model_version"] == "s2burn-rules-2"
     assert header[3] == ("candidate unseen burns, Sentinel-2 passes 2026-10-24 to 2026-10-30 (upper bound: "
-                         "in a hand audit of 18, 83% were real burns, 95% CI 61%-94%)")
+                         f"in a hand audit of 18, 83% were real burns, 95% CI 61%-94%{older})")
     assert header[4] == ("area of candidate unseen burns, ha (upper bound: in a hand audit of 18, 83% were real "
-                         "burns, 95% CI 61%-94%)")
+                         f"burns, 95% CI 61%-94%{older})")
     assert lines[0] == ["Alpha", "North", A, "2", "8.00", "2026-10-30", "-8.000000", "65.010000",
                         "https://www.google.com/maps/search/?api=1&query=-8.000000,65.010000",
                         f"https://www.blindspotin.tech/case/{ids['a2']}"]
@@ -359,7 +362,7 @@ def test_csv_opens_in_excel_with_links_in_three_languages(client: TestClient, ro
         assert header == brief.csv_header(lang, audit, window) != brief.csv_header("en", audit, window)
         assert foreign_script(" ".join(header), lang) == []  # Devanagari for Hindi, Gurmukhi for Punjabi
         for cell in header[3:5]:  # the audit in every language, its numbers in the digits 0-9
-            assert all(s in cell for s in ("18 ", "83%", "95% CI 61%-94%")), cell
+            assert all(s in cell for s in ("18 ", "83%", "95% CI 61%-94%", "2026-10-31 ", " s2burn-rules-2 ")), cell
         assert "2026-10-24" in header[3] and "2026-10-30" in header[3]
         assert localized[2][0] == brief.UNNAMED[lang] and foreign_script(brief.UNNAMED[lang], lang) == []
         for line in localized:  # numbers in the digits 0-9

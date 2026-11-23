@@ -188,6 +188,10 @@ export type UnseenBurnsBlock = {
   precision?: number | null;
   precision_ci95?: [number, number] | null;
   precision_n?: number | null;
+  /** the audit's own rule and day; audit_current is false when it judged an earlier rule */
+  audit_date?: string | null;
+  audit_model_version?: string | null;
+  audit_current?: boolean | null;
   unseen_share?: number | null;
   note?: string | null;
 };

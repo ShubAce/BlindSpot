@@ -136,9 +136,10 @@ Cached for 60 s.
   "clusters": 67854, "area_ha": 104476.3, "unseen_clusters": 59465, "unseen_area_ha": 86303.0,
   "checked_area_ha": 104476.3, "unseen_share": 0.8261, "districts": 38,
   "first_pass": "2026-10-02T05:40:36.219000Z", "last_pass": "2026-10-30T05:40:52.298000Z",
-  "model_version": "s2burn-rules-2",
+  "model_version": "s2burn-rules-4h", "model_versions": ["s2burn-rules-4h"],
   "precision": 0.833, "precision_ci95": [0.608, 0.942], "precision_n": 18,
-  "note": "Scars from Sentinel-2 passes processed so far ...; treat the share as an upper bound ..."
+  "audit_date": "2026-10-31", "audit_model_version": "s2burn-rules-2", "audit_current": false,
+  "note": "Scars from Sentinel-2 passes processed so far ...; treat the share as an upper bound ... That audit judged the earlier rule s2burn-rules-2 (2026-10-31), not the current rule s2burn-rules-4h."
  },
  "delhi": {
   "city": "Delhi", "available": true,
@@ -187,6 +188,14 @@ Notes for the UI:
   and 17 Sep, which was never published).
 - `unseen_burns`: always show `precision` with `precision_ci95` and `precision_n` next to
   `unseen_share`.
+  - `audit_date` / `audit_model_version` say which rule the audit judged, and when. When
+    `audit_current` is false (the scars come from a newer rule than the audited one), every
+    statement of the precision must say it is an audit of that earlier rule, not of the current
+    one (the site: components/case/audit.ts `auditOlderText`; the brief: `current` in
+    `candidate_unseen_audit`; the agent: `current` in its audit block).
+  - `model_versions` lists the rules of the rows counted: the API also serves the previous
+    rule's rows (burnscar.SERVED_VERSIONS) until the sentinel job has rewritten their tile, so
+    it has two entries for about one run after a rule change.
   - `unseen_share` is null when no scar has been checked against FIRMS yet.
   - `first_pass` / `last_pass` are the Sentinel-2 passes the totals cover. They grow as the
     6-hourly sentinel job processes more tiles.

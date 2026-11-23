@@ -153,6 +153,38 @@ def test_a_row_across_the_new_area_edge_is_not_claimed() -> None:
     assert claimed == {"burn_cluster": 0, "harvest_cluster": 0, "forwarded": 0} and left == 1
 
 
+def test_a_burn_moved_to_another_pass_keeps_its_link() -> None:
+    """A rule change can move a burn to another pass (s2burn-rules-4h finds on a hazy pass what
+    rules-2 saw only on the next clear one): the old scar is forwarded to the new scar of the same
+    field when that covers at least FORWARD_MOVED_SHARE of it within rearm_days. A scar of the same
+    pass is still preferred; a small overlap or a burn beyond rearm_days is not the same burn."""
+    tile = "TEST8"
+    field_a, field_b, field_c, field_d = (box(75.70 + 0.01 * k, 30.40, 75.702 + 0.01 * k, 30.402) for k in range(4))
+    earlier = BEFORE - dt.timedelta(days=5)
+    hotspots = {"tile": tile, "scope": "hotspots"}
+    with SessionLocal() as session:
+        job._replace_rows(session, BurnCluster, SCOPE_SQL, hotspots, [
+            _scar(f, "hotspots", 20, tile, k) for k, f in (("a", field_a), ("b", field_b), ("c", field_c),
+                                                          ("d", field_d))])
+        old = _ids(session, tile)
+        out = job._replace_rows(session, BurnCluster, SCOPE_SQL, hotspots, [
+            # a: the same field, five days earlier (moved to the hazy pass), outline 10% larger
+            _scar(affinity.scale(field_a, 1.05, 1.05), "hotspots", 20, tile, "a2", before=earlier),
+            # b: another day, but only the field's western 30%
+            _scar(box(75.71, 30.40, 75.7106, 30.402), "hotspots", 20, tile, "b2", before=earlier),
+            # c: the same field 25 days earlier, beyond rearm_days: not this burn
+            _scar(field_c, "hotspots", 20, tile, "c2", before=BEFORE - dt.timedelta(days=RULE.rearm_days + 5)),
+            # d: a sliver on the same pass and the whole field five days earlier: the same pass wins
+            _scar(box(75.73, 30.40, 75.7303, 30.402), "hotspots", 20, tile, "d2"),
+            _scar(field_d, "hotspots", 20, tile, "d3", before=earlier)])
+        new = _ids(session, tile)
+        forwards = dict(session.execute(text("SELECT old_id, new_id FROM burn_cluster_forward WHERE old_id = ANY(:i)"),
+                                        {"i": list(old.values())}).all())
+        session.rollback()
+    assert out["deleted"] == 4 and out["forwarded"] == 2
+    assert forwards == {old["a"]: new["a2"], old["d"]: new["d2"]}  # b and c answer 404, as before
+
+
 def test_area_key_changes_only_with_the_area() -> None:
     a = box(0, 0, 1000, 1000)
     same = box(0, 0, 1000, 1000).reverse()  # other vertex order
@@ -210,3 +242,24 @@ def test_a_replaced_scar_link_answers_with_its_successor(client) -> None:
     assert c.json()["case"]["id"] == ids[2] and "forwarded_from" not in c.json()
     assert far.status_code == 200 and far.json()["case"]["id"] == ids[2]  # MAX_FORWARD_HOPS hops
     assert too_far.status_code == 404 and missing.status_code == 404 and cycle.status_code == 404
+
+
+def test_rows_of_the_previous_rule_are_served_until_their_tile_is_rewritten() -> None:
+    """After a rule change the API also serves the previous rule's rows (SERVED_VERSIONS): a tile the
+    sentinel job has not rewritten yet stays on the map instead of going blank. Each tile holds one
+    version at a time (its rows are replaced in one transaction), so nothing is counted twice. Rows
+    of any older rule are not served."""
+    from blindspot.analytics import headline
+    from blindspot.analytics.burnscar import SERVED_VERSIONS
+
+    tile = "TEST9"
+    rows = [{**_scar(box(75.9 + 0.01 * k, 30.4, 75.902 + 0.01 * k, 30.402), "hotspots", 20, tile, v), "model_version": v}
+            for k, v in enumerate((RULE.version, "s2burn-rules-2", "s2burn-rules-1"))]
+    with SessionLocal() as session:
+        before, _ = headline.unseen_burns(session)
+        job._replace_rows(session, BurnCluster, SCOPE_SQL, {"tile": tile, "scope": "hotspots"}, rows)
+        after, _ = headline.unseen_burns(session)
+        session.rollback()
+    assert SERVED_VERSIONS == (RULE.version, "s2burn-rules-2")
+    assert after["clusters"] - before["clusters"] == 2
+    assert after["model_versions"] == [RULE.version, "s2burn-rules-2"]

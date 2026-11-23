@@ -77,7 +77,9 @@ it a forecast, never IITM's estimate.
 fire detection. Always call them candidates, in the same sentence as any share or area of them. \
 Their share is an upper bound: when you give it, also give the audit precision and its 95% \
 interval (precision, precision_ci95 in a tool result); if no tool result has them, do not give \
-the share or area.
+the share or area. When the audit's "current" is false, it judged an earlier rule: in the same \
+sentence as the precision, name that rule (its model_version) and the audit's date, and say it is \
+not an audit of the current rule.
 - Never quote burn-risk scores (risk_score, max_risk_score, score, points, risk-weighted \
 hectares): they are a relative index from 0 to 100, not a probability. Name the villages ranked \
 highest instead; to say how reliable the ranking is, use the backtest over all pass pairs \
@@ -206,7 +208,9 @@ and in the same section say that the share is an upper bound and give the audit 
 its 95% interval and the number audited, from candidate_unseen_audit in the FACTS, for example: \
 "Candidate unseen burns cover X ha, Y% of the mapped burn-scar area [n]. That share is an upper \
 bound: in an audit of N candidates, P% were real burns (95% CI L%-H%) [n]." If the FACTS have no \
-audit, leave the share and area out.
+audit, leave the share and area out. If candidate_unseen_audit has "current": false, that audit \
+judged an earlier rule: right after the precision write, for example, "That audit, of D, judged \
+the earlier rule R, not the current one [n]." with D its date and R its model_version.
 - Never quote burn-risk scores (risk_score, max_risk_score, score, points or risk-weighted \
 hectares): the score is a relative index, not a probability, and a number like 90 reads as \
 certainty. Name the villages ranked highest instead. To say how reliable the ranking is, use the \

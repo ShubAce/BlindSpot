@@ -468,3 +468,52 @@ def test_a_stored_bulletin_is_rechecked_without_gemini(monkeypatch: Any) -> None
         with session_scope() as session:
             session.execute(text("DELETE FROM bulletin WHERE date = :d"), {"d": day})
             session.execute(text("DELETE FROM agent_run WHERE id = :id"), {"id": run_id})
+
+
+# --- an audit of an earlier rule -----------------------------------------------------------------------
+
+
+def test_the_agents_audit_block_says_which_rule_it_judged() -> None:
+    """The 31 Oct audit judged s2burn-rules-2; the scars now come from a newer rule, so the block the
+    agent quotes says so (date, model_version, current false) and tells the model to say it too."""
+    from blindspot.agent.tools import unseen_audit_block
+    from blindspot.analytics.burnscar import RULE, audit_summary
+
+    # as the agent receives it: /api/scars/summary's JSON
+    block = unseen_audit_block(json.loads(json.dumps({"method": {"audit": audit_summary()}})))
+    assert RULE.version != "s2burn-rules-2"
+    assert (block["current"], block["model_version"], block["date"]) == (False, "s2burn-rules-2", "2026-10-31")
+    assert "judged the earlier rule s2burn-rules-2" in block["reading"]
+    hf = honesty_facts([{"output": {"candidate_unseen_audit": block}}])
+    assert (hf.audit_current, hf.audit_rule, hf.audit_date) == (False, "s2burn-rules-2", "2026-10-31")
+
+
+@pytest.mark.parametrize("lang", ["en", "hi", "pa"])
+def test_an_audit_of_an_earlier_rule_is_named_as_one(lang: str) -> None:
+    """With the audit of an earlier rule (current false) the precision alone no longer qualifies a
+    figure: the unit must name that rule. The rewrite names it with the audit's day, in each language,
+    and every number it adds is still found in the tool outputs."""
+    facts = _facts()
+    facts["burn_scars_season"]["output"]["candidate_unseen_audit"].update(
+        date="2026-10-31", model_version="s2burn-rules-2", current=False)
+    hf = honesty_facts(list(facts.values()))
+    assert (hf.audit_current, hf.audit_rule, hf.audit_date) == (False, "s2burn-rules-2", "2026-10-31")
+    good = ("Candidate unseen burns cover 86303 ha, 82.6% of the mapped burn-scar area [28]. That share is an "
+            "upper bound: in an audit of 23 candidates, 87% were real burns (95% CI 68%-96%) [28].")
+    issues = check_honesty([good], "en", hf)
+    assert [i.kind for i in issues] == ["unseen_without_precision"]
+    assert "judged the earlier rule s2burn-rules-2" in issues[0].message(hf)
+    named = f"{good} That audit, of 31 Oct 2026, judged the earlier rule s2burn-rules-2, not the current one [28]."
+    assert check_honesty([named], "en", hf) == []
+    fixed, changed = honest_fallback(_units(lang), lang, hf)
+    assert changed and check_honesty(fixed, lang, hf) == []
+    assert foreign_script(" ".join(fixed), lang) == []
+    day = {"en": "31 Oct 2026", "hi": "31 अक्टूबर 2026", "pa": "31 ਅਕਤੂਬਰ 2026"}[lang]
+    evidence = build_evidence([facts], now=NOW)
+    for added in (verifier.unseen_sentence(lang, hf), verifier.audit_sentence(lang, hf)):
+        assert added and "s2burn-rules-2" in added and day in added, added
+        assert verify(added, evidence).passed, added
+    # the same audit as the current rule's reads as before
+    facts["burn_scars_season"]["output"]["candidate_unseen_audit"]["current"] = True
+    hf = honesty_facts(list(facts.values()))
+    assert check_honesty([good], "en", hf) == [] and "s2burn-rules" not in (verifier.audit_sentence(lang, hf) or "")

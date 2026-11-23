@@ -87,3 +87,90 @@
 - These are model judgements on replay strata, not comparable with the hand audit in AUDIT. The old
   stratum's 17/26 (14 of 40 unsure) is a reason for a fresh random audit of stored rules-2 clusters.
 - Code and scripts: commit d4c84b2, reverted by 77a9f09 (branch models/burnscars).
+
+## s2burn-rules-4h (haze correction): evaluated and blind-audited 2026-11-24
+- Why: on smoke-hazy passes burns plain to the eye were left unmarked (case 4723594, Ludhiana,
+  43REQ 17 -> 22 Nov: 14 of 24 hotspot blocks hazy). Haze adds path radiance, mostly to the
+  visible bands (little to SWIR): a burnt field looks brighter (TBI up) and less charred (BAIS2
+  down), so it fails the char test. Its NIR darkening hardly changes: the fitted B8A offset was
+  <= 0.009 in 31 of the 32 hazy block-passes below (0.022 on W1's 22 Nov pass).
+- Rule: on a pass haze_check calls hazy, every band is corrected to the block's last clear pass
+  before any test (burnscar.normalise_haze): per ~5 km cell the median change of unchanged ground
+  (SWIR-2, SWIR-1 and NIR stable against the clear reference), clipped at 0 and non-increasing
+  with wavelength; cells with < 200 unchanged pixels take the median of fitted cells; < 4 fitted
+  cells or an offset > 0.15 leaves the pass raw; a cell with blue haze > 0.08 is left raw. The
+  memory keeps the corrected view and all nine bands of the last clear pass (state 11 -> 21 MB per
+  block). Clear passes are untouched (they are the reference). Also: a burn seen after the NDVI
+  reference (on a hazy pass) is no longer called a harvest on the next clear pass.
+- Development (two cached blocks outside every evaluation window, 43RDP r0_c0 and 43REP
+  r4096_c1024): a first version took the most common change as haze and chained each correction on
+  the previous one; during the harvest the most common change is harvest (NIR down, SWIR up), and
+  over 9 consecutive hazy passes it drifted until it erased 99% of 43REP's burn pixels. Theil-Sen
+  gains on unchanged pixels ranged 0.54-1.79 between passes, so the rule fits offsets only.
+  W4's window touches r0_c0 for its top ~380 m (about 9% of the window).
+- Pre-registered bar: scripts/burn_haze_eval.py docstring, committed (91c3f28) before the first
+  evaluation run. Command: uv run python scripts/burn_haze_eval.py replay <out> (then summary, chips).
+- Six windows, season from 1 Oct through the 22 Nov pass, production resolution, ha:
+
+  | window | res | rules-2 | rules-4h | added | share | removed |
+  |---|---|---|---|---|---|---|
+  | W1 case 4723594 Ludhiana 43REQ (3 x 3 km) | 20 m | 92.36 | 163.64 | 71.28 | 77.2% | 0.00 |
+  | W2 case 4936479 Ratta Theh 43REN | 40 m | 721.44 | 737.60 | 16.32 | 2.3% | 0.16 |
+  | W3 case 4939467 Kalwan 43REN | 40 m | 239.36 | 241.28 | 2.88 | 1.2% | 0.96 |
+  | W4 Fazilka 43RDP | 20 m | 1467.28 | 1567.00 | 108.12 | 7.4% | 8.40 |
+  | W5 Barnala 43REP | 20 m | 2613.68 | 3234.44 | 642.72 | 24.6% | 21.96 |
+  | W6 Tarn Taran 43REQ | 20 m | 1610.72 | 1836.32 | 280.16 | 17.4% | 54.56 |
+
+  Bar (a) met in 3 of 6 windows (W1, W5, W6). 32 hazy block-passes: 28 corrected with a non-zero
+  offset in at least one cell; 4 left raw because every fitted cell was too hazy (W1 8 Oct and
+  23 Oct, W3 12 Nov, W4 2 Nov). So W1 has 4 hazy block-passes but only 2 corrected (2 and 22 Nov).
+  22 Nov 43REQ offsets (gain 1): block r4096_c2048 B02 0.043,
+  B03 0.041, B04 0.030, B06 0.029, B07 0.025, B08 0.022, B8A 0.022, B11 0.003, B12 0 (16/16 cells);
+  block r0_c0 B02 0.037 ... B8A 0.009.
+- "Visibly charred" ground of 17 -> 22 Nov, a spectral proxy (raw reflectance, post BAIS2 >= 0.70,
+  TBI <= 0.40, dB12 > 0.02, dB8A > 0.04) outside every stored scar: W1 95.04 ha, of which rules-4h
+  outlines 67.76 ha (rules-2 replay 0); W2 116.24 ha and W3 56.32 ha, of which rules-4h adds nothing
+  (their 22 Nov pass was clear: those misses are 40 m mixed pixels, not haze). The proxy is not a
+  judgement by eye: in the blind audit none of the 4 W1 added chips was judged burnt (2 not
+  burnt, 2 unsure).
+- FIRMS proxy (not a bar): a detection within 375 m in the pass window for 70/597 added pieces
+  (11.7%) and 266/2396 rules-2 clusters (11.1%).
+- Runtime: against main's rules-2 code on 5 cached blocks, +0.028-0.082 s per block-pass and
+  +0.46-0.62 s per block-memory save; with production's 4188 block-passes and 227 blocks (run
+  2065, 54.6 min) the run grows to about 62.6 min (77.7 min with 25% more passes); bar (d) met.
+- Blind audit (independent judges, 24 Nov; chips 30 added, 20 baseline, 10 positive and 10
+  negative controls, seed 20261124, each on the cluster's own passes in the site's colours;
+  'unsure' counts as not burnt):
+
+  | stratum | burnt | not burnt | unsure | strict share | decided share |
+  |---|---|---|---|---|---|
+  | added by rules-4h | 19 | 6 | 5 | 19/30 = 0.63 | 19/25 = 0.76 |
+  | baseline (rules-2 clusters) | 14 | 4 | 2 | 14/20 = 0.70 | 14/18 = 0.78 |
+  | positive controls (FIRMS-confirmed) | 6 | 0 | 4 | 6/10 | 6/6 |
+  | negative controls (unchanged cropland) | 0 | 10 | 0 | 0/10 | 0/10 |
+
+  Bar (b): 0.63 >= max(0.60, 0.70 - 0.10) = 0.60, met with one chip to spare (17/30 would
+  fail). Bar (c): 6/6 decided positives burnt and 10/10 negatives not burnt, met on decided chips as registered
+  (over all positives 6/10). Nearly every added chip has a hazy post pass. Precision of the added area (0.63 strict) is lower than the 31 Oct audit of rules-2
+  candidate unseen burns (15/18 = 0.83): the site therefore states that audit as one of the earlier
+  rule (headline audit_current, components/case/audit.ts auditOlderText) until rules-4h has its
+  own audit of candidate unseen burns.
+- Removed area (rules-2 minus rules-4h; W6 54.56 ha, W5 21.96, W4 8.40) was not audited. The
+  verification found real burns in it: W6's largest piece is a 6.2 ha field, jet black on the
+  clear 13 Oct pass after the hazy 8 Oct pass. Rules-4h still flags 151 of its 155 px, but the
+  de-hazed 8 Oct memory trims edge pixels, the part's mean post NBR moves from -0.002 to +0.002
+  and the look-alike filter (mean post NBR < 0) drops the whole field; pieces of 2.0 and 1.6 ha
+  (23 -> 28 Oct) also look burnt. Of the rules-2 clusters no rules-4h cluster touches, most were
+  flagged on the same pass but fell under the minimum size (W6 58 of 63, 36.1 ha; W5 19 of 22) or
+  to the NBR filter (W6 1, W5 2). Not fixed here: the look-alike filter drops a whole part whose
+  mean NBR sits at 0.
+- Case links (scripts/burn_haze_eval.py links <out>): of 30,043 rules-2 scars in the six windows'
+  blocks, 26,078 keep their id and 3,627 are forwarded to a scar of the same pass; 338 (1.1%;
+  W6 143 of 3,113) had no successor. _FORWARD_SQL now also forwards to a scar of another pass
+  within rearm_days (20) covering >= 50% of the old outline (a burn moved to an earlier, hazy
+  pass): 66 more links work (W6 62), 272 (0.9%) answer 404, of which 245 have no rules-4h scar
+  overlapping them within 20 days.
+- Transition: the API serves the rows of RULE.version and of s2burn-rules-2 (SERVED_VERSIONS)
+  until the sentinel job has rewritten every tile (one transaction per tile, so nothing is
+  counted twice), so the map never goes blank whichever of the API deploy and the sentinel run
+  comes first. The headline lists the versions counted (model_versions).

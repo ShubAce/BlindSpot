@@ -8,7 +8,8 @@ One function per headline block. Each returns (block, sources) and reads the dat
 - season           the same clipped FIRMS count since 15 Sep beside CREAMS (ICAR-IARI) official
                    counts for the same IST days, so the UI shows the two side by side.
 - unseen_burns     Sentinel-2 burn scars with no FIRMS detection: "candidate unseen burns", with
-                   the published audit precision and its 95 % interval.
+                   the published audit precision and its 95 % interval, with the rule and
+                   date of that audit (audit_current is false when it judged an earlier rule).
 - delhi_air        Delhi's measured PM2.5 now (median of fresh stations) with its provider; the
                    last measured value with its age when nothing is fresh; never the model.
 - passes           the last and next VIIRS/MODIS look at Punjab (skyfield/SGP4 from stored TLEs).
@@ -29,7 +30,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from blindspot.analytics import fires_stats
-from blindspot.analytics.burnscar import RULE, audit_summary
+from blindspot.analytics.burnscar import RULE, SERVED_VERSIONS, audit_summary
 from blindspot.analytics.passes import (
     current_status,
     default_site,
@@ -208,11 +209,12 @@ def unseen_burns(session: Session) -> Block:
                    coalesce(sum(area_ha) FILTER (WHERE unseen), 0) AS unseen_area_ha,
                    coalesce(sum(area_ha) FILTER (WHERE unseen IS NOT NULL), 0) AS checked_area_ha,
                    min(burn_after) AS first_pass, max(burn_before) AS last_pass,
-                   count(DISTINCT district) AS districts
-            FROM burn_cluster WHERE model_version = :version
+                   count(DISTINCT district) AS districts,
+                   array_agg(DISTINCT model_version) AS versions
+            FROM burn_cluster WHERE model_version = ANY(:versions)
             """
         ),
-        {"version": RULE.version},
+        {"versions": list(SERVED_VERSIONS)},
     ).mappings().one()
     audit = audit_summary()
     unseen = audit["candidate_unseen"]
@@ -230,12 +232,23 @@ def unseen_burns(session: Session) -> Block:
         "first_pass": row["first_pass"],
         "last_pass": row["last_pass"],
         "model_version": RULE.version,
+        # the rules of the rows counted: two while the sentinel job rewrites the tiles after a change
+        "model_versions": sorted(row["versions"] or [], key=lambda v: v != RULE.version),
         "precision": unseen["precision"],
         "precision_ci95": unseen["precision_ci95"],
         "precision_n": unseen["audited"],
+        # Which rule the audit judged, and when. audit_current is false when the scars above come
+        # from a newer rule: then every statement of the precision must say it is an audit of the
+        # earlier rule (audit_model_version, audit_date), not of the current one.
+        "audit_date": audit.get("date"),
+        "audit_model_version": audit.get("model_version"),
+        "audit_current": audit.get("current"),
         "note": "Scars from Sentinel-2 passes processed so far (see /api/scars/summary coverage); "
         "unseen = no FIRMS detection near the scar between the passes that bracket it. Treat the "
-        "share as an upper bound: audited precision is shown with its 95 % interval.",
+        "share as an upper bound: audited precision is shown with its 95 % interval."
+        + ("" if audit.get("current") else
+           f" That audit judged the earlier rule {audit.get('model_version')} ({audit.get('date')}), "
+           f"not the current rule {RULE.version}."),
     }
     if not row["clusters"]:
         block["reason"] = "no burn scars mapped yet (job sentinel)"

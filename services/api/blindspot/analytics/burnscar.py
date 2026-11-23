@@ -16,7 +16,9 @@ short-wave infrared at once. So a burn here is a cropland pixel that
   3. is cropland (ESA WorldCover 2021 class 40) and clear on both passes (SCL 2, 4, 5, 6 or 7);
 
 then a 2x2 opening removes speckle and 4-connected clusters of at least 13 pixels at 20 m (0.52 ha)
-are kept. On FIRMS-labelled fields this rule had the best trade-off of the rules tested (TPR 0.66 at
+are kept. Since s2burn-rules-4h a pass that is hazy with smoke (haze_check) is first brought to the
+radiometry of the last clear pass (normalise_haze): haze lifts the visible and near-infrared bands,
+which hid burns that are plain to the eye (dB8A too small, brightness too high). On FIRMS-labelled fields this rule had the best trade-off of the rules tested (TPR 0.66 at
 an upper-bound FPR of 0.35, doc section 3.5); tillage can still mimic it, so results are candidates.
 
 Each pixel remembers its last clear observation (BlockState), so a pixel hidden by cloud on one
@@ -82,10 +84,24 @@ class BurnRule:
     # at or above NIR, so a burnt field's mean post-burn NBR is negative. Every audited cluster with
     # mean post NBR >= 0 was a flood-irrigated field (black in SWIR) or a cloud shadow SCL missed.
     nbr_post_max: float = 0.0
-    # The per-pixel rule (above) is unchanged since s2burn-rules-1, so the block memory on disk is
-    # keyed on pixel_version and a cluster-level change does not force reprocessing the season.
-    pixel_version: str = "s2burn-rules-1"
-    version: str = "s2burn-rules-2"
+    # Haze correction (s2burn-rules-4h, see normalise_haze): a pass that haze_check calls hazy is
+    # brought to the radiometry of the block memory before any test, by subtracting a per-band
+    # offset measured on unchanged cropland, cell by cell (haze is patchy within a block).
+    haze_norm: bool = True
+    norm_cell_m: int = 5120  # cell size on the ground (256 px at 20 m, 128 px at 40 m)
+    norm_stable_b11: float = 0.02  # unchanged ground: SWIR-1 within this of the clear reference
+    norm_stable_b8a: float = 0.04  # ...and NIR within this (haze lifts NIR by a few hundredths)
+    norm_sample: int = 4000  # unchanged pixels sampled per cell for the medians
+    norm_min_pif: int = 200  # unchanged pixels a cell needs for its own offsets
+    norm_min_cells: int = 4  # fitted cells a block needs, else the pass is used raw
+    norm_max_offset: float = 0.15  # an offset beyond this in any band is a bad fit
+    # A cell whose blue offset is beyond this is left raw: under haze that thick the ground's
+    # contrast is lost too (transmission falls), which an offset cannot restore.
+    norm_max_haze: float = 0.08
+    norm_floor: float = 0.005  # corrected reflectance never goes below this
+    # The block memory on disk is keyed on pixel_version: a per-pixel change reprocesses the season.
+    pixel_version: str = "s2burn-rules-4h"
+    version: str = "s2burn-rules-4h"
 
     def keeps(self, nbr_post_mean: float | None) -> bool:
         """Cluster-level filter: drop water / cloud-shadow look-alikes (mean post NBR >= 0)."""
@@ -100,6 +116,14 @@ class BurnRule:
 
 
 RULE = BurnRule()
+
+# The rule versions whose rows the API counts and draws (scars, brief, headline). After a rule
+# change the sentinel job rewrites the rows tile by tile: a rebuilt tile's whole scope (tile and
+# stage) is replaced in one transaction (jobs/sentinel.py store_tile), so a tile holds one version at
+# a time. Serving the previous version too keeps the tiles not rewritten yet on the map, instead of
+# blank, and counts nothing twice, whichever of the API deploy and the sentinel run comes first.
+# The previous version can go once no row of it is left.
+SERVED_VERSIONS: tuple[str, ...] = (RULE.version, "s2burn-rules-2")
 
 # Visual audit of the stored clusters (validation record, not input data). On 2026-10-31 the sentinel
 # module rendered pre/post true-colour and SWIR (B12-B8A-B4) chips straight from the Sentinel-2 COGs
@@ -236,17 +260,28 @@ def confidence(
 
 # --- per-pixel memory between passes --------------------------------------------------------------
 
+NORM_BANDS = ("B02", "B03", "B04", "B06", "B07", "B08", "B8A", "B11", "B12")  # every band a test reads
+
 STATE_FIELDS: dict[str, Any] = {
     "last_day": np.uint16,  # day number of the last clear observation (0 = never)
     "last_item": np.uint16,  # which item it came from (index into the tile item registry)
-    "last_b8a": np.float16,
+    "last_b8a": np.float16,  # haze-corrected when that pass was hazy (normalise_haze)
     "last_b11": np.float16,
     "last_b12": np.float16,
     "last_ndvi": np.float16,  # from the last clear pass that was not smoke-hazy
     "ndvi_day": np.uint16,  # ...and its day: haze lowers NDVI, so hazy passes never set it
     "last_nbr": np.float16,
-    "clear_b02": np.float16,  # blue and SWIR-2 of the last pass that was not hazy: the haze
-    "clear_b12": np.float16,  # reference (blue rises under smoke, SWIR-2 barely moves)
+    # Every band of the last pass that was not hazy: the haze reference. haze_check compares blue
+    # and SWIR-2 with it (blue rises under smoke, SWIR-2 barely moves); normalise_haze all nine.
+    "clear_b02": np.float16,
+    "clear_b03": np.float16,
+    "clear_b04": np.float16,
+    "clear_b06": np.float16,
+    "clear_b07": np.float16,
+    "clear_b08": np.float16,
+    "clear_b8a": np.float16,
+    "clear_b11": np.float16,
+    "clear_b12": np.float16,
     "harv_after": np.uint16,  # last clear day with standing crop before the harvest
     "harv_before": np.uint16,  # first clear day showing it harvested (0 = not seen harvested)
     "burn_day": np.uint16,  # pass on which a burn was detected (0 = never)
@@ -344,6 +379,107 @@ def haze_check(
     return bool(rise is not None and rise > rule.haze_b02_rise), (round(rise, 4) if rise is not None else None)
 
 
+def _cell_weights(n: int, cell: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Bilinear interpolation between cell centres along one axis of n pixels: for each pixel the
+    two cells it lies between and the weight of the second (clamped to the outer cells)."""
+    starts = np.arange(0, n, cell)
+    centres = starts + np.minimum(cell, n - starts) / 2
+    frac = np.interp(np.arange(n) + 0.5, centres, np.arange(starts.size, dtype=float))
+    i0 = np.floor(frac).astype(int)
+    i1 = np.minimum(i0 + 1, starts.size - 1)
+    return i0, i1, (frac - i0).astype(np.float32)
+
+
+def _interpolate(grid: np.ndarray, shape: tuple[int, int], cell: int) -> np.ndarray:
+    r0, r1, wr = _cell_weights(shape[0], cell)
+    c0, c1, wc = _cell_weights(shape[1], cell)
+    rows = grid[r0] * (1 - wr)[:, None] + grid[r1] * wr[:, None]
+    return (rows[:, c0] * (1 - wc)[None, :] + rows[:, c1] * wc[None, :]).astype(np.float32)
+
+
+def normalise_haze(
+    a: dict[str, np.ndarray], refl: dict[str, np.ndarray], valid: np.ndarray, day: int, res_m: int,
+    rule: BurnRule = RULE,
+) -> tuple[dict[str, np.ndarray] | None, dict[str, Any]]:
+    """Per-band offsets that bring a hazy pass to the radiometry of the last clear pass.
+
+    Smoke and smog add path radiance, strongly in blue, less in red and near infrared, little in
+    short-wave infrared. Seen through haze a burnt field looks brighter (TBI) and less charred
+    (BAIS2, through B04) in the visible bands, so it fails the char test; its NIR darkening changes
+    little (the fitted B8A offset was <= 0.009 in 31 of the 32 hazy block-passes of the evaluation,
+    0.022 in one). The reference is each pixel's view on the last pass that
+    haze_check called clear (clear_*), never a corrected view, so corrections do not chain. Per
+    cell of norm_cell_m (~5 km; haze is patchy within a 20 km block):
+      1. unchanged ground (pseudo-invariant pixels): clear now and with SWIR-2, SWIR-1 and NIR
+         within haze_stable_b12, norm_stable_b11 and norm_stable_b8a of the reference. Haze barely
+         moves SWIR while harvest, burning, tillage and irrigation move it a lot (the same stable
+         ground haze_check measures the blue rise on);
+      2. the cell's offset in each band is the median change of those pixels;
+      3. haze only adds, and adds less at longer wavelengths: offsets are clipped at 0 and made
+         non-increasing from B02 to B12, so a change of the ground (harvest lowers NIR and lifts
+         SWIR) can never be read as haze in the long bands;
+      4. a cell whose blue offset exceeds norm_max_haze is left raw (zero offsets): under haze
+         that thick an offset cannot restore the lost contrast.
+    Offsets only, no gain: Theil-Sen gains fitted on unchanged pixels of development blocks ranged
+    from 0.54 to 1.79 between passes (unstable over the narrow range of cropland reflectance),
+    while the median offsets followed the haze spectrum. A cell with fewer than norm_min_pif
+    unchanged pixels or an offset beyond norm_max_offset (a bad fit) takes the median of the fitted
+    cells; with fewer than norm_min_cells fitted cells the pass is used as it is. Returns (offset
+    grid per band, cells x cells, or None for "use the pass raw"; stats)."""
+    cell = max(1, round(rule.norm_cell_m / res_m))
+    n_r, n_c = math.ceil(valid.shape[0] / cell), math.ceil(valid.shape[1] / cell)
+    ref = {b: a[f"clear_{b.lower()}"] for b in NORM_BANDS}
+    # every band read now and on the reference: one missing value would make a band's median, and
+    # through minimum.accumulate every longer band's offset, NaN
+    finite = np.logical_and.reduce([np.isfinite(refl[b]) & np.isfinite(ref[b]) for b in NORM_BANDS])
+    with np.errstate(invalid="ignore"):
+        stable = (valid & finite
+                  & (np.abs(refl["B12"] - ref["B12"]) < rule.haze_stable_b12)
+                  & (np.abs(refl["B11"] - ref["B11"]) < rule.norm_stable_b11)
+                  & (np.abs(refl["B8A"] - ref["B8A"]) < rule.norm_stable_b8a))
+    rng = np.random.default_rng(day)
+    grid = np.full((len(NORM_BANDS), n_r, n_c), np.nan, np.float32)
+    n_pif = n_thick = 0
+    for i in range(n_r):
+        for j in range(n_c):
+            rows, cols = slice(i * cell, (i + 1) * cell), slice(j * cell, (j + 1) * cell)
+            idx = np.flatnonzero(stable[rows, cols])
+            if idx.size < rule.norm_min_pif:
+                continue
+            if idx.size > rule.norm_sample:
+                idx = rng.choice(idx, rule.norm_sample, replace=False)
+            offsets = np.array([np.median(refl[b][rows, cols].ravel()[idx]
+                                          - ref[b][rows, cols].ravel()[idx].astype(np.float32))
+                                for b in NORM_BANDS], np.float32)
+            if np.any(np.abs(offsets) > rule.norm_max_offset):
+                continue
+            thick = offsets[0] > rule.norm_max_haze
+            grid[:, i, j] = 0.0 if thick else np.minimum.accumulate(np.maximum(offsets, 0))
+            n_thick += int(thick)
+            n_pif += idx.size
+    fitted = np.isfinite(grid[0])
+    stats: dict[str, Any] = {"cells": n_r * n_c, "cells_fitted": int(fitted.sum()), "cells_too_hazy": n_thick,
+                             "pif_px": n_pif}
+    if fitted.sum() < min(rule.norm_min_cells, n_r * n_c):
+        stats["applied"] = False
+        return None, stats
+    fill = np.minimum.accumulate(np.median(grid[:, fitted], axis=1))
+    grid[:, ~fitted] = fill[:, None]
+    stats.update(applied=True, offsets={b: round(float(v), 4) for b, v in zip(NORM_BANDS, fill, strict=True)},
+                 b02_offset_max=round(float(grid[0][fitted].max()), 4))
+    return {b: grid[k] for k, b in enumerate(NORM_BANDS)}, stats
+
+
+def apply_haze_offsets(refl: dict[str, np.ndarray], grid: dict[str, np.ndarray], res_m: int,
+                       rule: BurnRule = RULE) -> dict[str, np.ndarray]:
+    """The pass minus its haze offsets (interpolated between cell centres), floored at norm_floor."""
+    cell = max(1, round(rule.norm_cell_m / res_m))
+    out = dict(refl)
+    for b, g in grid.items():
+        out[b] = np.maximum(refl[b] - _interpolate(g, refl[b].shape, cell), np.float32(rule.norm_floor))
+    return out  # np.maximum keeps NaN (no data) as NaN
+
+
 def registry_index(registry: list[str], item_id: str) -> int:
     """Position of an item id in a tile's registry, appending it the first time it is seen."""
     if item_id not in registry:
@@ -390,6 +526,11 @@ def apply_pass(
     a = state.arrays
     hazy, haze_rise = haze_check(a, refl, valid, rule)
     stats.update(hazy=hazy, haze_b02_rise=haze_rise)
+    if hazy and rule.haze_norm:
+        # Judge (and remember) a hazy pass as if clear; the gate and the haze test above read it raw.
+        offsets, stats["haze_norm"] = normalise_haze(a, refl, valid, day, res_m, rule)
+        if offsets is not None:
+            refl = apply_haze_offsets(refl, offsets, res_m, rule)
 
     post_ndvi = ndvi(refl)
     post_nbr = nbr(refl)
@@ -424,6 +565,10 @@ def apply_pass(
         ndvi_day = a["ndvi_day"].astype(np.int32)
         ndvi_gap = np.where(ndvi_day > 0, day - ndvi_day, 10_000)
         comparable = valid & (ndvi_day > 0) & (ndvi_gap <= harvest.max_gap_days)
+        # A burn seen after the NDVI reference (on a hazy pass, which leaves the NDVI memory alone)
+        # explains the NDVI drop: it is not a harvest, and the burnt field is not unburnt residue.
+        # (A burn on the reference pass itself is already in the reference NDVI.)
+        comparable &= ~((burn_day > 0) & (burn_day > ndvi_day))
         harvested_now = harvested_between(pre_ndvi, post_ndvi, pre_b11, refl["B11"], comparable, harvest)
         a["harv_after"][harvested_now] = a["ndvi_day"][harvested_now]
         a["harv_before"][harvested_now] = day
@@ -451,8 +596,8 @@ def apply_pass(
         a["last_ndvi"][valid] = post_ndvi[valid]
         a["ndvi_day"][valid] = day
     if not hazy:
-        a["clear_b02"][valid] = refl["B02"][valid]
-        a["clear_b12"][valid] = refl["B12"][valid]
+        for b in NORM_BANDS:
+            a[f"clear_{b.lower()}"][valid] = refl[b][valid]
     stats.update(burn_px=int(burn.sum()), harvested_px=int(harvested_now.sum()),
                  tilled_px=int(tilled_now.sum()))
     return PassResult(True, None, stats, burn, pre_day, pre_item, post_item, evidence, hazy)
