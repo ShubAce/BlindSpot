@@ -710,8 +710,11 @@ PAIRS_ARE = (
     "are not tested.")
 # The headline: every pass pair whose second pass falls in the RECENT_DAYS up to the newest one, on
 # every tile, pooled (analytics/risk.py, "pooled backtest"); shown only with RECENT_MIN_EACH burnt and
-# unburnt fields. It replaced "the latest pass pair" (2026-11-23), which read anything from 0.355
-# (127 burnt / 78 unburnt on one edge tile) to 0.878 between production runs.
+# unburnt field checks. A field check is one field in one pair: a burnt field is checked once (in the
+# pair where it burnt), but a field still waiting is checked again in every pair it enters (about 3.2
+# pairs in the week to 22 Nov), so the unburnt checks are several times the unburnt fields. It
+# replaced "the latest pass pair" (2026-11-23), which read anything from 0.355 (127 burnt / 78
+# unburnt on one edge tile) to 0.878 between production runs.
 RECENT_DAYS = 7
 RECENT_MIN_EACH = 100
 RECENT_IS = (
@@ -720,18 +723,20 @@ RECENT_IS = (
     "so each pair weighs burnt x unburnt. The 95% interval resamples {km:g} km squares of land, each with all "
     "its fields in every pair of the window, because neighbouring fields share their neighbourhood and one "
     "waiting field enters several pairs.")
-# Placebos: orderings that know nothing about the field itself. If observation_only scores well, the labels
-# follow how fields were seen; if location_only does about as well as the score, the score adds little to
-# knowing which area burns.
+# Placebos: orderings that know nothing about the field itself. observation_only knows nothing about
+# burning either: if it scores well, the labels follow how fields were seen. location_only knows how much
+# burnt around the field, so it is a rival ranking more than a placebo (burning clusters, so it should beat
+# 0.5): if it does about as well as the score, the score adds little to knowing which area burns.
 LOCATION_CELL_KM = 10.0
 OBSERVATION_DAYS = 7
 PLACEBOS_ARE = (
     f"location_only: hectares of Sentinel-2 burn scars this season up to t0 in the field's "
-    f"{LOCATION_CELL_KM:g} km square (where the field lies, nothing about the field itself); "
-    f"observation_only: how many processed passes of the tile covered the field in the {OBSERVATION_DAYS} "
-    "days up to t0 (how it was observed, nothing about burning). An observation placebo well above 0.5 means "
-    "the labels follow how fields were seen; a location placebo close to the score means the score adds "
-    "little to knowing which area burns.")
+    f"{LOCATION_CELL_KM:g} km square (where the field lies and how much burnt there, nothing about the field "
+    "itself: burn information, so a rival ranking more than a placebo, expected above 0.5 because burning "
+    f"clusters); observation_only: how many processed passes of the tile covered the field in the "
+    f"{OBSERVATION_DAYS} days up to t0 (how it was observed, nothing about burning). An observation placebo "
+    "well above 0.5 means the labels follow how fields were seen; a location ranking close to the score means "
+    "the score adds little to knowing which area burns.")
 
 
 def backtest(session: Session, history: History, as_of: datetime) -> dict[str, Any]:
@@ -1076,7 +1081,8 @@ def _recent(session: Session, done: list[dict[str, Any]], history_ok: bool, timi
     """The headline: every pass pair whose second pass falls in the RECENT_DAYS up to the newest one,
     pooled over all tiles (RECENT_IS), with 95% intervals from resampling BLOCK_KM squares, the single
     factors and the placebos on the same resamples (each with its difference from the score), and the
-    top tenth's burnt share. Shown only with RECENT_MIN_EACH burnt and unburnt fields."""
+    top tenth's burnt share. Shown only with RECENT_MIN_EACH burnt and unburnt field checks. `burnt`,
+    `unburnt` and the base rates count field checks, not distinct fields."""
     newest = max(r["t1"] for r in done)
     start = newest - timedelta(days=RECENT_DAYS)
     pairs = [r for r in done if r["t1"] > start]
@@ -1092,7 +1098,7 @@ def _recent(session: Session, done: list[dict[str, Any]], history_ok: bool, timi
     if min(burnt, unburnt) < RECENT_MIN_EACH:
         return {**out, "shown": False, "auc": None, "auc_ci95": None,
                 "reason": (f"the pass pairs of the last {RECENT_DAYS} days hold {burnt} burnt and {unburnt} unburnt "
-                           f"fields; at least {RECENT_MIN_EACH} of each are needed for a figure")}
+                           f"field checks; at least {RECENT_MIN_EACH} of each are needed for a figure")}
     rows = _pooled_rows(session, [r["pair"] for r in pairs])
     pair, label = rows["pair"].to_numpy(), rows["label"].to_numpy()
     block, k = model.block_ids(rows["x"].to_numpy(), rows["y"].to_numpy())
@@ -1208,40 +1214,59 @@ def _day(value: Any) -> str:
     return value.date().isoformat() if isinstance(value, datetime) else str(value)
 
 
-PLACEBO_WORDS = {"location_only": "where a field lies", "observation_only": "how often it was seen"}
+# The rankings the headline is compared with, in words; location_only is a rival, not a placebo (see
+# PLACEBOS_ARE), so only observation_only above 0.5 says something about the labels.
+RIVAL_WORDS = {
+    "fires_7d_only": "ranking by fire alerts nearby in the last 7 days alone",
+    "neighbourhood_only": "ranking by burning nearby (fire alerts and unseen scars) alone",
+    "burned_ha_7d_only": "ranking by scar hectares nearby in the last 7 days alone",
+    "history_only": "ranking by last season's fires nearby alone",
+    "timing_only": "ranking by harvest timing alone",
+    "location_only": f"ranking by how much burnt this season in the field's {LOCATION_CELL_KM:g} km square alone",
+    "observation_only": "the placebo that knows only how often the field was seen",
+}
+
+
+def _auc_ci(p: dict[str, Any] | None) -> str | None:
+    """'0.576 (95% CI 0.519-0.633)' for a ranking with an AUC and its interval, else None."""
+    if not p or p.get("auc") is None or None in (ci := p.get("auc_ci95") or [None]):
+        return None
+    return f"{p['auc']:.3f} (95% CI {ci[0]:.3f}-{ci[1]:.3f})"
 
 
 def _recent_sentences(r: dict[str, Any]) -> str:
-    """The headline (`recent`) in plain sentences: the pooled AUC of the last days with its interval
-    and what the placebos scored, or why there is no figure."""
+    """The headline (`recent`) in plain sentences: the pooled AUC of the last days with its interval,
+    the location rival and the observation placebo, and every ranking the score is not clearly ahead
+    of; or why there is no figure. Its counts are field checks (one field in one pair), not fields."""
     if not r:
         return ""
     if not r.get("shown"):
-        return (f" The pass pairs of the last {r.get('window', {}).get('days', RECENT_DAYS)} days hold too few fields "
-                f"for a figure of their own ({r.get('burnt', 0):,} burnt, {r.get('unburnt', 0):,} unburnt; "
+        return (f" The pass pairs of the last {r.get('window', {}).get('days', RECENT_DAYS)} days hold too few field "
+                f"checks for a figure of their own ({r.get('burnt', 0):,} burnt, {r.get('unburnt', 0):,} unburnt; "
                 f"{r.get('min_each', RECENT_MIN_EACH)} of each are needed).")
     ci = r.get("auc_ci95") or [None, None]
     if r.get("auc") is None or None in ci:
         return ""
     w = r["window"]
     out = (f" Over the last {w['days']} days of passes ({_day(w['from'])} to {_day(w['to'])}: {r['pairs']} pass pairs "
-           f"on {r['tiles']} tiles, {r['burnt']:,} burnt and {r['unburnt']:,} unburnt fields, pooled) the AUC is "
-           f"{r['auc']:.3f} (95% CI {ci[0]:.3f}-{ci[1]:.3f}, from resampling {r['block_km']:g} km squares of land).")
-    said = [f"{PLACEBO_WORDS.get(name, name)} {p['auc']:.3f} (95% CI {p['auc_ci95'][0]:.3f}-{p['auc_ci95'][1]:.3f})"
-            for name, p in (r.get("placebos") or {}).items()
-            if p and p.get("auc") is not None and None not in (p.get("auc_ci95") or [None])]
-    if said:
-        out += " Placebos that know only " + " or only ".join(said) + "."
-        if any(p and (p.get("auc_ci95") or [0])[0] is not None and p["auc_ci95"][0] > 0.5
-               for p in (r.get("placebos") or {}).values()):
-            out += (" A placebo above 0.5 means the backtest's labels also follow where fields lie or how they "
-                    "were seen, not only anything about the fields themselves.")
-    close = [f"{PLACEBO_WORDS.get(name, name)} ({d['diff']:+.3f}, 95% CI {d['ci95'][0]:+.3f} to {d['ci95'][1]:+.3f})"
-             for name, p in (r.get("placebos") or {}).items()
+           f"on {r['tiles']} tiles, {r['burnt']:,} burnt and {r['unburnt']:,} unburnt field checks, pooled; a field "
+           f"still waiting is checked again in each pair) the AUC is {r['auc']:.3f} (95% CI {ci[0]:.3f}-{ci[1]:.3f}, "
+           f"from resampling {r['block_km']:g} km squares of land).")
+    placebos = r.get("placebos") or {}
+    for name in ("location_only", "observation_only"):
+        if said := _auc_ci(placebos.get(name)):
+            words = RIVAL_WORDS[name]
+            out += f" {words[:1].upper()}{words[1:]} scored {said}"
+            out += (": above 0.5, so the backtest's labels also follow how fields were seen, not only anything "
+                    "about the fields themselves." if name == "observation_only"
+                    and placebos[name]["auc_ci95"][0] > 0.5 else ".")
+    # random has no minus_score, so it is never named
+    close = [f"{RIVAL_WORDS.get(name, name)} {d['diff']:+.3f} ({d['ci95'][0]:+.3f} to {d['ci95'][1]:+.3f})"
+             for name, p in {**(r.get("baselines") or {}), **placebos}.items()
              if p and (d := p.get("minus_score")) and None not in (d.get("ci95") or [None]) and d["ci95"][1] >= 0]
     if close:
-        out += (" The score is not clearly ahead of the placebo that knows only " + " or only ".join(close)
-                + "; the figure in brackets is the placebo's AUC minus the score's.")
+        out += (" The score is not clearly ahead of these (their AUC minus the score's, with its 95% CI): "
+                + "; ".join(close) + ".")
     return out
 
 

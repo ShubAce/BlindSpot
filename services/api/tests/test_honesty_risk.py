@@ -277,7 +277,7 @@ def test_recent_headline_pools_the_week_with_block_intervals() -> None:
     weighted by burnt x unburnt (comparisons stay inside a pair), its interval resamples 30 km squares,
     the top tenth's share matches the per-pair counts, and a placebo that cannot tell the fields apart
     (no pass of this made-up tile covers them) scores exactly 0.5. A pair 9 days older stays out, and
-    with fewer than 100 burnt or unburnt fields there is no figure, only the reason."""
+    with fewer than 100 burnt or unburnt field checks there is no figure, only the reason."""
     from datetime import timedelta
 
     from blindspot.jobs import risk as job
@@ -321,7 +321,7 @@ def test_recent_headline_pools_the_week_with_block_intervals() -> None:
     share = sum(per_pair[p]["top_hits"] for p in (0, 1)) / sum(per_pair[p]["top_k"] for p in (0, 1))
     assert got["top_10pct"]["burnt_share"] == pytest.approx(share, abs=0.002)
     assert got["top_10pct"]["base_rate"] == round(120 / 260, 3)
-    assert few["shown"] is False and few["auc"] is None and "60 burnt and 70 unburnt" in few["reason"]
+    assert few["shown"] is False and few["auc"] is None and "60 burnt and 70 unburnt field checks" in few["reason"]
 
 
 def test_village_level_keeps_same_named_villages_apart() -> None:
@@ -349,7 +349,7 @@ def test_verdict_and_strength_follow_the_numbers() -> None:
 
     a = {"pairs": 148, "field_pairs": 361031, "tiles": 12, "auc_weighted_mean": 0.56, "auc_ci95": [0.491, 0.663],
          "top_10pct": {"burnt_share": 0.216, "base_rate": 0.152, "lift": 1.418, "lift_ci95": [1.235, 1.733]}}
-    text_ = verdict({"all_pairs": a, "headline": {"tile": "43REP", "n": 1173, "auc": 0.701, "auc_ci95": [0.664, 0.736]}})
+    text_ = verdict({"all_pairs": a})
     assert ranking_strength(a) == "weak" and text_.startswith("The ranking is weak.")
     assert "0.560 (95% CI 0.491-0.663" in text_ and "not clearly better than chance" in text_
     assert "1.42 times as often" in text_ and "21.6% against 15.2%" in text_
@@ -358,10 +358,15 @@ def test_verdict_and_strength_follow_the_numbers() -> None:
 
 def test_verdict_states_the_pooled_week_not_one_pair() -> None:
     """The headline is the last 7 days of pass pairs pooled, with its interval from resampling squares
-    of land and what the placebos scored; one pair (the old headline, 0.355 one day and 0.878 another)
-    is no longer quoted, and with too few fields the verdict says so instead of giving a number.
+    of land, its counts in field checks (a field still waiting is checked again in every pair: in the
+    week to 22 Nov 638,948 unburnt checks were 200,696 fields), the location ranking as a rival (it
+    knows how much burnt nearby, so above 0.5 is no flag on the labels), the observation placebo, and
+    every ranking the score is not clearly ahead of, baselines too. One pair (the old headline, 0.355
+    one day and 0.878 another) is no longer quoted, and with too few field checks the verdict says so
+    instead of giving a number.
     (Per-tile AUCs of the reviewer's recompute of 2026-10-31: 43REQ held 35% of the checks at 0.444.)
-    Changed on purpose on 2026-11-23: this test used to check the latest-pair sentence."""
+    Changed on purpose on 2026-11-23: this test used to check the latest-pair sentence, and then the
+    pooled week's counts as "fields" and the location ranking as a placebo."""
     from blindspot.jobs.risk import _all_pairs, verdict
 
     a = {"pairs": 148, "field_pairs": 361031, "tiles": 4, "auc_weighted_mean": 0.56, "auc_ci95": [0.491, 0.663],
@@ -370,30 +375,42 @@ def test_verdict_states_the_pooled_week_not_one_pair() -> None:
              {"tile": "43REP", "pairs": 30, "field_checks": 90000, "auc": 0.718},
              {"tile": "43RFP", "pairs": 30, "field_checks": 80000, "auc": 0.61},
              {"tile": "43RFQ", "pairs": 10, "field_checks": 60, "auc": 0.9}]}  # too few checks to compare
+    behind = {"diff": -0.1, "ci95": [-0.15, -0.05]}
     recent = {"shown": True, "window": {"from": "2026-11-15T06:00:00Z", "to": "2026-11-22T05:50:00Z", "days": 7},
               "pairs": 107, "tiles": 18, "burnt": 12345, "unburnt": 67890, "auc": 0.6, "auc_ci95": [0.55, 0.65],
               "block_km": 30.0, "min_each": 100,
+              "baselines": {"random": {"auc": 0.5}, "history_only": None,
+                            "fires_7d_only": {"auc": 0.5, "auc_ci95": [0.47, 0.53], "minus_score": behind},
+                            "neighbourhood_only": {"auc": 0.61, "auc_ci95": [0.56, 0.66],
+                                                   "minus_score": {"diff": 0.01, "ci95": [-0.01, 0.03]}}},
               "placebos": {"location_only": {"auc": 0.58, "auc_ci95": [0.52, 0.63],
                                              "minus_score": {"diff": -0.02, "ci95": [-0.05, 0.01]}},
-                           "observation_only": {"auc": 0.5, "auc_ci95": [0.49, 0.51],
-                                                "minus_score": {"diff": -0.1, "ci95": [-0.15, -0.05]}}}}
+                           "observation_only": {"auc": 0.5, "auc_ci95": [0.49, 0.51], "minus_score": behind}}}
     text_ = verdict({"all_pairs": a, "recent": recent,
                      "latest_pair": {"tile": "43REP", "n": 1173, "auc": 0.701, "auc_ci95": [0.664, 0.736]}})
     assert ("Over the last 7 days of passes (2026-11-15 to 2026-11-22: 107 pass pairs on 18 tiles, 12,345 burnt and "
-            "67,890 unburnt fields, pooled) the AUC is 0.600 (95% CI 0.550-0.650, from resampling 30 km squares") in text_
-    assert ("Placebos that know only where a field lies 0.580 (95% CI 0.520-0.630) or only how often it was seen "
-            "0.500") in text_ and "A placebo above 0.5 means" in text_
-    # a placebo whose difference from the score may be >= 0 is named; one clearly behind is not
-    assert ("The score is not clearly ahead of the placebo that knows only where a field lies (-0.020, 95% CI "
-            "-0.050 to +0.010)") in text_ and "how often it was seen (-0.100" not in text_
+            "67,890 unburnt field checks, pooled; a field still waiting is checked again in each pair) the AUC is "
+            "0.600 (95% CI 0.550-0.650, from resampling 30 km squares") in text_
+    assert "unburnt fields" not in text_ and "where a field lies" not in text_
+    assert ("Ranking by how much burnt this season in the field's 10 km square alone scored 0.580 (95% CI "
+            "0.520-0.630).") in text_
+    assert "The placebo that knows only how often the field was seen scored 0.500 (95% CI 0.490-0.510)." in text_
+    assert "above 0.5" not in text_  # the location ranking's 0.52 lower bound flags nothing
+    # every ranking whose difference from the score may be >= 0 is named; one clearly behind is not
+    assert ("The score is not clearly ahead of these (their AUC minus the score's, with its 95% CI): ranking by "
+            "burning nearby (fire alerts and unseen scars) alone +0.010 (-0.010 to +0.030); ranking by how much burnt "
+            "this season in the field's 10 km square alone -0.020 (-0.050 to +0.010).") in text_
+    assert "-0.100" not in text_ and "random" not in text_
     assert "0.701" not in text_ and "latest pass pair" not in text_
     assert "Tile by tile (over 100 field checks) the AUC runs from 0.444 (43REQ, 126,082 checks) to 0.718 (43REP)." in text_
     few = verdict({"all_pairs": a, "recent": {"shown": False, "window": {"days": 7}, "burnt": 80, "unburnt": 4000,
                                               "min_each": 100}})
-    assert "too few fields for a figure of their own (80 burnt, 4,000 unburnt; 100 of each are needed)" in few
-    calm = verdict({"all_pairs": a, "recent": {**recent, "placebos": {"location_only": {"auc": 0.51,
-                                                                                         "auc_ci95": [0.47, 0.55]}}}})
-    assert "A placebo above 0.5" not in calm
+    assert "too few field checks for a figure of their own (80 burnt, 4,000 unburnt; 100 of each are needed)" in few
+    seen = verdict({"all_pairs": a, "recent": {**recent, "baselines": {}, "placebos": {
+        "observation_only": {"auc": 0.576, "auc_ci95": [0.519, 0.633]}}}})
+    assert ("The placebo that knows only how often the field was seen scored 0.576 (95% CI 0.519-0.633): above "
+            "0.5, so the backtest's labels also follow how fields were seen") in seen
+    assert "Ranking by how much burnt" not in seen and "not clearly ahead" not in seen
     # per tile: the size-weighted mean of its pairs' AUCs
     t0, t1 = datetime(2026, 10, 1, tzinfo=UTC), datetime(2026, 10, 3, tzinfo=UTC)
     pair = {"t0": t0, "t1": t1, "base_rate": 0.1, "baselines_auc": {"fires_7d_only": 0.5}, "top_k": 1, "top_hits": 0.0,
