@@ -210,10 +210,9 @@ class PassData:
     p: gf.PolarPass
     slot: datetime
     stored: dict[str, Any] | None  # the geo_fire_validation row, when there is one
-    rows: np.ndarray  # window row of each polar detection of the pass (region only)
-    cols: np.ndarray
+    lon: np.ndarray  # the pass's polar detections inside the state polygons
+    lat: np.ndarray
     frp: np.ndarray
-    scan_deg: np.ndarray | None = None  # polar scan angle at every window pixel (NaN off-region)
 
     @property
     def regime(self) -> str:
@@ -262,7 +261,7 @@ def _pass_points(ref: gk2a.PolarDetections, p: gf.PolarPass) -> tuple[np.ndarray
 def to_window(pd_: PassData, a: Prepared) -> tuple[np.ndarray, np.ndarray]:
     """Window (row, col) of the pass's detections (stored as lon/lat until a scan is known)."""
     nav, w = a.scan.navigation, a.scan.window
-    rr, cc = nav.to_rowcol(pd_.rows, pd_.cols)
+    rr, cc = nav.to_rowcol(pd_.lon, pd_.lat)
     return rr - w.row0, cc - w.col0
 
 

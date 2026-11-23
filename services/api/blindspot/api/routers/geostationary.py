@@ -4,7 +4,8 @@
   Haryana, the mean per IST hour, the IST times of day when a polar satellite looked (from FIRMS
   detections in fire_detection), the share of fire activity outside those windows (each scan
   counted by the share of its 10 minutes outside them; also for other pads and day by day), and
-  how well GK-2A agrees with VIIRS and MODIS (geo_fire_validation).
+  how well GK-2A agrees with VIIRS and MODIS (geo_fire_validation), over the whole region and
+  where the polar sensor could see (`validation.covered`, geo_fire_validation_coverage).
 - GET /api/geostationary/latest: the newest analysed scan and its fire pixels as GeoJSON
   (pixel footprints, ~12 km2: centres ~4.5 km apart along a row, ~3.6 km down a column).
 
@@ -33,6 +34,7 @@ from blindspot.models.geofires import (
     GeoFireStatic,
     GeoFireStaticPixel,
     GeoFireValidation,
+    GeoFireValidationCoverage,
 )
 from blindspot.provenance import latest_refs, ref_for_fetch, utcnow
 from blindspot.sources import gk2a  # noqa: F401  (registers the gk2a source label)
@@ -44,6 +46,7 @@ POLAR_PAD_MIN = (
     15  # a polar look is its detections' time span, padded this much each side
 )
 PAD_SENSITIVITY_MIN = (0, 5, 10, 15)  # the outside share is also given for these pads
+MIN_PASSES, MIN_PIXELS = 3, 30  # fewer passes or pixels behind a validation rate: too few to quote
 REGION_ISOS = ["IN-PB", "IN-HR"]
 UNIT = (
     "GK-2A fire pixels (~12 km2 each) per 10-minute scan inside Punjab and Haryana (India's state "
@@ -84,11 +87,63 @@ def _polar_passes(
     )
 
 
+def _groups(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    """Passes by regime: GK-2A's skill differs sharply between them."""
+    return {
+        "viirs_all": [r for r in rows if r["satellite"] in VIIRS],
+        "viirs_day": [r for r in rows if r["satellite"] in VIIRS and r["regime"] == "day"],
+        "viirs_night": [r for r in rows if r["satellite"] in VIIRS and r["regime"] == "night"],
+        "modis_aqua_day": [r for r in rows if r["satellite"] == "Aqua" and r["regime"] == "day"],
+        "modis_terra": [r for r in rows if r["satellite"] == "Terra"],
+        "all": rows,
+    }
+
+
+def _covered(rows: list[dict[str, Any]], all_passes: int) -> dict[str, Any]:
+    pooled = gf.pooled_rates(rows)
+    return {
+        **pooled,
+        "ci95": gf.bootstrap_rates(rows),
+        "passes_without_coverage": all_passes - len(rows),
+        # Too few to quote: fewer than 3 passes or 30 pixels behind the rate.
+        "enough": pooled["passes"] >= MIN_PASSES and pooled["n"] >= MIN_PIXELS,
+        "enough_geo": pooled["passes"] >= MIN_PASSES and pooled["n_geo"] >= MIN_PIXELS,
+    }
+
+
+def _by_scan_angle(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    """Counts pooled by the polar sensor's scan angle at each pixel, per instrument."""
+    out: dict[str, list[dict[str, Any]]] = {}
+    for instrument in ("MODIS", "VIIRS"):
+        bins: dict[tuple[float, float], dict[str, int]] = {}
+        for r in rows:
+            if r["instrument"] != instrument:
+                continue
+            for b in r["by_scan_angle"] or []:
+                acc = bins.setdefault((b["lo"], b["hi"]), dict.fromkeys(
+                    ("geo_pixels", "geo_hits", "ref_pixels", "ref_hits"), 0))  # fmt: skip
+                for k in acc:
+                    acc[k] += b[k]
+        out[instrument] = [
+            {
+                "scan_deg": [lo, hi],
+                **c,
+                "unconfirmed_share": round(1 - c["geo_hits"] / c["geo_pixels"], 4)
+                if c["geo_pixels"] else None,
+                "hit_rate": round(c["ref_hits"] / c["ref_pixels"], 4) if c["ref_pixels"] else None,
+            }
+            for (lo, hi), c in sorted(bins.items())
+        ]  # fmt: skip
+    return out
+
+
 def _validation(session: Session) -> dict[str, Any]:
     """Pooled GK-2A vs polar comparisons for the current algorithm (every stored pass).
 
     Top-level numbers are against VIIRS (all passes, day and night); `groups` splits them by
-    satellite family and day/night, because GK-2A's skill differs sharply between them."""
+    satellite family and day/night. `covered` counts the same passes only where the polar sensor
+    viewed the ground within a fixed scan angle, with 95% intervals from resampling passes: the
+    raw figures also count pixels the polar sensor saw obliquely or not at all."""
     rows = [
         {c.name: getattr(r, c.name) for c in GeoFireValidation.__table__.columns}
         for r in session.execute(
@@ -97,21 +152,24 @@ def _validation(session: Session) -> dict[str, Any]:
             )
         ).scalars()
     ]
-    groups = {
-        "viirs_all": [r for r in rows if r["satellite"] in VIIRS],
-        "viirs_day": [
-            r for r in rows if r["satellite"] in VIIRS and r["regime"] == "day"
-        ],
-        "viirs_night": [
-            r for r in rows if r["satellite"] in VIIRS and r["regime"] == "night"
-        ],
-        "modis_aqua_day": [
-            r for r in rows if r["satellite"] == "Aqua" and r["regime"] == "day"
-        ],
-        "modis_terra": [r for r in rows if r["satellite"] == "Terra"],
-        "all": rows,
+    coverage = {
+        (r.satellite, r.pass_start_utc): {
+            c.name: getattr(r, c.name) for c in GeoFireValidationCoverage.__table__.columns
+        }
+        for r in session.execute(
+            select(GeoFireValidationCoverage).where(
+                GeoFireValidationCoverage.algorithm == gf.ALGORITHM_VERSION
+            )
+        ).scalars()
     }
+    groups = _groups(rows)
     pooled = {name: gf.pooled_rates(g) for name, g in groups.items()}
+    covered_rows = [
+        coverage[k] for r in rows if (k := (r["satellite"], r["pass_start_utc"])) in coverage
+    ]
+    covered = {
+        name: _covered(g, len(groups[name])) for name, g in _groups(covered_rows).items()
+    }
     viirs = pooled["viirs_all"]
     starts = [r["pass_start_utc"] for r in rows]
     return {
@@ -122,6 +180,20 @@ def _validation(session: Session) -> dict[str, Any]:
         "n_geo": viirs["n_geo"],
         "passes": viirs["passes"],
         "groups": pooled,
+        "covered": {
+            "max_scan_deg": gf.COVERED_MAX_SCAN_DEG,
+            "groups": covered,
+            "by_scan_angle": _by_scan_angle(covered_rows),
+            "method": (
+                "The same passes counted only on region pixels the polar sensor viewed within "
+                "max_scan_deg of nadir (scan angle at the satellite, from its orbital elements): "
+                "farther out its pixels grow (MODIS 1.9 km along the scan at 40 deg, 4.8 km at "
+                "55 deg) and it misses fires GK-2A sees, so the raw false-alarm rate measures the "
+                "reference's view as much as GK-2A. ci95: 2.5-97.5 percentiles of the pooled rate "
+                f"over {gf.BOOTSTRAP_DRAWS} resamples of whole passes. enough: at least "
+                f"{MIN_PASSES} passes and {MIN_PIXELS} pixels."
+            ),
+        },
         "period": [min(starts), max(starts)] if starts else None,
         "algorithm": gf.ALGORITHM_VERSION,
         "method": (
@@ -310,25 +382,61 @@ def _pct(x: float | None) -> str:
     return "n/a" if x is None else f"{100 * x:.0f}%"
 
 
+def _passes(n: int) -> str:
+    return f"{n} pass" if n == 1 else f"{n} passes"
+
+
+def _ci(group: dict[str, Any], name: str) -> str:
+    ci = (group.get("ci95") or {}).get(name)
+    return f" (95% CI {_pct(ci[0])}-{_pct(ci[1])})" if ci else ""
+
+
+def _validation_sentence(
+    label: str, sensor: str, deg: float, cov: dict[str, Any], raw: dict[str, Any], tail: str
+) -> str | None:
+    """One regime's agreement, quoting where the polar sensor could see, with the raw figure."""
+    whole = (
+        f"Counting the whole region, where {sensor} also looked obliquely or not at all, "
+        f"{_pct(raw['false_alarm_rate'])} were unconfirmed (n={raw['n_geo']})."
+    )
+    if cov["passes"] and (cov["enough"] or cov["enough_geo"]):
+        return (
+            f"{label} ({_passes(cov['passes'])}), where {sensor} looked within {deg:.0f} deg of "
+            f"nadir: GK-2A found {_pct(cov['hit_rate_strong'])}{_ci(cov, 'hit_rate_strong')} of "
+            f"strong fire pixels (n={cov['n_strong']}) and {_pct(cov['hit_rate'])}"
+            f"{_ci(cov, 'hit_rate')} of all (n={cov['n']}); {_pct(cov['false_alarm_rate'])}"
+            f"{_ci(cov, 'false_alarm_rate')} of its pixels there were unconfirmed "
+            f"(n={cov['n_geo']}){tail} {whole}"
+        )
+    if cov["passes"]:
+        return (
+            f"{label}: too few passes where {sensor} looked within {deg:.0f} deg of nadir to quote "
+            f"a rate yet ({_passes(cov['passes'])}, n={cov['n']} {sensor} and n={cov['n_geo']} "
+            f"GK-2A pixels). {whole}"
+        )
+    if raw["passes"]:
+        return (
+            f"{label}: GK-2A found {_pct(raw['hit_rate_strong'])} of strong fire pixels "
+            f"(n={raw['n_strong']}) and {_pct(raw['hit_rate'])} of all (n={raw['n']}); "
+            f"{_pct(raw['false_alarm_rate'])} of its pixels were unconfirmed (n={raw['n_geo']}), "
+            f"counting pixels {sensor} saw obliquely or not at all{tail}"
+        )
+    return None
+
+
 def _interpretation(p: dict[str, Any]) -> list[str]:
     """Plain-language statements of what the numbers support, built from the numbers."""
-    out = []
-    groups = p["validation"]["groups"]
-    aqua, vday = groups["modis_aqua_day"], groups["viirs_day"]
-    if aqua["passes"]:
-        out.append(
-            f"Afternoon (MODIS Aqua passes): GK-2A found {_pct(aqua['hit_rate_strong'])} "
-            f"of strong fire pixels (n={aqua['n_strong']}) and {_pct(aqua['hit_rate'])} of all "
-            f"(n={aqua['n']}); {_pct(aqua['false_alarm_rate'])} of its pixels were unconfirmed "
-            f"(n={aqua['n_geo']})."
-        )
-    if vday["passes"]:
-        out.append(
-            f"Midday (VIIRS day passes): GK-2A found only {_pct(vday['hit_rate'])} of VIIRS "
-            f"fire pixels (n={vday['n']}) and {_pct(vday['false_alarm_rate'])} of its pixels were "
-            f"unconfirmed (n={vday['n_geo']}): small midday fires are below its noise, so midday "
-            "counts are not reliable."
-        )
+    out: list[str | None] = []
+    v = p["validation"]
+    raw, cov, deg = v["groups"], v["covered"]["groups"], v["covered"]["max_scan_deg"]
+    out.append(_validation_sentence(
+        "Afternoon, MODIS on Aqua", "MODIS", deg["MODIS"], cov["modis_aqua_day"],
+        raw["modis_aqua_day"], ".",
+    ))  # fmt: skip
+    out.append(_validation_sentence(
+        "Midday, VIIRS", "VIIRS", deg["VIIRS"], cov["viirs_day"], raw["viirs_day"],
+        ": small midday fires are below its noise, so midday counts are not reliable.",
+    ))  # fmt: skip
     if p.get("share_outside_polar_windows") is not None:
         shares = [x for b in p.get("outside_share_by_pad") or [] for x in (b["union"], b["per_day"])
                   if x is not None]  # fmt: skip
@@ -351,7 +459,7 @@ def _interpretation(p: dict[str, Any]) -> list[str]:
             "cannot be checked against a polar satellite, so treat them as a relative activity "
             "index (shape of the day), not a fire count."
         )
-    return out
+    return [x for x in out if x]
 
 
 @router.get("/latest")

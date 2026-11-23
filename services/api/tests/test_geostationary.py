@@ -31,10 +31,12 @@ from blindspot.models.geofires import (
     GeoFireStatic,
     GeoFireStaticPixel,
     GeoFireValidation,
+    GeoFireValidationCoverage,
 )
 from blindspot.sources import gk2a
 
 FIX = Path(__file__).parent / "fixtures" / "geostationary"
+TLE_FILE = Path(__file__).parent / "fixtures" / "orbits" / "celestrak_tle_20261030T1749Z.txt"
 SLOT = datetime(2026, 10, 29, 10, 40, tzinfo=UTC)
 
 
@@ -168,6 +170,41 @@ def test_excluded_pixels_leave_the_background_and_are_reported_apart() -> None:
     assert not plain.excluded_fire.any()
 
 
+def test_polar_scan_angles_match_firms_pixel_sizes(aqua: gk2a.PolarDetections) -> None:
+    """The scan angle predicted from Aqua's orbital elements, turned into MODIS's pixel size,
+    agrees with the size FIRMS reports for each detection of the 29 Oct pass."""
+    from blindspot.analytics import passes as ps
+
+    assert float(ps.scan_angle_deg(ps.half_swath_from_scan(55.0, 705.0), 705.0)) == (
+        pytest.approx(55.0, abs=0.01)
+    )
+    assert float(ps.along_scan_pixel_km(40.0, 705.0)) == pytest.approx(1.94, abs=0.01)
+    orbit = _orbits()["Aqua"]
+    mid = datetime(2026, 10, 29, 10, 45, tzinfo=UTC)
+    dist, angle = ps.pass_scan_angles(orbit.satrec(), mid, aqua.lat, aqua.lon)
+    assert np.isfinite(angle).all() and (dist < ps.INSTRUMENTS["MODIS"].half_swath_km).all()
+    predicted = ps.along_scan_pixel_km(angle, 705.0)
+    assert float(np.median(np.abs(predicted - aqua.scan_km))) < 0.1
+    assert np.corrcoef(predicted, aqua.scan_km)[0, 1] > 0.9
+
+
+def test_bootstrap_resamples_passes() -> None:
+    rows = [
+        {"ref_pixels": 10, "ref_hits": 5, "ref_pixels_strong": 4, "ref_hits_strong": 3,
+         "geo_pixels": 20, "geo_hits": 19},
+        {"ref_pixels": 30, "ref_hits": 12, "ref_pixels_strong": 0, "ref_hits_strong": 0,
+         "geo_pixels": 300, "geo_hits": 3},  # one swath-edge pass dominates the raw pool
+        {"ref_pixels": 5, "ref_hits": 4, "ref_pixels_strong": 2, "ref_hits_strong": 2,
+         "geo_pixels": 10, "geo_hits": 10},
+    ]  # fmt: skip
+    ci = gf.bootstrap_rates(rows)
+    assert ci == gf.bootstrap_rates(rows)  # a fixed seed: the same rows, the same interval
+    far = gf.pooled_rates(rows)["false_alarm_rate"]
+    assert ci["false_alarm_rate"][0] <= far <= ci["false_alarm_rate"][1]
+    assert ci["false_alarm_rate"][1] - ci["false_alarm_rate"][0] > 0.5  # one pass: very uncertain
+    assert gf.bootstrap_rates(rows[:1]) == dict.fromkeys(ci)
+
+
 def test_window_accounting_adds_up() -> None:
     """A scan on a window boundary counts once: half in the window, half in the gap after it, and
     the gaps add up to exactly the pixel-hours outside the windows."""
@@ -214,12 +251,45 @@ def test_diurnal_helpers() -> None:
     assert hours[16]["mean_count"] == 5.0 and hours[16]["scans"] == 2
 
 
+def _orbits() -> dict[str, object]:
+    """The recorded CelesTrak elements of 30 Oct 2026 (epochs within a day of the scan)."""
+    from blindspot.analytics.passes import OrbitElements
+    from blindspot.sources.celestrak import SATELLITES, parse_tle
+
+    by_id = {s.norad_id: s for s in SATELLITES}
+    return {
+        by_id[r.norad_id].name: OrbitElements(
+            r.norad_id, by_id[r.norad_id].key, by_id[r.norad_id].name,
+            by_id[r.norad_id].instrument, r.line1, r.line2, r.epoch,
+        )  # fmt: skip
+        for r in parse_tle(TLE_FILE.read_text(encoding="utf-8"))
+    }
+
+
 @pytest.fixture
 def stored(
     scan: gk2a.Scan, polys: dict, aqua: gk2a.PolarDetections, monkeypatch: pytest.MonkeyPatch
 ):
-    """Store the recorded scan and its validation in the test database with the job's own code."""
+    """Store the recorded scan and its validation in the test database with the job's own code
+    (with the recorded orbital elements in the tle table, so the coverage rows are made too)."""
+    from sqlalchemy.dialects.postgresql import insert
+
+    from blindspot.models.orbits import Tle
+    from blindspot.sources.celestrak import SATELLITE_BY_KEY
+
     init_db()
+    added = []
+    with session_scope() as session:
+        for o in _orbits().values():
+            row = session.execute(
+                insert(Tle).values(
+                    norad_id=o.norad_id, key=o.key, name=o.name,
+                    object_name=SATELLITE_BY_KEY[o.key].object_name, instrument=o.instrument,
+                    line1=o.line1, line2=o.line2, epoch=o.epoch, fetched_at=o.epoch,
+                ).on_conflict_do_nothing().returning(Tle.norad_id)
+            ).scalar()  # fmt: skip
+            if row is not None:
+                added.append(row)
     a = job.analyse(scan, polys)
     with session_scope() as session:
         n = job.store_analysis(session, a)
@@ -238,8 +308,12 @@ def stored(
             )
         )
         session.execute(
+            delete(GeoFireValidationCoverage).where(GeoFireValidationCoverage.algorithm == alg)
+        )
+        session.execute(
             delete(GeoFireSlot).where(GeoFireSlot.slot_utc == SLOT, GeoFireSlot.algorithm == alg)
         )
+        session.execute(text("DELETE FROM tle WHERE norad_id = ANY(:ids)"), {"ids": added})
 
 
 def test_job_stores_scan_and_validation(stored) -> None:
@@ -247,11 +321,25 @@ def test_job_stores_scan_and_validation(stored) -> None:
     assert n > 20
     assert summary["compared"] == 1 and summary["passes"] == 1
     assert summary["false_alarm_rate"] < 0.15
+    assert summary["covered"]["passes"] == 1
     with session_scope() as session:
         row = session.query(GeoFireSlot).filter_by(slot_utc=SLOT).one()
         assert row.status == "ok" and row.count == n == row.count_pb + row.count_hr
         assert 0 < row.clear_frac <= 1 and row.sza_deg < 90
         assert session.query(GeoFirePixel).filter_by(slot_utc=SLOT).count() == n
+        raw = session.query(GeoFireValidation).filter_by(slot_utc=SLOT).one()
+        cov = session.query(GeoFireValidationCoverage).filter_by(
+            satellite="Aqua", pass_start_utc=raw.pass_start_utc
+        ).one()
+    # Covered counts are a subset of the raw ones, and the scan-angle bins add up to the raw ones.
+    assert cov.max_scan_deg == 40.0 and 0 < cov.covered_pixels <= cov.region_pixels
+    for k in ("ref_pixels", "ref_hits", "ref_pixels_strong", "ref_hits_strong", "geo_pixels",
+              "geo_hits"):  # fmt: skip
+        assert getattr(cov, k) <= getattr(raw, k)
+    for k in ("geo_pixels", "geo_hits", "ref_pixels", "ref_hits"):
+        assert sum(b[k] for b in cov.by_scan_angle) == getattr(raw, k)
+    # This Aqua pass looked at Punjab near nadir (FIRMS pixels 1.2-1.7 km): most fires covered.
+    assert cov.ref_pixels > 0.5 * raw.ref_pixels
 
 
 def test_endpoints_follow_the_contract(stored) -> None:
@@ -279,8 +367,16 @@ def test_endpoints_follow_the_contract(stored) -> None:
             assert key in body
         assert len(body["hourly_ist"]) == 24
         v = body["validation"]
-        assert {"hit_rate", "false_alarm_rate", "n", "groups"} <= set(v)
+        assert {"hit_rate", "false_alarm_rate", "n", "groups", "covered"} <= set(v)
         assert v["groups"]["modis_aqua_day"]["passes"] >= 1
+        aqua = v["covered"]["groups"]["modis_aqua_day"]
+        assert aqua["passes"] == 1 and aqua["n_geo"] <= v["groups"]["modis_aqua_day"]["n_geo"]
+        assert set(aqua["ci95"]) == {"hit_rate", "hit_rate_strong", "false_alarm_rate"}
+        assert aqua["enough"] is False  # one pass is too few to quote
+        assert v["covered"]["max_scan_deg"] == {"MODIS": 40.0, "VIIRS": 50.0}
+        assert sum(b["geo_pixels"] for b in v["covered"]["by_scan_angle"]["MODIS"]) == (
+            v["groups"]["modis_aqua_day"]["n_geo"]
+        )
 
         assert client.get("/api/geostationary/diurnal", params={"days": 99}).status_code == 422
         missing = client.get("/api/geostationary/latest", params={"slot": "2001-01-01T00:00:00Z"})

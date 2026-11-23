@@ -9,6 +9,8 @@
   had a GK-2A scan within a few minutes: how many of the polar detections GK-2A also flagged and
   how many GK-2A pixels the polar satellite confirmed. Pooled, these are the hit and false-alarm
   rates every geostationary response carries.
+- geo_fire_validation_coverage: the same comparisons counted only where the polar sensor viewed
+  the ground within a fixed scan angle (its swath edge sees only large fires), and by scan angle.
 - geo_fire_static: GK-2A pixels flagged as persistent (non-crop) heat sources, and why. The job
   rebuilds it on every run; the fire test leaves these pixels out (geofire.detect_fires `exclude`).
 - geo_fire_static_pixel: what the fire test still found on those flagged pixels, scan by scan
@@ -128,6 +130,44 @@ class GeoFirePixel(_FirePixelColumns, Base):
             "slot_utc", "algorithm", "row", "col", name="uq_geo_fire_pixel"
         ),
         Index("ix_geo_fire_pixel_slot", "slot_utc"),
+    )
+
+
+class GeoFireValidationCoverage(Base):
+    """The same comparison as a geo_fire_validation row (same algorithm, satellite and pass start),
+    counted only where the polar sensor could see: region pixels it viewed within max_scan_deg of
+    nadir (scan angle at the satellite, from its orbital elements in the tle table). Beyond that
+    its pixels grow so much that missing a GK-2A fire says more about the reference than about
+    GK-2A. by_scan_angle holds the counts in bins of that angle (geofire.SCAN_ANGLE_BINS)."""
+
+    __tablename__ = "geo_fire_validation_coverage"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    algorithm: Mapped[str] = mapped_column(String(32))
+    satellite: Mapped[str] = mapped_column(String(32))
+    instrument: Mapped[str] = mapped_column(String(16))
+    pass_start_utc: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    regime: Mapped[str] = mapped_column(String(16))
+    max_scan_deg: Mapped[float] = mapped_column(Float)
+    tle_epoch: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    region_pixels: Mapped[int] = mapped_column(Integer)
+    covered_pixels: Mapped[int] = mapped_column(Integer)  # region pixels within max_scan_deg
+    ref_pixels: Mapped[int] = mapped_column(Integer)
+    ref_hits: Mapped[int] = mapped_column(Integer)
+    ref_pixels_strong: Mapped[int] = mapped_column(Integer)
+    ref_hits_strong: Mapped[int] = mapped_column(Integer)
+    ref_pixels_clear: Mapped[int] = mapped_column(Integer)
+    geo_pixels: Mapped[int] = mapped_column(Integer)
+    geo_hits: Mapped[int] = mapped_column(Integer)
+    by_scan_angle: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB(none_as_null=True))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "algorithm", "satellite", "pass_start_utc", name="uq_geo_fire_validation_coverage"
+        ),
     )
 
 

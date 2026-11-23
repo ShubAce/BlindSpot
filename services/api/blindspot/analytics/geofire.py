@@ -539,7 +539,33 @@ class PassComparison:
         return (self.geo_pixels - self.geo_hits) / self.geo_pixels if self.geo_pixels else None
 
 
-def compare_pass(
+@dataclass(frozen=True)
+class PassMatch:
+    """Pixel masks of one GK-2A vs polar comparison, on the GK-2A window grid."""
+
+    geo: np.ndarray  # GK-2A fire pixels inside the region
+    geo_hit: np.ndarray  # ...with a polar detection in the same or a neighbouring pixel
+    ref: np.ndarray  # region pixels holding at least one polar detection
+    ref_hit: np.ndarray  # ...with a GK-2A fire pixel in the same or a neighbouring pixel
+    strong: np.ndarray  # ref pixels whose summed polar FRP >= the strong threshold
+    clear: np.ndarray
+
+    def counts(self, where: np.ndarray | None = None) -> dict[str, int]:
+        """The comparison counted only on the pixels of `where` (all when None). Matches still
+        use every region pixel, so a pixel at the edge of `where` can be confirmed from outside."""
+        m = np.ones(self.geo.shape, dtype=bool) if where is None else where
+        return {
+            "ref_pixels": int((self.ref & m).sum()),
+            "ref_hits": int((self.ref_hit & m).sum()),
+            "ref_pixels_strong": int((self.strong & m).sum()),
+            "ref_hits_strong": int((self.strong & self.ref_hit & m).sum()),
+            "ref_pixels_clear": int((self.ref & self.clear & m).sum()),
+            "geo_pixels": int((self.geo & m).sum()),
+            "geo_hits": int((self.geo_hit & m).sum()),
+        }
+
+
+def match_pass(
     geo_fire: np.ndarray,
     clear: np.ndarray,
     region: np.ndarray,
@@ -548,8 +574,8 @@ def compare_pass(
     ref_frp: np.ndarray,
     strong_frp_mw: float = 30.0,
     tolerance_px: int = 1,
-) -> PassComparison:
-    """Compare a GK-2A fire mask with polar detections mapped to window (row, col) indices.
+) -> PassMatch:
+    """Match a GK-2A fire mask with polar detections mapped to window (row, col) indices.
 
     Matching allows one pixel of slack (a 3 x 3 neighbourhood): a VIIRS point and a GK-2A pixel
     centre can sit a pixel apart through geolocation error and terrain parallax.
@@ -567,17 +593,54 @@ def compare_pass(
     size = 2 * tolerance_px + 1
     geo_near = _ndimage().maximum_filter(geo.astype(np.uint8), size=size) > 0
     ref_near = _ndimage().maximum_filter(ref.astype(np.uint8), size=size) > 0
-    strong = ref & (frp_sum >= strong_frp_mw)
-    return PassComparison(
-        ref_pixels=int(ref.sum()),
-        ref_hits=int((ref & geo_near).sum()),
-        ref_pixels_strong=int(strong.sum()),
-        ref_hits_strong=int((strong & geo_near).sum()),
-        ref_pixels_clear=int((ref & clear).sum()),
-        geo_pixels=int(geo.sum()),
-        geo_hits=int((geo & ref_near).sum()),
-        strong_frp_mw=strong_frp_mw,
+    return PassMatch(
+        geo=geo,
+        geo_hit=geo & ref_near,
+        ref=ref,
+        ref_hit=ref & geo_near,
+        strong=ref & (frp_sum >= strong_frp_mw),
+        clear=clear & region,
     )
+
+
+def compare_pass(
+    geo_fire: np.ndarray,
+    clear: np.ndarray,
+    region: np.ndarray,
+    ref_rows: np.ndarray,
+    ref_cols: np.ndarray,
+    ref_frp: np.ndarray,
+    strong_frp_mw: float = 30.0,
+    tolerance_px: int = 1,
+) -> PassComparison:
+    """Compare a GK-2A fire mask with polar detections mapped to window (row, col) indices,
+    over the whole region (match_pass)."""
+    m = match_pass(
+        geo_fire, clear, region, ref_rows, ref_cols, ref_frp, strong_frp_mw, tolerance_px
+    )
+    return PassComparison(**m.counts(), strong_frp_mw=strong_frp_mw)
+
+
+# Where a polar sensor "could see": a region pixel it viewed at most this far off nadir (scan angle
+# at the satellite). Beyond it pixels grow fast (MODIS: 1.9 km along the scan at 40 deg, 4.8 km at
+# 55 deg), so small fires there are below the polar sensor's own detection limit and a GK-2A pixel
+# without a polar detection says more about the reference than about GK-2A. Measured on 15-22 Nov
+# 2026: GK-2A pixels unconfirmed by MODIS were 1-5% at 0-40 deg, 10-19% at 40-50 and 94% at 50-55.
+COVERED_MAX_SCAN_DEG = {"MODIS": 40.0, "VIIRS": 50.0}
+SCAN_ANGLE_BINS = (0.0, 20.0, 30.0, 40.0, 45.0, 50.0, 55.0, 90.0)  # the last: the swath edge on
+
+
+def scan_angle_counts(
+    match: PassMatch, scan_deg: np.ndarray, bins: Sequence[float] = SCAN_ANGLE_BINS
+) -> list[dict[str, Any]]:
+    """The comparison's counts in bins of the polar sensor's scan angle at each pixel."""
+    out = []
+    with np.errstate(invalid="ignore"):
+        for lo, hi in zip(bins[:-1], bins[1:], strict=True):
+            c = match.counts((scan_deg >= lo) & (scan_deg < hi))
+            out.append({"lo": lo, "hi": hi, **{k: c[k] for k in (
+                "geo_pixels", "geo_hits", "ref_pixels", "ref_hits")}})  # fmt: skip
+    return out
 
 
 def pooled_rates(rows: Iterable[dict[str, Any]]) -> dict[str, Any]:
@@ -602,6 +665,42 @@ def pooled_rates(rows: Iterable[dict[str, Any]]) -> dict[str, Any]:
         "n_strong": strong,
         "hits_strong": strong_hits,
     }
+
+
+BOOTSTRAP_DRAWS = 2000
+BOOTSTRAP_SEED = 20261123  # fixed, so the same rows always give the same interval
+
+
+def bootstrap_rates(
+    rows: Sequence[dict[str, Any]], draws: int = BOOTSTRAP_DRAWS, seed: int = BOOTSTRAP_SEED
+) -> dict[str, list[float] | None]:
+    """95% intervals of the pooled hit, strong-hit and false-alarm rates, resampling whole passes
+    with replacement. Pixels of one pass are not independent (one swath-edge pass once gave 316 of
+    355 unconfirmed pixels), so an interval over pixels (Wilson) would be far too narrow."""
+    keys = {
+        "hit_rate": ("ref_hits", "ref_pixels"),
+        "hit_rate_strong": ("ref_hits_strong", "ref_pixels_strong"),
+        "false_alarm_rate": ("geo_unconfirmed", "geo_pixels"),
+    }
+    out: dict[str, list[float] | None] = dict.fromkeys(keys)
+    if len(rows) < 2:
+        return out
+    idx = np.random.default_rng(seed).integers(0, len(rows), size=(draws, len(rows)))
+
+    def column(key: str) -> np.ndarray:
+        if key == "geo_unconfirmed":
+            return np.array([r["geo_pixels"] - r["geo_hits"] for r in rows], dtype=float)
+        return np.array([r[key] for r in rows], dtype=float)
+
+    for name, (num, den) in keys.items():
+        n, d = column(num)[idx].sum(axis=1), column(den)[idx].sum(axis=1)
+        ok = d > 0
+        if ok.sum() < draws / 2:  # most resamples hold no pixel of this kind
+            continue
+        ratio = n[ok] / d[ok]
+        out[name] = [round(float(np.percentile(ratio, 2.5)), 4),
+                     round(float(np.percentile(ratio, 97.5)), 4)]  # fmt: skip
+    return out
 
 
 # --- diurnal record ------------------------------------------------------------------------------------

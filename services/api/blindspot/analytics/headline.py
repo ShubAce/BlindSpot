@@ -339,6 +339,8 @@ def gk2a_evening(diurnal: dict[str, Any]) -> dict[str, Any]:
     evening = max(gaps, key=lambda g: g.get("pixel_hours") or 0, default=None)
     validation = diurnal.get("validation") or {}
     aqua = (validation.get("groups") or {}).get("modis_aqua_day")
+    covered = validation.get("covered") or {}
+    aqua_covered = (covered.get("groups") or {}).get("modis_aqua_day")
     return {
         "available": True,
         "unit": diurnal.get("unit"),
@@ -355,6 +357,10 @@ def gk2a_evening(diurnal: dict[str, Any]) -> dict[str, Any]:
             "viirs_false_alarm_rate": validation.get("false_alarm_rate"),
             "viirs_n": validation.get("n"),
             "modis_aqua_day": aqua,
+            # The same passes where MODIS looked within covered.max_scan_deg of nadir: the raw
+            # false-alarm rate also counts pixels MODIS saw obliquely or not at all.
+            "modis_aqua_day_covered": aqua_covered,
+            "covered_max_scan_deg": covered.get("max_scan_deg"),
         },
         "note": "An activity index in GK-2A pixel-hours, not a fire count: GK-2A misses most "
         "small midday fires that VIIRS sees and is reliable for strong afternoon fires.",
