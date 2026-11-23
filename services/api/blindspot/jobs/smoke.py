@@ -1351,8 +1351,7 @@ def validation_scores(
         lag0 = entry["smoke_per_km_mixing_depth"]["lag0"]
         entry["summary"] = tj.describe_r(lag0.get("r"), lag0.get("n_eff"))
         entry["placebo_summary"] = tj.describe_placebos(
-            lag0.get("r"), entry["placebos"]["constant_smoke"]["lag0"].get("r"),
-            entry["placebos"]["day_shift"]["mean_r"])
+            lag0.get("r"), entry["placebos"]["constant_smoke"]["lag0"].get("r"), entry["placebos"]["day_shift"])
         results.append(entry)
         series_out.append({
             "city": city.name,
@@ -1371,11 +1370,23 @@ def validation_scores(
     cams_rs = [r for r in (_lag0_r(e, "cams_baseline") for e in results) if r is not None]
     vent_rs = [r for r in (_lag0_r(e, "ventilation_only") for e in results) if r is not None]
     const_rs = [r for r in (e["placebos"]["constant_smoke"]["lag0"].get("r") for e in results) if r is not None]
-    shift_rs = [r for r in (e["placebos"]["day_shift"]["mean_r"] for e in results) if r is not None]
+    # The day-shifted copies cover fewer hours than the window, so each city's copies are compared
+    # with the model's r on the same hours (model_mean_r_same_hours), never with its lag-0 r.
+    shifts = [e["placebos"]["day_shift"] for e in results if e["placebos"]["day_shift"]["mean_r"] is not None]
+    shift_rs = [d["mean_r"] for d in shifts]
+    shift_model_rs = [d["model_mean_r_same_hours"] for d in shifts]
 
     def median(values: list[float]) -> float | None:
         return None if not values else round(float(np.median(values)), 3)
 
+    day_shift_higher = {
+        "cities": sum(1 for d in shifts if d["model_mean_r_same_hours"] > d["mean_r"]),
+        "cities_compared": len(shifts),
+        "shifts": sum(d["model_higher"] for d in shifts),
+        "shifts_compared": sum(d["compared"] for d in shifts),
+    }
+    paired_medians = {"mean_r": median(shift_rs), "model_mean_r_same_hours": median(shift_model_rs),
+                      "model_higher": day_shift_higher["cities"], "compared": len(shifts)}
     summary = {
         "period": {"from": _utc(inp.t_score), "to": _utc(inp.t_end), "spinup_h": VALIDATION_SPINUP_H,
                    "hindcast_from": _utc(inp.t0)},
@@ -1391,11 +1402,14 @@ def validation_scores(
         "median_r_cams": median(cams_rs),
         "median_r_placebo_constant_smoke": median(const_rs),
         "median_r_placebo_day_shift": median(shift_rs),
+        "median_r_model_same_hours_as_day_shift": median(shift_model_rs),
+        "day_shift_model_higher": day_shift_higher,
         "placebo_comparison": "Median across cities: " + tj.describe_placebos(
-            median(rs), median(const_rs), median(shift_rs)) if rs else None,
+            median(rs), median(const_rs), paired_medians, unit="cities") if rs else None,
         "cities": results,
         "method": (
-            "Forward hindcast from every FIRMS detection (and candidate unseen scar) in the period, "
+            "Forward hindcast from every FIRMS detection outside known industrial heat sources (and "
+            "candidate unseen scar) in the period, "
             f"started {VALIDATION_SPINUP_H} h before the first scored hour so the smoke of earlier "
             "fires has arrived; hourly smoke index within 30 km of each city, also divided by the "
             "boundary-layer depth (a concentration proxy), against the hourly mean of OpenAQ PM2.5 "
@@ -1404,8 +1418,9 @@ def validation_scores(
             "controls for log ventilation (BLH x transport wind), each series at its own hour, "
             "since stagnant air alone raises PM2.5; 'ventilation_only' and CAMS are the baselines "
             "to beat. Two placebos test the proxy itself: 1/BLH with the smoke held constant, and "
-            "the modelled smoke moved by 1 to 3 days (BLH kept at its own hour); the smoke model "
-            "shows skill at timing smoke only where its r is clearly above both. Correlation is not "
+            "the modelled smoke moved by 1 to 3 days (BLH kept at its own hour), each compared with "
+            "the model on the same hours; the smoke model shows skill at timing smoke only where "
+            "its r is clearly above both. Correlation is not "
             "attribution: local sources dominate city PM2.5."
         ),
         "notes": inp.notes,
@@ -1469,6 +1484,7 @@ def smoke_validate() -> dict[str, Any]:
             "r_cams": _lag0_r(delhi, "cams_baseline"),
             "r_placebo_constant_smoke": delhi["placebos"]["constant_smoke"]["lag0"].get("r"),
             "r_placebo_day_shift_mean": delhi["placebos"]["day_shift"]["mean_r"],
+            "r_model_same_hours_as_day_shift": delhi["placebos"]["day_shift"]["model_mean_r_same_hours"],
             "summary": delhi["summary"],
         },
         "median_r": summary["median_r_smoke_per_km_mixing_depth"],
@@ -1476,5 +1492,7 @@ def smoke_validate() -> dict[str, Any]:
         "median_r_cams": summary["median_r_cams"],
         "median_r_placebo_constant_smoke": summary["median_r_placebo_constant_smoke"],
         "median_r_placebo_day_shift": summary["median_r_placebo_day_shift"],
+        "median_r_model_same_hours_as_day_shift": summary["median_r_model_same_hours_as_day_shift"],
+        "day_shift_model_higher": summary["day_shift_model_higher"],
         "runtime_s": round(time.perf_counter() - started, 1),
     }

@@ -354,8 +354,37 @@ def test_day_shift_placebo_is_paired_and_needs_day_to_day_signal():
     same = tj.day_shift_placebo(np.tile(smoke[:24], n // 24), blh, obs)
     assert same["model_higher"] == 0
     assert all(e["r"] == e["r_model_same_hours"] for e in same["by_shift"])
-    words = tj.describe_placebos(0.3, 0.4, 0.1)
-    assert "higher than the same smoke moved" in words and "not higher than 1/BLH alone" in words
+    assert same["model_mean_r_same_hours"] == same["mean_r"]
+    words = tj.describe_placebos(0.3, 0.4, {"mean_r": 0.1, "model_mean_r_same_hours": 0.35,
+                                            "model_higher": 5, "compared": 6})
+    assert "not higher than 1/BLH alone (r = 0.40)" in words
+    assert "smoke model mean r = 0.35, higher than the moved smoke's 0.10 (higher in 5 of 6 shifts)" in words
+    assert "level with 1/BLH alone" in tj.describe_placebos(0.301, 0.298)
+
+
+def test_day_shift_placebo_is_compared_on_its_own_hours():
+    """The day-shifted copies cover fewer hours than the window (n - |s|), and r depends on which
+    hours are in: here a local burst in the first 6 hours, which no smoke model could know, drags
+    the model's r over the whole window below the copies' mean r, yet on the copies' own hours the
+    model is higher in every shift. The sentence must say what the paired numbers say."""
+    rng = np.random.default_rng(2)
+    n = 168
+    hours = np.arange(n)
+    blh = 600.0 + 500.0 * np.sin(2 * np.pi * (hours - 6) / 24.0)
+    smoke = np.repeat(rng.lognormal(0.0, 0.4, n // 24), 24) * (1.0 + 0.5 * np.sin(2 * np.pi * hours / 24.0))
+    model = smoke / np.maximum(blh, 100.0)
+    obs = 30.0 + 5000.0 * model + rng.normal(0, 5.0, n)
+    obs[:6] += 1500.0
+    r_window = float(np.corrcoef(model, obs)[0, 1])
+    res = tj.day_shift_placebo(smoke, blh, obs)
+    assert res["model_higher"] == res["compared"] == 6
+    same_hours = np.mean([e["r_model_same_hours"] for e in res["by_shift"]])
+    assert res["model_mean_r_same_hours"] == pytest.approx(same_hours, abs=1e-3)
+    assert r_window + 0.05 < res["mean_r"] < res["model_mean_r_same_hours"] - 0.2  # unpaired would invert it
+    words = tj.describe_placebos(r_window, None, res)
+    assert words.startswith(f"smoke model r = {r_window:.2f}; against the same smoke moved by 1 to 3 days")
+    assert (f"smoke model mean r = {res['model_mean_r_same_hours']:.2f}, higher than the moved smoke's "
+            f"{res['mean_r']:.2f} (higher in 6 of 6 shifts)") in words
 
 
 def test_validation_reports_placebos_and_lags_both_ways():
@@ -378,6 +407,21 @@ def test_validation_reports_placebos_and_lags_both_ways():
     assert summary["median_r_placebo_constant_smoke"] is not None
     assert summary["placebo_comparison"].startswith("Median across cities: smoke model r = ")
     assert summary["headline_placebos"] == delhi["placebo_summary"]
+    # each city's sentence and the medians compare the day shift on its own hours
+    for city in summary["cities"]:
+        assert city["placebo_summary"] == tj.describe_placebos(
+            city["smoke_per_km_mixing_depth"]["lag0"]["r"], city["placebos"]["constant_smoke"]["lag0"]["r"],
+            city["placebos"]["day_shift"])
+    days = [c["placebos"]["day_shift"] for c in summary["cities"]]
+    assert all(d["compared"] for d in days)
+    assert summary["median_r_placebo_day_shift"] == pytest.approx(np.median([d["mean_r"] for d in days]), abs=1e-3)
+    same = np.median([d["model_mean_r_same_hours"] for d in days])
+    assert summary["median_r_model_same_hours_as_day_shift"] == pytest.approx(same, abs=1e-3)
+    assert summary["day_shift_model_higher"] == {
+        "cities": sum(d["model_mean_r_same_hours"] > d["mean_r"] for d in days), "cities_compared": 2,
+        "shifts": sum(d["model_higher"] for d in days), "shifts_compared": sum(d["compared"] for d in days)}
+    assert f"smoke model mean r = {same:.2f}, " in summary["placebo_comparison"]
+    assert summary["placebo_comparison"].endswith(" of 2 cities)")
 
 
 def test_obs_hour_labels_each_period_by_its_centre():

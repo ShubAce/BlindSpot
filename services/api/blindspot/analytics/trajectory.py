@@ -932,7 +932,11 @@ def day_shift_placebo(
     shares with measured PM2.5, but no longer knows which day the smoke came. A model whose r is
     no higher than these placebos' shows no skill at timing the smoke. On hourly series: at hour t
     the placebo is smoke(t - s) / max(BLH(t), floor), over the hours where t - s is in the series.
-    Per shift s, its r and the model's own r over the same hours (a paired comparison)."""
+    Per shift s, its r and the model's own r over the same hours (a paired comparison).
+
+    Compare mean_r with model_mean_r_same_hours (the model's r on those hours, averaged over the
+    shifts the same way), never with the model's r over the whole window: each copy covers only
+    n - |s| hours, and r depends on which hours are in."""
     from scipy.stats import pearsonr
 
     size = smoke.size
@@ -954,28 +958,46 @@ def day_shift_placebo(
         "by_shift": by_shift,
         "mean_r": round(float(np.mean([e["r"] for e in scored])), 3) if scored else None,
         "max_r": max(e["r"] for e in scored) if scored else None,
+        "model_mean_r_same_hours": (
+            round(float(np.mean([e["r_model_same_hours"] for e in scored])), 3) if scored else None),
         "model_higher": sum(1 for e in scored if e["r_model_same_hours"] > e["r"]),
         "compared": len(scored),
     }
 
 
-def describe_placebos(r_model: float | None, r_constant: float | None, r_shift: float | None) -> str:
-    """Plain words: is the smoke model's r higher than its placebos'? (Point estimates only.)"""
+def _versus(a: float, b: float) -> str:
+    """How a compares with b, in the words of a sentence that prints both to two decimals."""
+    if round(a, 2) == round(b, 2):
+        return "level with"
+    return "higher than" if a > b else "not higher than"
+
+
+def describe_placebos(
+    r_model: float | None, r_constant: float | None, day_shift: dict[str, Any] | None = None,
+    unit: str = "shifts",
+) -> str:
+    """Plain words: is the smoke model's r higher than its placebos'? Point estimates only, and
+    each comparison on the same hours: the model's lag-0 r against 1/BLH alone over every scored
+    hour, and against the day-shifted copies the model's mean r over the hours those copies cover
+    (`day_shift` as day_shift_placebo returns it; for medians over cities, the same keys, with
+    model_higher and compared counting cities: `unit`)."""
     if r_model is None:
         return "not enough overlapping hours"
-    rivals = [(f"1/BLH alone (r = {r_constant:.2f})", r_constant)] if r_constant is not None else []
-    if r_shift is not None:
-        rivals.append((f"the same smoke moved by 1 to 3 days (mean r = {r_shift:.2f})", r_shift))
-    if not rivals:
-        return f"smoke model r = {r_model:.2f}; no placebo could be scored"
-    above = [name for name, r in rivals if r_model > r]
-    below = [name for name, r in rivals if r_model <= r]
-    text = f"smoke model r = {r_model:.2f}"
-    if above:
-        text += "; higher than " + " and ".join(above)
-    if below:
-        text += "; not higher than " + " and ".join(below)
-    return text
+    parts = [f"smoke model r = {r_model:.2f}"]
+    if r_constant is not None:
+        parts.append(f"{_versus(r_model, r_constant)} 1/BLH alone (r = {r_constant:.2f})")
+    ds = day_shift or {}
+    r_shift, r_same = ds.get("mean_r"), ds.get("model_mean_r_same_hours")
+    if r_shift is not None and r_same is not None:
+        if ds["compared"] == 1:
+            unit = {"cities": "city", "shifts": "shift"}.get(unit, unit)
+        parts.append(
+            f"against the same smoke moved by 1 to 3 days, on the same hours: smoke model mean r = "
+            f"{r_same:.2f}, {_versus(r_same, r_shift)} the moved smoke's {r_shift:.2f} "
+            f"(higher in {ds['model_higher']} of {ds['compared']} {unit})")
+    if len(parts) == 1:
+        parts.append("no placebo could be scored")
+    return "; ".join(parts)
 
 
 def describe_r(r: float | None, n_eff: float | None) -> str:
