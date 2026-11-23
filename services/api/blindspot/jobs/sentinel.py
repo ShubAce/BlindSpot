@@ -3,8 +3,9 @@
 What one run does:
 1. Catalogue: search Earth Search for every S2 L2A item over Punjab and Haryana since the season
    started, and record each in s2_scene (too cloudy or almost all nodata -> `skipped`).
-2. For each processing stage in priority order (hotspot districts at 20 m, then the rest of Punjab,
-   then Haryana at 40 m), for each MGRS tile: read only the passes this tile has not folded in yet,
+2. For each processing stage in priority order (the hotspot districts of HOTSPOT_DISTRICTS at 20 m,
+   then the rest of Punjab, then the rest of Haryana at 40 m), for each MGRS tile: read only the
+   passes this tile has not folded in yet (all of them when the stage's area on the tile changed),
    block by block (1024 x 1024 px, aligned with the COG tiles, about 150 MB of RAM per block), and
    let each pixel compare itself with its own previous clear pass (analytics.burnscar). Pixels are
    judged only inside the stage's districts, on cropland, and in the tile's own 100 km MGRS square,
@@ -14,7 +15,10 @@ What one run does:
    the same outline and window is kept, id, verdict and names included, and only its computed
    columns are updated if they changed (a new confidence formula or rule version), so a rebuild
    writes only what changed. The harvested-but-unburnt snapshot of the tile is replaced the same
-   way, matching whole rows.
+   way, matching whole rows. Rows another stage left wholly inside this stage's area on the tile (a
+   district moved between stages) are deleted in the same transaction (claim_moved_rows). A scar
+   deleted by any of these steps has its id forwarded to the stored scar of the same burn that
+   overlaps it most (burn_cluster_forward), so its case link keeps working.
 4. Match every scar against fire detections (fire_detection, filled by the fires module) and name
    its district, sub-district and nearest village from the boundary and place tables. Writes that
    can touch most of a table go in steps of their own, each followed by a VACUUM, so the database
@@ -29,6 +33,7 @@ database, so a crash just redoes that tile.
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import logging
 import os
 import shutil
@@ -49,6 +54,7 @@ from shapely.geometry import Polygon, mapping, shape
 from shapely.geometry.base import BaseGeometry
 from sqlalchemy import column, func, insert, select, table, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from blindspot.analytics import burnscar, fires_stats
@@ -77,34 +83,36 @@ VILLAGE_MAX_KM = 3.0  # name the nearest village only if it is this close
 MATCH_TOLERANCE_H = 3  # a detection up to 3 h after the post pass still counts as "seen" (smouldering)
 PASS_READERS = 3  # passes of one block read at once (each reads its 10 bands with 12 threads)
 
-# The districts that lead the official burning counts year after year; they are processed first
-# and at full 20 m resolution. Names are matched case-insensitively against the boundary table,
-# with the spellings different datasets use (LGD "Ferozepur", geoBoundaries "Firozpur").
-HOTSPOT_DISTRICTS: dict[str, tuple[str, ...]] = {
-    "Sangrur": ("sangrur",),
-    "Bathinda": ("bathinda", "bhatinda"),
-    "Mansa": ("mansa",),
-    "Barnala": ("barnala",),
-    "Patiala": ("patiala",),
-    "Moga": ("moga",),
-    "Firozpur": ("firozpur", "ferozepur", "firozepur", "ferozpur"),
-    "Ludhiana": ("ludhiana",),
-    "Fatehgarh Sahib": ("fatehgarh sahib",),
-    "Tarn Taran": ("tarn taran",),
-    "Amritsar": ("amritsar",),
+# The districts that lead the burning year after year, as (state, district): they are processed
+# first and at full 20 m resolution, the rest of each state at 40 m. Names are matched
+# case-insensitively against the boundary table's districts of that state, with the spellings
+# different datasets use (LGD "Ferozepur", geoBoundaries "Firozpur").
+HOTSPOT_DISTRICTS: dict[tuple[str, str], tuple[str, ...]] = {
+    ("Punjab", "Sangrur"): ("sangrur",),
+    ("Punjab", "Bathinda"): ("bathinda", "bhatinda"),
+    ("Punjab", "Mansa"): ("mansa",),
+    ("Punjab", "Barnala"): ("barnala",),
+    ("Punjab", "Patiala"): ("patiala",),
+    ("Punjab", "Moga"): ("moga",),
+    ("Punjab", "Firozpur"): ("firozpur", "ferozepur", "firozepur", "ferozpur"),
+    ("Punjab", "Ludhiana"): ("ludhiana",),
+    ("Punjab", "Fatehgarh Sahib"): ("fatehgarh sahib",),
+    ("Punjab", "Tarn Taran"): ("tarn taran",),
+    ("Punjab", "Amritsar"): ("amritsar",),
     # Added 2026-11-23: in the 2026 season these burn as much as the districts above (NASA FIRMS
     # detections 15 Sep-22 Nov: Fazilka 1,267, 5th of all Punjab and Haryana; Sri Muktsar Sahib 892;
     # Kapurthala 618; Faridkot 567; Gurdaspur 535; Jalandhar 411; Malerkotla 393), and at 40 m a
     # pixel mixing a burnt field with its unburnt edge often fails the darkening tests, so burns that
     # are plain on the 10 m pictures went unmapped.
-    "Fazilka": ("fazilka",),
-    "Sri Muktsar Sahib": ("sri muktsar sahib", "muktsar", "shri muktsar sahib"),
-    "Kapurthala": ("kapurthala",),
-    "Faridkot": ("faridkot",),
-    "Gurdaspur": ("gurdaspur",),
-    "Jalandhar": ("jalandhar",),
-    "Malerkotla": ("malerkotla",),
+    ("Punjab", "Fazilka"): ("fazilka",),
+    ("Punjab", "Sri Muktsar Sahib"): ("sri muktsar sahib", "muktsar", "shri muktsar sahib"),
+    ("Punjab", "Kapurthala"): ("kapurthala",),
+    ("Punjab", "Faridkot"): ("faridkot",),
+    ("Punjab", "Gurdaspur"): ("gurdaspur",),
+    ("Punjab", "Jalandhar"): ("jalandhar",),
+    ("Punjab", "Malerkotla"): ("malerkotla",),
 }
+STATES = ("punjab", "haryana")  # each state's districts outside HOTSPOT_DISTRICTS form its 40 m stage
 
 
 @dataclass(frozen=True)
@@ -117,9 +125,9 @@ class Stage:
 
 
 STAGES = (
-    Stage("hotspots", 20, "18 high-burning districts of Punjab, 20 m (field scale: a 1 ha plot is ~25 px)"),
+    Stage("hotspots", 20, "high-burning districts (HOTSPOT_DISTRICTS), 20 m (field scale: a 1 ha plot is ~25 px)"),
     Stage("punjab", 40, "rest of Punjab, 40 m COG overviews (state-scale area; ~6 px per 1 ha plot)"),
-    Stage("haryana", 40, "Haryana, 40 m COG overviews"),
+    Stage("haryana", 40, "rest of Haryana, 40 m COG overviews"),
 )
 
 
@@ -153,36 +161,32 @@ def _union(session: Session, where: str, params: dict[str, Any]) -> BaseGeometry
 def stage_geometries(session: Session) -> tuple[dict[str, BaseGeometry], dict[str, Any]]:
     """Each stage's area as one lon/lat geometry, built from the boundary table (never typed in).
 
-    Returns ({stage: geometry}, notes). Empty when the boundaries have not been loaded yet."""
+    Returns ({stage: geometry}, notes): 'hotspots' is the union of HOTSPOT_DISTRICTS, and each of
+    STATES is its state minus those districts. Empty when the boundaries have not been loaded yet."""
     notes: dict[str, Any] = {}
-    names = sorted({alias for aliases in HOTSPOT_DISTRICTS.values() for alias in aliases})
-    hotspots = _union(
-        session,
-        "level = 'district' AND lower(state) = 'punjab' AND lower(name) = ANY(:names)",
-        {"names": names},
-    )
-    found = session.execute(
-        text("SELECT name FROM boundary WHERE level = 'district' AND lower(state) = 'punjab' "
-             "AND lower(name) = ANY(:names) ORDER BY name"),
-        {"names": names},
-    ).scalars().all()
-    notes["hotspot_districts_found"] = list(found)
+    aliases: dict[str, set[str]] = defaultdict(set)  # lower-case state -> district spellings
+    for (state, _name), names in HOTSPOT_DISTRICTS.items():
+        aliases[state.lower()].update(names)
+    pieces, found = [], []
+    for state, names in sorted(aliases.items()):
+        where = "level = 'district' AND lower(state) = :state AND lower(name) = ANY(:names)"
+        params = {"state": state, "names": sorted(names)}
+        if (geom := _union(session, where, params)) is not None and not geom.is_empty:
+            pieces.append(geom.buffer(0))
+        found += session.execute(text(f"SELECT state || ': ' || name FROM boundary WHERE {where} ORDER BY name"),
+                                 params).scalars().all()
+    notes["hotspot_districts_found"] = found
     out: dict[str, BaseGeometry] = {}
-    punjab = _union(session, "level = 'state' AND lower(name) = 'punjab'", {}) or _union(
-        session, "level = 'district' AND lower(state) = 'punjab'", {}
-    )
-    haryana = _union(session, "level = 'state' AND lower(name) = 'haryana'", {}) or _union(
-        session, "level = 'district' AND lower(state) = 'haryana'", {}
-    )
-    if hotspots is not None and not hotspots.is_empty:
-        out["hotspots"] = hotspots.buffer(0)
-    if punjab is not None and not punjab.is_empty:
-        rest = punjab.buffer(0)
-        if "hotspots" in out:
-            rest = rest.difference(out["hotspots"])
-        out["punjab"] = rest
-    if haryana is not None and not haryana.is_empty:
-        out["haryana"] = haryana.buffer(0)
+    if pieces:
+        out["hotspots"] = shapely.union_all(pieces).buffer(0)
+    for state in STATES:
+        whole = _union(session, "level = 'state' AND lower(name) = :state", {"state": state}) or _union(
+            session, "level = 'district' AND lower(state) = :state", {"state": state})
+        if whole is not None and not whole.is_empty:
+            rest = whole.buffer(0)
+            if "hotspots" in out:
+                rest = rest.difference(out["hotspots"])
+            out[state] = rest
     return out, notes
 
 
@@ -243,10 +247,19 @@ class TileResult:
     hazy_passes: set[str] = field(default_factory=set)
     item_stats: dict[str, dict[str, Any]] = field(default_factory=dict)
     seconds: float = 0.0
+    # The stage's area inside the tile's own square (lon/lat WKT): rows of other stages lying wholly
+    # inside it were moved here (a district changed stage), so storing this tile deletes them.
+    area_wkt: str = ""
 
 
 def _tile_dir(stage: Stage, tile: str) -> Path:
     return state_root() / RULE.pixel_version / stage.name / f"{tile}_{stage.res}m"
+
+
+def _area_key(area_utm: BaseGeometry) -> str:
+    """A fingerprint of a stage's area on a tile (to the metre), kept beside the tile's memory."""
+    exact = shapely.normalize(shapely.set_precision(area_utm, 1.0))
+    return hashlib.sha1(shapely.to_wkb(exact)).hexdigest()
 
 
 def _cropland(grid: stac.TileGrid, window: Window, hrefs: list[str]) -> np.ndarray:
@@ -320,6 +333,14 @@ def process_tile(
     next_dir = tile_dir.with_name(tile_dir.name + ".next")
     if next_dir.exists():
         shutil.rmtree(next_dir)
+    area_key = _area_key(area_utm)
+    key_path = tile_dir / "area.key"
+    if tile_dir.exists() and (not key_path.exists() or key_path.read_text() != area_key):
+        # The stage's area on this tile changed (a district moved between stages): the memory has
+        # no history for pixels new to the area, and only a rebuild replaces the rows of the old
+        # area for every window, so the tile is rebuilt from all its passes.
+        shutil.rmtree(tile_dir)
+    result.area_wkt = shapely.to_wkt(_to_lonlat(area_utm, grid.epsg), rounding_precision=7)
     registry_path = tile_dir / "items.json"
     registry: list[str] = orjson.loads(registry_path.read_bytes()) if registry_path.exists() else []
     result.rebuilt = not tile_dir.exists()
@@ -346,8 +367,10 @@ def process_tile(
     if not any_new:
         shutil.rmtree(next_dir, ignore_errors=True)
         return None
-    return _finish_tile(stage, tile, grid, scenes, passes, pass_days, registry, sensing, next_dir,
-                        burn_parts, harvest_parts, result, t0)
+    result = _finish_tile(stage, tile, grid, scenes, passes, pass_days, registry, sensing, next_dir,
+                          burn_parts, harvest_parts, result, t0)
+    (next_dir / "area.key").write_text(area_key)
+    return result
 
 
 _worldcover_hrefs: dict[str, tuple[float, list[str]]] = {}
@@ -585,6 +608,10 @@ def store_tile(result: TileResult, fetch_id: int | None) -> dict[str, dict[str, 
             "harvest_cluster": _replace_rows(session, HarvestCluster, tile_sql, tile_params,
                                              [{**r, "fetch_id": fetch_id} for r in result.harvest_rows]),
         }
+        claimed = claim_moved_rows(session, tile, stage_name, result.area_wkt)
+        for name, counts in stored.items():
+            counts["claimed"] = claimed.get(name, 0)
+        stored["burn_cluster"]["forwarded"] += claimed.get("forwarded", 0)
         current = dict(session.execute(
             select(S2Scene.item_id, S2Scene.stats).where(S2Scene.item_id.in_(list(result.item_stats)))
         ).all())
@@ -832,6 +859,12 @@ def _replace_rows(session: Session, model: type[BurnCluster | HarvestCluster], s
     real = model.__table__
     stage = table(f"new_{real.name}", *(column(c.name, c.type) for c in real.columns))
     out = {"computed": len(rows), "kept": 0, "updated": 0, "deleted": 0, "inserted": 0}
+    forward = real.name == "burn_cluster"  # deleted scars are kept aside, then forwarded (forward_gone)
+    if forward:
+        out["forwarded"] = 0
+        _gone_table(session)
+    gone_cols = GONE_COLS if forward else "1"
+    saved = f"saved AS (INSERT INTO {GONE_TABLE} SELECT * FROM gone RETURNING 1)," if forward else ""
     session.execute(text(f"CREATE TEMP TABLE {stage.name} (LIKE {real.name} INCLUDING DEFAULTS) ON COMMIT DROP"))
     if rows:
         session.execute(insert(stage), rows)
@@ -857,19 +890,103 @@ def _replace_rows(session: Session, model: type[BurnCluster | HarvestCluster], s
                  pair AS (SELECT n.id AS new_id, o.id AS old_id, n.csig = o.csig AS same
                           FROM n JOIN o USING (isig, rn)),
                  gone AS (DELETE FROM {real.name} t USING o WHERE t.id = o.id
-                           AND NOT EXISTS (SELECT 1 FROM pair p WHERE p.old_id = o.id) RETURNING 1),
+                           AND NOT EXISTS (SELECT 1 FROM pair p WHERE p.old_id = o.id) RETURNING {gone_cols}),
+                 {saved}
                  changed AS ({update}),
                  taken AS (DELETE FROM {stage.name} t USING pair p WHERE t.id = p.new_id RETURNING 1)
             SELECT (SELECT count(*) FROM gone), (SELECT count(*) FROM pair WHERE same),
                    (SELECT count(*) FROM changed)
         """), params).one()
     elif scope is not None:
-        out["deleted"] = session.execute(text(f"DELETE FROM {real.name} t WHERE {scope}"), params).rowcount
+        delete = f"DELETE FROM {real.name} t WHERE {scope}"
+        out["deleted"] = (_delete_keeping_gone(session, delete, params) if forward
+                          else session.execute(text(delete), params).rowcount)
     if out["computed"] > out["kept"] + out["updated"]:  # some new rows matched nothing stored
         _name_places(session, stage.name)
         out["inserted"] = session.execute(text(f"INSERT INTO {real.name} SELECT * FROM {stage.name}")).rowcount
     session.execute(text(f"DROP TABLE {stage.name}"))
+    if forward and out["deleted"]:
+        out["forwarded"] = forward_gone(session)
     return out
+
+
+# --- case links that survive a replaced scar --------------------------------------------------------
+
+GONE_TABLE = "gone_scar"  # scars deleted in this transaction, waiting to be forwarded
+GONE_COLS = "t.id, t.geom, t.burn_before"  # its columns, in order, as a DELETE FROM burn_cluster t returns them
+# A deleted scar's successor: the stored scar of the same burn (same post pass day) whose outline
+# overlaps it most. ST_MakeValid: an outline rounded to 6 decimals can self-touch, and GEOS would
+# reject it in an intersection.
+_FORWARD_SQL = text(f"""
+    INSERT INTO burn_cluster_forward (old_id, new_id, overlap_share, forwarded_at)
+    SELECT g.id, s.id, s.share, now()
+      FROM {GONE_TABLE} g
+      CROSS JOIN LATERAL (
+          SELECT b.id, ST_Area(ST_Intersection(ST_MakeValid(b.geom), ST_MakeValid(g.geom)))
+                       / NULLIF(ST_Area(g.geom), 0) AS share
+            FROM burn_cluster b
+           WHERE b.geom && g.geom AND b.burn_before::date = g.burn_before::date
+           ORDER BY share DESC NULLS LAST, b.id
+           LIMIT 1) s
+     WHERE s.share > 0
+    ON CONFLICT (old_id) DO UPDATE SET new_id = EXCLUDED.new_id, overlap_share = EXCLUDED.overlap_share,
+                                       forwarded_at = EXCLUDED.forwarded_at
+""")
+
+
+def _gone_table(session: Session) -> None:
+    session.execute(text(f"CREATE TEMP TABLE IF NOT EXISTS {GONE_TABLE} "
+                         "(id bigint, geom geometry, burn_before timestamptz) ON COMMIT DROP"))
+
+
+def _delete_keeping_gone(session: Session, delete: str, params: dict[str, Any]) -> int:
+    """Run `delete` (a DELETE FROM burn_cluster with the alias t) and keep the scars it deleted in
+    GONE_TABLE until forward_gone. Returns the rows deleted."""
+    return session.execute(text(f"WITH gone AS ({delete} RETURNING {GONE_COLS}) "
+                                f"INSERT INTO {GONE_TABLE} SELECT * FROM gone"), params).rowcount
+
+
+def forward_gone(session: Session) -> int:
+    """Point the ids of the scars deleted so far in this transaction (GONE_TABLE) at their
+    successors in burn_cluster_forward, then forget them. Returns the rows written.
+
+    A case link (/case/<id>) must survive a rebuild that changes a scar's outline and a stage change
+    that maps its district at another resolution (both give the scar a new id). A scar with no
+    successor of the same burn gets no row (its link answers 404, as before). Best effort: a failure
+    here is logged and rolled back to a savepoint, so it never costs the tile its rows."""
+    try:
+        with session.begin_nested():
+            written = session.execute(_FORWARD_SQL).rowcount
+    except DBAPIError as exc:
+        log.warning("sentinel: scar ids not forwarded: %s", str(exc)[:300])
+        written = 0
+    session.execute(text(f"DELETE FROM {GONE_TABLE}"))
+    return written
+
+
+def claim_moved_rows(session: Session, tile: str, scope: str, area_wkt: str) -> dict[str, int]:
+    """Delete the rows other stages stored on this tile that lie wholly inside this stage's area
+    there (`area_wkt`, lon/lat): a district moved to this stage. Run right after this stage stored
+    the tile, in the same transaction, so the moved area never holds both stages' rows, even when
+    the old stage's turn on the tile never comes (a run that ran out of budget); each scar's id is
+    forwarded to this stage's scar of the same burn. A row across the edge of the area is left to
+    its own stage, whose next rebuild of the tile replaces it with its part outside the area, so no
+    row is deleted twice. Returns rows deleted per table, and 'forwarded'."""
+    if not area_wkt:
+        return {}
+    params = {"tile": tile, "scope": scope, "area": area_wkt}
+    area = "(SELECT ST_GeomFromText(:area, 4326) AS g) a"
+    _gone_table(session)
+    claimed = {
+        "burn_cluster": _delete_keeping_gone(session, f"""
+            DELETE FROM burn_cluster t USING {area}
+             WHERE t.mgrs_tile = :tile AND t.scope <> :scope AND ST_Covers(a.g, t.geom)""", params),
+        "harvest_cluster": session.execute(text(f"""
+            DELETE FROM harvest_cluster t USING {area}
+             WHERE t.mgrs_tile = :tile AND t.scope <> :scope AND ST_Covers(a.g, t.geom)"""), params).rowcount,
+    }
+    claimed["forwarded"] = forward_gone(session) if claimed["burn_cluster"] else 0
+    return claimed
 
 
 def label_places(session: Session) -> dict[str, int]:
@@ -890,12 +1007,19 @@ def drop_stage_rows(scope: str, tiles: list[str], dead: dict[str, DeadRows]) -> 
     would otherwise stay for good, counted beside the rows the tile's new stage writes."""
     deleted = {}
     with session_scope() as session:
+        _gone_table(session)
+        params = {"scope": scope, "tiles": tiles}
         for name in ("burn_cluster", "harvest_cluster"):
-            n = session.execute(text(f"DELETE FROM {name} WHERE scope = :scope AND mgrs_tile = ANY(:tiles)"),
-                                {"scope": scope, "tiles": tiles}).rowcount
+            delete = f"DELETE FROM {name} t WHERE scope = :scope AND mgrs_tile = ANY(:tiles)"
+            if name == "burn_cluster":  # their ids go to the scars the tile's new stage stored
+                n = _delete_keeping_gone(session, delete, params)
+            else:
+                n = session.execute(text(delete), params).rowcount
             if n:
                 deleted[name] = n
                 dead[name].add(n)
+        if deleted.get("burn_cluster"):
+            deleted["forwarded"] = forward_gone(session)
     return deleted
 
 
@@ -964,7 +1088,8 @@ def run_sentinel(*, budget_min: float | None = None, stages: tuple[str, ...] | N
                     continue
                 stored = store_tile(res, tracker.fetch_id)
                 for name, counts in stored.items():
-                    dead[name].add(counts["deleted"] + counts["updated"])  # both leave a dead row version
+                    # deleting and updating both leave a dead row version
+                    dead[name].add(counts["deleted"] + counts["updated"] + counts["claimed"])
                 done.append({
                     "stage": stage.name, "tile": tile, "passes": res.passes, "blocks": res.blocks,
                     "burn_clusters": len(res.burn_rows), "filtered_lookalikes": res.filtered_clusters,

@@ -4,6 +4,7 @@
  * shared with other screens; every field the contract marks as possibly missing is optional here.
  */
 
+import type { BBox } from '@/lib/aoi';
 import type { Envelope, IsoTime, LonLat, PolygonGeometry, MultiPolygonGeometry } from '@/lib/api';
 
 export type CaseImageryPass = {
@@ -129,12 +130,54 @@ export type ScarMethod = {
   };
 };
 
+/** How another scar in the case's pictures stands to them: `same` = first seen burnt after the
+ *  before picture and at the latest on the after picture (new in the after picture); `earlier` =
+ *  seen burnt by the before picture's pass (dark in both); `later` = first seen after the after
+ *  picture (burnt in neither: counted in the totals, not listed, never drawn). */
+export type OtherScarRelation = 'same' | 'earlier' | 'later';
+
+export type OtherScar = {
+  id: number;
+  relation: OtherScarRelation;
+  burn_after: IsoTime;
+  burn_before: IsoTime;
+  unseen: boolean | null;
+  confidence: number | null;
+  area_ha: number;
+  /** Simplified by the API to one picture pixel, 5 decimals. */
+  outline: PolygonGeometry | MultiPolygonGeometry | null;
+};
+
+/** `area_ha` sums the scars' whole areas, also beyond the box's edge; `area_in_box_ha` only the part
+ *  inside the box, the pictures' own area. */
+export type OtherScarTotals = { scars: number; area_ha: number; area_in_box_ha?: number };
+
+/** The other stored scars inside imagery.bbox, with the live map's confidence cut. `totals` and
+ *  `total` count every match; `scars` holds the same and earlier ones, at most `limit`, the largest
+ *  first (`truncated` when the cap left some out). Added to the API on 2026-11-23: an older answer
+ *  has no such key. */
+export type OtherScars = {
+  bbox?: BBox | null;
+  model_version?: string;
+  min_confidence?: number | null;
+  totals?: Partial<Record<OtherScarRelation, OtherScarTotals>>;
+  total?: number;
+  returned?: number;
+  truncated?: boolean;
+  limit?: number;
+  scars?: OtherScar[];
+};
+
 export type CaseFile = Envelope & {
   case: CaseProps;
-  imagery: { bbox: [number, number, number, number] | null; pre: CaseImageryPass | null; post: CaseImageryPass | null } | null;
+  imagery: { bbox: BBox | null; pre: CaseImageryPass | null; post: CaseImageryPass | null } | null;
+  other_scars?: OtherScars | null;
   fires_nearby: CaseFire[];
   weather_at_burn: CaseWeather | null;
   method?: ScarMethod | null;
+  /** The id asked for, when the API answered for a scar the sentinel job replaced (this case is its
+   *  successor); absent otherwise. Added to the API on 2026-11-23: an older answer has no such key. */
+  forwarded_from?: number | null;
 };
 
 /** /api/stats/headline, the block this screen reads (the audit precision of candidate unseen burns). */

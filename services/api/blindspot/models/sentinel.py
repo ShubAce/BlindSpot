@@ -124,6 +124,21 @@ class BurnCluster(Base):
     )
 
 
+class BurnClusterForward(Base):
+    """Where a deleted scar went: the stored scar of the same burn (same post pass day) whose outline
+    overlaps the deleted one's most, so a case link (/case/<old_id>) keeps working after a rebuild or
+    a stage change replaced the scar (e.g. a district moved from 40 m to 20 m). Written by the sentinel
+    job whenever it deletes a scar that has such a successor; a scar with none gets no row.
+    new_id may itself be forwarded later: readers follow the chain (GET /api/scars/{id}, bounded)."""
+
+    __tablename__ = "burn_cluster_forward"
+
+    old_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    new_id: Mapped[int] = mapped_column(BigInteger)
+    overlap_share: Mapped[float] = mapped_column(Double)  # share of the old outline the new one covers
+    forwarded_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class HarvestCluster(Base):
     """A patch of cropland harvested this season whose residue was still unburnt (not burnt, not
     tilled, not sown) on the latest clear pass. A snapshot: rebuilt for a tile on every run.

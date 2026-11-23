@@ -231,7 +231,8 @@ cd /srv/blindspot
 sudo -u blindspot -H uv pip install --quiet --python /srv/blindspot/venv/bin/python -r /srv/blindspot/api/requirements.txt
 install -m 644 /tmp/bs/ops/blindspot-api.service /etc/systemd/system/
 install -m 644 /tmp/bs/ops/nginx-api-cache.conf /etc/nginx/conf.d/blindspot-api-cache.conf
-install -d -m 750 -o www-data -g www-data /var/cache/nginx/blindspot
+NGINX_CACHE=/var/cache/nginx/blindspot  # proxy_cache_path in nginx-api-cache.conf
+install -d -m 750 -o www-data -g www-data "$NGINX_CACHE"
 nginx -t -q
 systemctl daemon-reload && systemctl enable --quiet blindspot-api nginx
 # The API (127.0.0.1:8001) first, so :8000 is free for the cache in front of it. /api/health is
@@ -239,6 +240,10 @@ systemctl daemon-reload && systemctl enable --quiet blindspot-api nginx
 systemctl restart blindspot-api
 systemctl reload-or-restart nginx
 curl -fsS --retry 60 --retry-delay 2 --retry-all-errors --max-time 20 http://127.0.0.1:8000/api/health | head -c 400; echo
+# Answers cached by the previous code must not outlive it (they hold until their job clock ticks,
+# up to a day): clear them, then refill the cache from the site's main pages in the background.
+find "$NGINX_CACHE" -type f -delete
+systemctl start --no-block blindspot-warm.service || true
 """
 STEP_RELAY = """
 rsync -a --delete /tmp/bs/relay/ /srv/blindspot/relay/
