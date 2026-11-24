@@ -5,6 +5,7 @@
  * No server imports, so client and server components can both use it.
  */
 
+import { auditOlderText } from '@/components/case/audit';
 import { absoluteApiUrl, apiUrl } from '@/lib/api';
 import { dateIST, MISSING, NBSP, number, percent } from '@/lib/format';
 
@@ -127,6 +128,14 @@ export const count = (v: number | null | undefined) => number(v);
 /** The word for a count: `plural(1, 'burn')` is "burn", any other count "burns" (or `many`). */
 export const plural = (n: number | null | undefined, one: string, many = `${one}s`) => (n === 1 ? one : many);
 
+/** "521 villages", or "521 villages and 4 places with no village within 3 km" when the list has more
+ *  rows than named villages: the API gathers a sub-district's scars (or fields) with no census village
+ *  that close into a row of their own, so the totals' village counts and the lists' lengths differ. */
+export const places = (villages: number, rows?: number | null) => {
+  const other = rows != null && rows > villages ? rows - villages : 0;
+  return `${count(villages)} ${plural(villages, 'village')}${other ? ` and ${count(other)} ${plural(other, 'place')} with no village within 3${NBSP}km` : ''}`;
+};
+
 // A range never breaks at its dash (a word joiner after the en dash), and "n = 18" never splits.
 const WJ = '⁠';
 const ciText = (ci: [number, number] | null | undefined, f: (x: number) => string) =>
@@ -144,7 +153,9 @@ export function auditPhrase(a: BriefAudit | null | undefined): string | null {
 export function auditSentence(a: BriefAudit | null | undefined): string {
   const phrase = auditPhrase(a);
   if (!phrase) return 'Candidate unseen burns are not confirmed fires, and the API states no audit of them yet: treat every count and area here as unchecked.';
-  const dated = a?.current === false && a.date ? ` (an audit of ${passDate(a.date, { year: true })}, not of the current rule)` : '';
+  // the same words as the rest of the site (components/case/audit.ts)
+  const older = auditOlderText({ audit_current: a?.current, audit_date: a?.date, audit_model_version: a?.model_version });
+  const dated = older ? ` (${older})` : '';
   return `Candidate unseen burns are not confirmed fires: their ${phrase}${dated}, so every count and area of them here is an upper bound.`;
 }
 

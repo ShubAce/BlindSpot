@@ -72,6 +72,12 @@ def test_headline_contract() -> None:
     if body["unseen_burns"].get("available"):
         assert body["unseen_burns"]["label"] == "candidate unseen burns"
         assert 0 < body["unseen_burns"]["precision"] <= 1
+    # The audit's own rule and day travel with its precision; an audit of an earlier rule says so.
+    u = body["unseen_burns"]
+    if "precision" in u:
+        assert u["audit_model_version"] == "s2burn-rules-2" and u["audit_date"] == "2026-10-31"
+        assert u["audit_current"] is (u["audit_model_version"] == u["model_version"]) is False
+        assert "judged the earlier rule s2burn-rules-2" in u["note"]
 
 
 def test_get_or_build_single_flight_and_errors_not_cached() -> None:

@@ -4,6 +4,7 @@
  * for /live only, without touching the shared file. Every block the API may withhold is optional.
  */
 
+import type { AuditOf } from '@/components/case/audit';
 import type { AreaGeometry, Envelope, FeatureCollection, ScarProps, SmokeTrail } from '@/lib/api';
 
 /** A headline block: `available: false` with a `reason` when its inputs are missing. */
@@ -66,7 +67,7 @@ export type LiveHeadline = Envelope & {
     precision_ci95: [number, number] | null;
     precision_n: number | null;
     note: string | null;
-  }>;
+  }> & AuditOf;
   delhi?: Block<{
     city: string;
     pm25: number | null;

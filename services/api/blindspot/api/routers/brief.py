@@ -45,9 +45,15 @@ from sqlalchemy.orm import Session
 from starlette.responses import Response
 
 from blindspot.analytics import risk as risk_model
-from blindspot.analytics.burnscar import RULE, audit_summary
+from blindspot.analytics.burnscar import (
+    RULE,
+    SERVED_VERSIONS,
+    audit_identity,
+    audit_older_words,
+    audit_summary,
+)
 from blindspot.api import SessionDep, respond
-from blindspot.api.cache import cached_route, get_or_build
+from blindspot.api.cache import INPROCESS_TTL_S, cached_route, get_or_build
 from blindspot.geo import IST
 from blindspot.models.risk import latest_backtest_summary, latest_run
 from blindspot.provenance import SourceRef, latest_refs
@@ -62,7 +68,7 @@ SOURCE_KEYS = ["stac_e84", "s2_cog", "worldcover", "firms", "boundaries", "openm
 TOP_SHARE = risk_model.BANDS[2][0]  # 0.10: the "top 1%", "top 1-5%" and "top 5-10%" bands of GET /api/risk
 VILLAGE_KM = 3.0  # jobs/sentinel.py VILLAGE_MAX_KM (not imported: that module loads rasterio)
 WEB_BASE_URL = "https://www.blindspotin.tech"  # the public website; /case/<id> is a scar's case file
-CACHE_TTL_S = 600  # the scars and the ranks change once a day: keep a built answer 10 minutes per instance
+CACHE_TTL_S = INPROCESS_TTL_S  # the scars and ranks change once a day: a built answer is kept 10 min per instance
 MAX_AGE_S = 300  # browsers; the CDN keeps an answer until the DAILY clock ticks (api/cache.py CDN_RULES)
 RANK_NOT_PROBABILITY = "A rank says where to look first; it is not the chance that a field will burn."
 
@@ -114,8 +120,8 @@ def known_districts(session: Session) -> list[dict[str, Any]]:
         rows = session.execute(text("""
             SELECT district, max(state) AS state, max(burn_before) AS newest
             FROM burn_cluster
-            WHERE model_version = :version AND state = ANY(:states) AND district IS NOT NULL
-            GROUP BY district ORDER BY district"""), {"version": RULE.version, "states": list(STATES)}).mappings()
+            WHERE model_version = ANY(:versions) AND state = ANY(:states) AND district IS NOT NULL
+            GROUP BY district ORDER BY district"""), {"versions": list(SERVED_VERSIONS), "states": list(STATES)}).mappings()
         return [dict(r) for r in rows]
 
     return get_or_build("brief:districts", RULE.version, build, ttl=CACHE_TTL_S)
@@ -163,7 +169,7 @@ def candidate_unseen_audit() -> dict[str, Any]:
     lo, hi = unseen["precision_ci95"]
     return {
         "precision": unseen["precision"], "precision_ci95": [lo, hi], "audited": unseen["audited"],
-        "method": audit.get("method"), "date": audit.get("date"), "current": audit.get("current"),
+        "method": audit.get("method"), **audit_identity(audit),
         "reading": "precision = share of audited candidate unseen burns that were real burns; so every "
                    "count and area of candidate unseen burns is an upper bound",
     }
@@ -284,7 +290,7 @@ _UNSEEN_BY_DISTRICT = text("""
            count(DISTINCT (village, subdistrict)) FILTER (WHERE village IS NOT NULL) AS villages,
            max(burn_before) AS newest
     FROM burn_cluster
-    WHERE model_version = :version AND unseen AND state = ANY(:states) AND district IS NOT NULL
+    WHERE model_version = ANY(:versions) AND unseen AND state = ANY(:states) AND district IS NOT NULL
       AND burn_before >= :start AND burn_before < :end
     GROUP BY district
     ORDER BY sum(area_ha) DESC, district""")
@@ -322,7 +328,7 @@ def district_list(session: Session, days: int) -> tuple[dict[str, Any], list[Sou
                 "candidate_unseen_audit": audit, "risk_run": _risk_run(run, None),
                 "reason": "no burn scars mapped yet in Punjab or Haryana (job sentinel)"}, sources
     win = Window.ending_at(newest, days)
-    unseen = session.execute(_UNSEEN_BY_DISTRICT, {"version": RULE.version, "states": list(STATES),
+    unseen = session.execute(_UNSEEN_BY_DISTRICT, {"versions": list(SERVED_VERSIONS), "states": list(STATES),
                                                    "start": win.start, "end": win.end}).mappings().all()
     harvest = {r["district"]: r for r in session.execute(
         _HARVEST_BY_DISTRICT, {"share": TOP_SHARE + 1e-12}).mappings()}
@@ -363,7 +369,7 @@ _VILLAGES = text("""
            (array_agg(ST_Y(centroid) ORDER BY area_ha DESC, id))[1] AS lat,
            (array_agg(ST_X(centroid) ORDER BY area_ha DESC, id))[1] AS lon
     FROM burn_cluster
-    WHERE model_version = :version AND unseen AND district = :district AND state = :state
+    WHERE model_version = ANY(:versions) AND unseen AND district = :district AND state = :state
       AND burn_before >= :start AND burn_before < :end
     GROUP BY village, subdistrict
     ORDER BY sum(area_ha) DESC, count(*) DESC, village NULLS LAST, subdistrict NULLS LAST""")
@@ -399,7 +405,7 @@ def district_villages(session: Session, name: str, days: int) -> _Villages:
     area first; each with a point on its largest scar, that scar's case file and a map link."""
     district = _district_or_404(session, name)
     win = Window.ending_at(_newest_pass(session) or district["newest"], days)
-    found = session.execute(_VILLAGES, {"version": RULE.version, "district": district["district"],
+    found = session.execute(_VILLAGES, {"versions": list(SERVED_VERSIONS), "district": district["district"],
                                         "state": district["state"], "start": win.start, "end": win.end}).mappings().all()
     rows = []
     for r in found:
@@ -456,6 +462,9 @@ def district_brief(session: Session, name: str, days: int, limit: int | None = N
         "villages_order": "largest candidate unseen area first; one row per village and sub-district",
         "watchlist": watchlist[:limit],
         "watchlist_total": len(watchlist),
+        # of them, rows of a named village (the others gather a sub-district's fields with no census
+        # village within 3 km), so a page can count villages as totals.villages does
+        "watchlist_villages": sum(1 for w in watchlist if w["village"]),
         # rows (named villages, and a sub-district's fields with no census village close by) with at
         # least one field in the top tenth; they come first, so watchlist[:this] are all of them
         "watchlist_in_top_tenth": sum(1 for w in watchlist if w["in_top_tenth"]),
@@ -520,6 +529,8 @@ def csv_header(lang: Lang, audit: dict[str, Any], win: Window) -> list[str]:
     the count and area columns."""
     lo, hi = audit["precision_ci95"]
     qualification = CSV_AUDIT[lang].format(n=audit["audited"], p=_pct(audit["precision"]), lo=_pct(lo), hi=_pct(hi))
+    if audit.get("current") is False:  # an audit of an earlier rule, named with its day as it is stored
+        qualification += "; " + audit_older_words(lang, audit.get("model_version"), str(audit.get("date")))
     return [cell.format(first=win.first, last=win.last, audit=qualification) for cell in CSV_HEADER[lang]]
 
 

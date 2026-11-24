@@ -19,7 +19,7 @@ from sqlalchemy import text
 
 from blindspot.analytics import risk as model
 from blindspot.api import BBoxDep, SessionDep, respond
-from blindspot.api.cache import cached_route
+from blindspot.api.cache import INPROCESS_TTL_S, cached_route
 from blindspot.api.responses import ORJSONResponse
 from blindspot.config import get_settings
 from blindspot.models.risk import latest_backtest_summary, latest_run
@@ -93,7 +93,7 @@ _FIELDS_SQL = """
 @router.get("")
 # Scores change only when the risk job runs (every 3 h), and a 500-field answer pulls ~0.55 MB of rows
 # from the hosted database (5,000 fields: 3.3 MB): keep each answer for 10 minutes per instance.
-@cached_route(ttl=600)
+@cached_route(ttl=INPROCESS_TTL_S)
 def risk(
     session: SessionDep,
     bbox: BBoxDep,

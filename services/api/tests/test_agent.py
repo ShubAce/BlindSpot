@@ -462,6 +462,37 @@ def test_ask_streams_sse_and_the_run_is_readable(created: list[str], monkeypatch
         _give_recorded_citations(run_id)
         examples = client.get("/api/agent/examples?limit=20").json()
         assert run_id in [x["id"] for x in examples["examples"]] and "sources" in examples
+        # an answer about a burn scar no longer in the data (a season rebuild) is left out, unless the
+        # scar was forwarded along a chain of replacements that ends at a stored scar (its case page
+        # still opens, as GET /api/scars/{id} follows the chain)
+        gone = 987654321987
+        with session_scope() as session:
+            session.execute(text("UPDATE agent_run SET question = :q WHERE id = :i"),
+                            {"q": f"Tell me about burn scar case {gone} near Nowhere", "i": run_id})
+        examples = client.get("/api/agent/examples?limit=20").json()
+        assert run_id not in [x["id"] for x in examples["examples"]]
+        with session_scope() as session:
+            stored = session.execute(text(
+                "INSERT INTO burn_cluster (geom, centroid, area_ha, n_px, res_m, mgrs_tile, scope, block, burn_after, "
+                "burn_before, gap_days, scene_pre, scene_post, collection, hazy, confidence, model_version) VALUES "
+                "(ST_MakeEnvelope(75.9, 30.4, 75.902, 30.402, 4326), ST_SetSRID(ST_MakePoint(75.901, 30.401), 4326), "
+                "1, 25, 20, 'TESTA', 'hotspots', 'r0_c0', now() - interval '5 days', now(), 5, 'S2X_TEST_PRE', "
+                "'S2X_TEST_POST', 'sentinel-2-c1-l2a', false, 0.5, 'test') RETURNING id")).scalar_one()
+            session.execute(text("INSERT INTO burn_cluster_forward (old_id, new_id, overlap_share) "
+                                 "VALUES (:o, :n, 1.0)"), {"o": gone, "n": gone + 1})
+        try:
+            examples = client.get("/api/agent/examples?limit=20").json()
+            assert run_id not in [x["id"] for x in examples["examples"]]  # forwarded to no stored scar
+            with session_scope() as session:
+                session.execute(text("INSERT INTO burn_cluster_forward (old_id, new_id, overlap_share) "
+                                     "VALUES (:o, :n, 1.0)"), {"o": gone + 1, "n": stored})
+            examples = client.get("/api/agent/examples?limit=20").json()
+            assert run_id in [x["id"] for x in examples["examples"]]  # ...and from it on to a stored one
+        finally:
+            with session_scope() as session:
+                session.execute(text("DELETE FROM burn_cluster_forward WHERE old_id IN (:o, :p)"),
+                                {"o": gone, "p": gone + 1})
+                session.execute(text("DELETE FROM burn_cluster WHERE id = :i"), {"i": stored})
         # a run from before the honesty check (no honesty block) is never a verified example
         with session_scope() as session:
             session.execute(text("UPDATE agent_run SET verification = verification - 'honesty' WHERE id = :i"),

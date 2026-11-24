@@ -133,12 +133,13 @@ Cached for 60 s.
  },
  "unseen_burns": {
   "available": true, "label": "candidate unseen burns",
-  "clusters": 67854, "area_ha": 104476.3, "unseen_clusters": 59465, "unseen_area_ha": 86303.0,
-  "checked_area_ha": 104476.3, "unseen_share": 0.8261, "districts": 38,
+  "clusters": 67854, "area_ha": 104476.28, "unseen_clusters": 59465, "unseen_area_ha": 86303.0,
+  "checked_area_ha": 104476.28, "unseen_share": 0.8261, "districts": 38,
   "first_pass": "2026-10-02T05:40:36.219000Z", "last_pass": "2026-10-30T05:40:52.298000Z",
-  "model_version": "s2burn-rules-2",
+  "model_version": "s2burn-rules-4h", "model_versions": ["s2burn-rules-4h"],
   "precision": 0.833, "precision_ci95": [0.608, 0.942], "precision_n": 18,
-  "note": "Scars from Sentinel-2 passes processed so far ...; treat the share as an upper bound ..."
+  "audit_date": "2026-10-31", "audit_model_version": "s2burn-rules-2", "audit_current": false,
+  "note": "Scars from Sentinel-2 passes processed so far ...; treat the share as an upper bound ... That audit judged the earlier rule s2burn-rules-2 (2026-10-31), not the current rule s2burn-rules-4h."
  },
  "delhi": {
   "city": "Delhi", "available": true,
@@ -187,7 +188,17 @@ Notes for the UI:
   and 17 Sep, which was never published).
 - `unseen_burns`: always show `precision` with `precision_ci95` and `precision_n` next to
   `unseen_share`.
+  - `audit_date` / `audit_model_version` say which rule the audit judged, and when. When
+    `audit_current` is false (the scars come from a newer rule than the audited one), every
+    statement of the precision must say it is an audit of that earlier rule, not of the current
+    one (the site: components/case/audit.ts `auditOlderText`; the brief: `current` in
+    `candidate_unseen_audit`; the agent: `current` in its audit block).
+  - `model_versions` lists the rules of the rows counted: the API also serves the previous
+    rule's rows (burnscar.SERVED_VERSIONS) until the sentinel job has rewritten their tile, so
+    it has two entries for about one run after a rule change.
   - `unseen_share` is null when no scar has been checked against FIRMS yet.
+  - `area_ha`, `unseen_area_ha` and `checked_area_ha` are in ha to 0.01, as in `/api/scars/summary`
+    (to 0.1 until 2026-11-23), so the two give the same total.
   - `first_pass` / `last_pass` are the Sentinel-2 passes the totals cover. They grow as the
     6-hourly sentinel job processes more tiles.
 - `delhi`:
@@ -344,10 +355,16 @@ There is no `hours` parameter. A pass counts when the site lies inside the instr
 ## Burn scars: `/api/scars*` (Sentinel-2)
 
 - **GET /api/scars**: `since`, `until`, `district`, `unseen` (bool), `bbox`, `limit` (default
-  5000), `min_confidence` (0-1).
+  5000), `min_confidence` (0-1), `order` (`newest` or `area`; an addition of 2026-11-24).
   - Returns `{totals: {clusters, area_ha, unseen_clusters, unseen_area_ha, checked_clusters},
-    returned, truncated, window: {first_pass, last_pass}, method: {model_version, summary, label,
-    audit, unseen_rule}, features: FeatureCollection<Polygon>}`.
+    returned, truncated, window: {first_pass, last_pass}, order, method: {model_version, summary,
+    label, audit, unseen_rule}, features: FeatureCollection<Polygon>}`.
+  - `order=newest` (the default) lists the newest scar first, by its exact sensing time
+    (`burn_before`), then the largest. `order=area` lists the largest first. Both break ties by id.
+    When `limit` cuts the list, the order decides which rows are kept: `since=D&until=D&order=area`
+    gives the largest scars of the pass of UTC day D, while the default gives the most recently
+    sensed ones, which may be one or two tiles of that pass. The answer echoes `order`; an answer
+    without it was listed newest first.
   - Feature properties are `{id, area_ha, burn_after, burn_before, district, subdistrict,
     village, village_km, centroid, dnbr, nbr_post, confidence, unseen, fire_matches,
     nearest_fire_m, scene_pre, scene_post, label, state, gap_days, hazy, res_m, mgrs_tile,
@@ -377,7 +394,9 @@ There is no `hours` parameter. A pass counts when the site lies inside the instr
   left out, and `with_development_sample` `{audited, burnt, precision, precision_ci95}` the pooled
   figure, for the record only.
 - **GET /api/scars/{id}** returns the case file:
-  - `case` holds the properties plus `geometry`.
+  - `case` holds the properties plus `geometry`. `case.haze_corrected` (added 2026-11-24) is true
+    when the scar's rule (`case.model_version`) corrects a smoke-hazy pass for haze before judging
+    it (s2burn-rules-4h) and false for s2burn-rules-2: with `hazy`, it says how the values were read.
   - `imagery: {bbox, pre: {date, datetime, item_id, collection, cloud_pct, truecolor_url,
     swir_url, nbr_url}, post: {...}}`.
   - `fires_nearby: [{id, source, satellite, acq_utc, lat, lon, confidence, frp_mw, distance_m,
@@ -535,8 +554,12 @@ evidence, each with its qualification in every answer: candidate unseen burns (u
   subdistrict, unseen_clusters, unseen_area_ha, newest_pass, lat, lon, case_ids, maps_url,
   case_url}], villages_total, villages_order, watchlist: [{village, subdistrict, fields, area_ha,
   top_tenth_fields, top_tenth_area_ha, in_top_tenth, best_rank, lat, lon, field_ids, maps_url}],
-  watchlist_total, watchlist_in_top_tenth, watchlist_order, candidate_unseen_audit, risk_run,
-  ranking_reliability, notes, links, reason}`.
+  watchlist_total, watchlist_villages, watchlist_in_top_tenth, watchlist_order,
+  candidate_unseen_audit, risk_run, ranking_reliability, notes, links, reason}`.
+  - Village counts: `totals.villages` and `totals.top_tenth_villages` count named villages;
+    `villages_total`, `watchlist_total` and `watchlist_in_top_tenth` count rows, which include
+    unnamed ones (`village: null`). `watchlist_villages` (addition, 2026-11-24) is the named rows
+    of the watchlist. A page that shows both says how many rows are unnamed places.
   - `totals` always cover every village (`limit` cuts only the lists) and equal the district's
     row in `GET /api/brief`.
   - A village's point (`lat`, `lon`, `maps_url`) is its largest candidate unseen burn; `case_ids`
@@ -935,7 +958,8 @@ done         {"type":"done","run_id":"97c49cde-...","duration_ms":8228,"ok":true
 - **GET /api/agent/examples** (`limit` 1..20, `lang`) returns `{examples: [run without
   events]}`. It lists only verified runs that cite sources, and never a follow-up ("and
   yesterday?" means nothing without its thread). Each example carries the same three thread
-  fields.
+  fields. Since 2026-11-24 a run whose question names a burn scar case that is no longer in the
+  data and not forwarded (`burn_cluster_forward`) is left out: its case page is a 404.
 - **GET /api/agent/stats** (addition, 2026-11-01; `days` 1..365, default 30, IST days with today
   included) counts how the guardrails did, from every stored run of the window (`agent_run`),
   never from the model's opinion of itself. Returns `{days, window: {from_utc, to_utc,

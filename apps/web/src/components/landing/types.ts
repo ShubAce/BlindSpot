@@ -7,6 +7,7 @@
  * is optional or nullable here, so a reply missing it renders an honest line, never a guess.
  */
 
+import type { AuditOf } from '@/components/case/audit';
 import type { Envelope, FeatureCollection, AreaGeometry, IsoTime, LonLat, SourceRef } from '@/lib/api';
 
 // ---------------------------------------------------------------------------------------------
@@ -53,7 +54,7 @@ export type Headline = Envelope & {
     precision?: number | null;
     precision_ci95?: [number, number] | null;
     precision_n?: number | null;
-  };
+  } & AuditOf;
   delhi?: Block & {
     city?: string;
     pm25?: number | null;
@@ -119,6 +120,9 @@ export type ScarList = Envelope & {
   totals?: { clusters: number; area_ha: number; unseen_clusters: number; unseen_area_ha: number; checked_clusters?: number };
   returned?: number;
   window?: { first_pass: IsoTime | null; last_pass: IsoTime | null };
+  /** Which rows a cut list kept: the newest ('newest', the default) or the largest ('area'). An
+   *  answer without it (an API before 2026-11-24) was listed newest first. */
+  order?: 'newest' | 'area';
   method?: { label?: string; unseen_rule?: string; model_version?: string };
   features: FeatureCollection<AreaGeometry, ScarListProps>;
 };

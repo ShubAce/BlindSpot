@@ -914,21 +914,30 @@ def _replace_rows(session: Session, model: type[BurnCluster | HarvestCluster], s
 
 GONE_TABLE = "gone_scar"  # scars deleted in this transaction, waiting to be forwarded
 GONE_COLS = "t.id, t.geom, t.burn_before"  # its columns, in order, as a DELETE FROM burn_cluster t returns them
-# A deleted scar's successor: the stored scar of the same burn (same post pass day) whose outline
-# overlaps it most. ST_MakeValid: an outline rounded to 6 decimals can self-touch, and GEOS would
-# reject it in an intersection.
+# A deleted scar's successor: the stored scar of the same burn whose outline overlaps it most.
+# - First the scars of the same post pass day (any overlap).
+# - Failing that, a scar of another post pass day within RULE.rearm_days that covers at least
+#   FORWARD_MOVED_SHARE of the old outline: the same burn seen on another pass. A rule change can
+#   move a burn to an earlier pass, e.g. s2burn-rules-4h finds on a hazy pass what rules-2 only saw
+#   on the next clear one. A pixel cannot burn twice within rearm_days, so that is the same burn.
+# ST_MakeValid: an outline rounded to 6 decimals can self-touch, and GEOS would reject it in an
+# intersection.
+FORWARD_MOVED_SHARE = 0.5
 _FORWARD_SQL = text(f"""
     INSERT INTO burn_cluster_forward (old_id, new_id, overlap_share, forwarded_at)
     SELECT g.id, s.id, s.share, now()
       FROM {GONE_TABLE} g
       CROSS JOIN LATERAL (
-          SELECT b.id, ST_Area(ST_Intersection(ST_MakeValid(b.geom), ST_MakeValid(g.geom)))
-                       / NULLIF(ST_Area(g.geom), 0) AS share
-            FROM burn_cluster b
-           WHERE b.geom && g.geom AND b.burn_before::date = g.burn_before::date
-           ORDER BY share DESC NULLS LAST, b.id
+          SELECT c.id, c.share FROM (
+              SELECT b.id, ST_Area(ST_Intersection(ST_MakeValid(b.geom), ST_MakeValid(g.geom)))
+                           / NULLIF(ST_Area(g.geom), 0) AS share,
+                     abs(b.burn_before::date - g.burn_before::date) AS days_apart
+                FROM burn_cluster b
+               WHERE b.geom && g.geom) c
+           WHERE c.days_apart <= {int(RULE.rearm_days)} AND c.share > 0
+             AND (c.days_apart = 0 OR c.share >= {FORWARD_MOVED_SHARE})
+           ORDER BY c.days_apart > 0, c.share DESC, c.days_apart, c.id
            LIMIT 1) s
-     WHERE s.share > 0
     ON CONFLICT (old_id) DO UPDATE SET new_id = EXCLUDED.new_id, overlap_share = EXCLUDED.overlap_share,
                                        forwarded_at = EXCLUDED.forwarded_at
 """)
@@ -950,9 +959,10 @@ def forward_gone(session: Session) -> int:
     """Point the ids of the scars deleted so far in this transaction (GONE_TABLE) at their
     successors in burn_cluster_forward, then forget them. Returns the rows written.
 
-    A case link (/case/<id>) must survive a rebuild that changes a scar's outline and a stage change
-    that maps its district at another resolution (both give the scar a new id). A scar with no
-    successor of the same burn gets no row (its link answers 404, as before). Best effort: a failure
+    A case link (/case/<id>) must survive a rebuild that changes a scar's outline, a stage change
+    that maps its district at another resolution and a rule change that moves the burn to another
+    pass (each gives the scar a new id). A scar with no successor of the same burn gets no row (its
+    link answers 404, as before). Best effort: a failure
     here is logged and rolled back to a savepoint, so it never costs the tile its rows."""
     try:
         with session.begin_nested():

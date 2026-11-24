@@ -126,7 +126,8 @@ printf '[Journal]\nSystemMaxUse=100M\nMaxRetentionSec=14day\n' > /etc/systemd/jo
 systemctl restart systemd-journald
 install -m 755 "$(dirname "$0")/maintain.sh" /usr/local/sbin/blindspot-maintain
 install -m 644 "$(dirname "$0")/blindspot-maintain.service" "$(dirname "$0")/blindspot-maintain.timer" /etc/systemd/system/
-# ...and every 10 minutes, the website's main pages refresh the API cache (infra/aws/warm.sh)
+# ...and every 10 minutes, the API cache is refreshed: the answers of a daily job that has just
+# finished, then the website's main pages (infra/aws/warm.sh; deploy.py --only api installs it too)
 install -m 755 "$(dirname "$0")/warm.sh" /usr/local/sbin/blindspot-warm
 install -m 644 "$(dirname "$0")/blindspot-warm.service" "$(dirname "$0")/blindspot-warm.timer" /etc/systemd/system/
 systemctl daemon-reload

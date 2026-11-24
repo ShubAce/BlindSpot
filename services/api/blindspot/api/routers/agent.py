@@ -18,17 +18,21 @@ such as "and yesterday?" means nothing without its context, so it is not answere
 
 from __future__ import annotations
 
+import re
 from typing import Any, Literal
 
 import orjson
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import text
+from sqlalchemy import select, text
+from sqlalchemy.orm import Session
 from sse_starlette import EventSourceResponse, ServerSentEvent
 
 from blindspot.agent import runner
 from blindspot.api import SessionDep, respond
+from blindspot.api.routers.scars import MAX_FORWARD_HOPS
 from blindspot.config import get_settings
+from blindspot.db import table_exists
 from blindspot.models.agent import AgentRun
 from blindspot.models.client_quota import client_address, shared_limits_enabled
 from blindspot.provenance import SourceRef, latest_refs, ref_for_fetch
@@ -210,15 +214,50 @@ _EXAMPLES_SQL = text(
 )
 
 
+_CASE_IN_QUESTION = re.compile(r"\bcase (\d{1,18})\b", re.IGNORECASE)
+
+
+def _case_named(row: AgentRun) -> int | None:
+    """The burn scar a question asks about ("Tell me about burn scar case 4723594 ..."), if any."""
+    m = _CASE_IN_QUESTION.search(row.question or "")
+    return int(m.group(1)) if m else None
+
+
+# The ids whose case page still opens: a stored scar, or one the sentinel job replaced whose
+# burn_cluster_forward chain reaches a stored scar within MAX_FORWARD_HOPS, as GET /api/scars/{id}
+# follows it (scars._forwarded), for all the ids at once.
+_CASES_OPEN = text("""
+    WITH RECURSIVE chain(asked, id, depth) AS (
+        SELECT t.id, t.id, 0 FROM unnest(CAST(:ids AS bigint[])) AS t(id)
+        UNION ALL
+        SELECT c.asked, f.new_id, c.depth + 1 FROM chain c JOIN burn_cluster_forward f ON f.old_id = c.id
+         WHERE c.depth < :hops AND NOT EXISTS (SELECT 1 FROM burn_cluster b WHERE b.id = c.id))
+    SELECT DISTINCT c.asked FROM chain c JOIN burn_cluster b ON b.id = c.id""")
+
+
+def _cases_gone(session: Session, ids: set[int]) -> set[int]:
+    """Of these case ids, those whose case page is a 404: no longer a burn scar, and not forwarded to
+    one (a season rebuild replaced them, and no chain of replacements ends at a stored scar)."""
+    if not ids or not table_exists(session, "burn_cluster", "burn_cluster_forward"):
+        return set()
+    return ids - set(session.execute(_CASES_OPEN, {"ids": list(ids), "hops": MAX_FORWARD_HOPS}).scalars())
+
+
 @router.get("/examples")
 def examples(  # noqa: ANN201
     session: SessionDep, limit: int = 6, lang: Literal["en", "hi", "pa"] | None = None
 ):
     """Recent investigations whose every number passed verification (newest first, one per
-    distinct question)."""
+    distinct question). An answer about a burn scar that is no longer in the data (no case page) is
+    left out: its figures describe a scar nobody can open."""
     limit = min(max(limit, 1), 20)
-    ids = session.execute(_EXAMPLES_SQL, {"limit": limit, "lang": lang}).scalars().all()
-    rows = [row for i in ids if (row := session.get(AgentRun, i)) is not None]
+    ids = session.execute(_EXAMPLES_SQL, {"limit": limit + 10, "lang": lang}).scalars().all()
+    found = {row.id: row for row in session.scalars(select(AgentRun).where(AgentRun.id.in_(ids)))}
+    rows = [found[i] for i in ids if i in found]  # newest first, as listed
+    named = {row.id: case for row in rows if (case := _case_named(row)) is not None}
+    if gone := _cases_gone(session, set(named.values())):
+        rows = [row for row in rows if named.get(row.id) not in gone]
+    rows = rows[:limit]
     sources: list[SourceRef] = []
     seen: set[tuple[Any, ...]] = set()
     for row in rows:

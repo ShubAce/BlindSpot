@@ -36,6 +36,7 @@ from blindspot.analytics.passes import (
     summarize_errors,
 )
 from blindspot.api import SessionDep, respond
+from blindspot.api.cache import INPROCESS_TTL_S
 from blindspot.api.responses import ORJSONResponse
 from blindspot.provenance import SourceRef, latest_refs, ref_for_fetch, utcnow
 from blindspot.sources.celestrak import orbit_mean_elements
@@ -49,7 +50,7 @@ MSI_NOTE = (
 )
 
 _cache: TTLCache[Any, Any] = TTLCache(maxsize=256, ttl=60)
-_slow_cache: TTLCache[Any, Any] = TTLCache(maxsize=64, ttl=600)
+_slow_cache: TTLCache[Any, Any] = TTLCache(maxsize=64, ttl=INPROCESS_TTL_S)
 _lock = threading.Lock()
 
 

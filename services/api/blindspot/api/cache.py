@@ -43,6 +43,11 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+# The longest any route keeps a built answer in process: the brief (and its district list), risk, the
+# boundaries GeoJSON and the slow orbit answers. infra/aws/warm.sh's SETTLE_MIN waits for twice this
+# after a job before refreshing what the job feeds (tests/test_warm_script.py checks the two agree).
+INPROCESS_TTL_S = 600
+
 _caches: dict[tuple[str, float], TTLCache[Hashable, Any]] = {}
 _key_locks: dict[tuple[str, Hashable], threading.Lock] = {}
 _lock = threading.Lock()
@@ -554,6 +559,12 @@ def job_stamp(session: Session, jobs: Iterable[str]) -> str:
 #               how they render is never more than a day away.
 # Every point but the bulletin's 02:30 is also an HOURLY point, so a page view refreshes every
 # group that expired in one database wake-up: at most 21 refresh wake-ups a day (docs/neon-budget.md).
+# On the AWS server the clocks are a floor, not the only refresh: a daily, weekly or bulletin job
+# that ends after its group's last point would otherwise leave that group on the old data for a day
+# while the hourly answers move on, so the warm timer refreshes the answers each such job feeds once
+# its job_run row is 25 minutes old, when the in-process copies built before the job ended have
+# expired (cached_route, up to 600 s; up to 20 minutes for a brief answer built on the brief's own
+# 600-s district list) (infra/aws/warm.sh, through nginx-api-cache.conf's :8002 door).
 # A rendered Sentinel-2 picture never changes, so it is immutable.
 # `stale-while-revalidate` lets the CDN answer at once with the old copy while it fetches a new
 # one (the body's generated_at and sources say how old it is); `stale-if-error` lets it keep

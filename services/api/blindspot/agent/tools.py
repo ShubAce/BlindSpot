@@ -30,6 +30,7 @@ import httpx
 from google.genai import types
 from sqlalchemy import text
 
+from blindspot.analytics.burnscar import audit_identity
 from blindspot.config import get_settings
 from blindspot.geo import IST, MET_BBOX
 from blindspot.provenance import SourceInfo, SourceRef, register_source, utcnow
@@ -673,14 +674,18 @@ def unseen_audit_block(summary: Any) -> dict[str, Any] | None:
     unseen = audit.get("candidate_unseen") or {}
     if unseen.get("precision") is None or not unseen.get("precision_ci95"):
         return None
+    reading = ("precision = share of audited candidate unseen burns that were real burns; "
+               "so the candidate unseen share is an upper bound")
+    if audit.get("current") is False:  # the audit judged an earlier rule than the scars' own
+        reading += (f". This audit ({audit.get('date')}) judged the earlier rule {audit.get('model_version')}, "
+                    "not the current rule: whenever you give the precision, say so in the same sentence")
     return {
         "precision": unseen["precision"], "precision_ci95": unseen["precision_ci95"],
         # the same numbers as percentages, for the answer's wording (e.g. 83%, 61%-94%)
         "precision_pct": round(unseen["precision"] * 100, 1),
         "precision_ci95_pct": [round(v * 100, 1) for v in unseen["precision_ci95"]],
-        "audited": unseen.get("audited"), "method": audit.get("method"),
-        "reading": "precision = share of audited candidate unseen burns that were real burns; "
-                   "so the candidate unseen share is an upper bound",
+        "audited": unseen.get("audited"), "method": audit.get("method"), **audit_identity(audit),
+        "reading": reading,
     }
 
 
@@ -753,7 +758,9 @@ async def get_burn_scars(api: InternalApi, args: dict[str, Any]) -> ToolResult:
         audit = data.get("candidate_unseen_audit")
         if audit:  # the step line shows the share, so it carries its audit too
             lo, hi = audit["precision_ci95_pct"]
-            summary += f" (audited precision {audit['precision_pct']:g}%, 95% CI {lo:g}-{hi:g}%)"
+            older = (f"; an audit of {audit.get('date')} of the earlier rule {audit.get('model_version')}, "
+                     "not of the current rule") if audit.get("current") is False else ""
+            summary += f" (audited precision {audit['precision_pct']:g}%, 95% CI {lo:g}-{hi:g}%{older})"
     elif "matching" in data:
         summary += f": {data['matching']}"
     return ToolResult(True, data, _dedupe(sources), summary)

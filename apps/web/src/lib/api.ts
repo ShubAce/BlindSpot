@@ -193,9 +193,13 @@ export type ScarsQuery = {
   unseen?: boolean;
   bbox?: BBox;
   limit?: number;
+  /** 'newest' (the API's default: newest scar first, by sensing time) or 'area' (largest first). */
+  order?: 'newest' | 'area';
 };
 export type ScarsResponse = Envelope & {
   totals: { clusters: number; area_ha: number; unseen_clusters: number; unseen_area_ha: number };
+  /** The order the API used; absent from an API before 2026-11-24 (newest first). */
+  order?: 'newest' | 'area';
   features: FeatureCollection<AreaGeometry, ScarProps>;
 };
 export type ScarsSummaryResponse = Envelope & {

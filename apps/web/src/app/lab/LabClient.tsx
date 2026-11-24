@@ -26,6 +26,7 @@ import {
   type MapLayerId,
   type MapLayerInput,
 } from '@/components/map';
+import { useSourceCadence } from '@/components/live/data';
 import { basemapStyleUrl, basemapTheme, hasBasemapBoundaries, indiaCompliantStyle } from '@/components/map/basemap-style';
 import { readWindField } from '@/components/map/layers/wind';
 import { EmptyNote, ErrorNote, Freshness, Skeleton } from '@/components/ui/states';
@@ -46,6 +47,7 @@ import {
   type WindFieldResponse,
 } from '@/lib/api';
 import { istDayKey, number, relative, startOfIstDay, timeIST } from '@/lib/format';
+import { DAILY_RUN_STALE_MS } from '@/lib/cadence';
 import { CADENCE, useApi, useNow, useOrbitsTle, usePasses, useSources } from '@/lib/live';
 import { liveStatus, parseTles, predictPasses, type Satellite } from '@/lib/orbits';
 import { onThemeChange, readTheme, useTheme } from '@/lib/theme';
@@ -64,15 +66,21 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
+/** When a layer's data is late, by the live map's rules (MapPanel): its first source's own schedule
+ *  from GET /api/sources (registry sourceKeys), and the daily run's rule for scars and risk. The
+ *  registry's cadence is how often the browser re-reads: three of them called a smoke run three hours
+ *  into its six-hour schedule stale. Imagery keeps that cadence: a scene has no schedule. */
+const DAILY_LAYERS: readonly MapLayerId[] = ['scars', 'risk'];
+
 /** What one layer's data currently is: loading, failed, empty or a count, with its freshness. */
 type LayerLive = { data: Partial<Envelope> | undefined; error: unknown; retry: () => void };
-function LayerStatus({ live, what, count, cadenceMs, empty }: { live: LayerLive; what: string; count: number | null; cadenceMs: number; empty: string }) {
+function LayerStatus({ live, what, count, cadenceMs, staleAfterMs, empty }: { live: LayerLive; what: string; count: number | null; cadenceMs?: number; staleAfterMs?: number; empty: string }) {
   if (live.error && !live.data) return <ErrorNote what={what} error={live.error} onRetry={live.retry} />;
   if (!live.data) return <Skeleton width={160} height={14} />;
   return (
     <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
       {count === 0 ? <EmptyNote>{empty}</EmptyNote> : count != null ? <span className="nums">{number(count)}</span> : null}
-      <Freshness resp={live.data} cadenceMs={cadenceMs} />
+      <Freshness resp={live.data} cadenceMs={cadenceMs} staleAfterMs={staleAfterMs} />
       {live.error ? <ErrorNote what="the refresh" error={live.error} lastGood={live.data} onRetry={live.retry} /> : null}
     </div>
   );
@@ -121,6 +129,13 @@ export function LabClient() {
   const diurnal = useApi<GeostationaryDiurnalResponse>(PATHS.geostationaryDiurnal, undefined, { refreshInterval: CADENCE.geostationary });
   const tle = useOrbitsTle();
   const sources = useSources();
+  const sourceCadence = useSourceCadence();
+  // A layer with a source is judged by that source's schedule only: none while GET /api/sources
+  // loads, so nothing is called stale meanwhile (as on the live map). The rest keep the registry's.
+  const staleRule = (l: { id: MapLayerId; cadenceMs: number; sourceKeys: string[] }) => {
+    if (DAILY_LAYERS.includes(l.id)) return { staleAfterMs: DAILY_RUN_STALE_MS };
+    return { cadenceMs: l.id === 'imagery' ? l.cadenceMs : sourceCadence(l.sourceKeys[0]) };
+  };
 
   const sats: Satellite[] = useMemo(() => parseTles(tle.data), [tle.data]);
   const item = featured.data?.frames?.[0]?.item_id ?? null;
@@ -240,7 +255,7 @@ export function LabClient() {
                   <p style={{ color: 'var(--muted)', fontSize: 12, lineHeight: '16px' }}>{l.description}</p>
                   {on[l.id] ? (
                     <>
-                      <LayerStatus live={st.live} what={st.what} count={st.count} cadenceMs={l.cadenceMs} empty={st.empty} />
+                      <LayerStatus live={st.live} what={st.what} count={st.count} {...staleRule(l)} empty={st.empty} />
                       <Legend items={layerLegend(l.id, theme)} />
                       {l.id === 'imagery' ? (
                         <div className="flex items-center gap-3" style={{ fontSize: 12 }}>

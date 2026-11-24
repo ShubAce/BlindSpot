@@ -1,7 +1,7 @@
 """Burn scars: the Sentinel-2 clusters, a season summary per district, and one scar's case file.
 
 GET /api/scars              scars as GeoJSON polygons, with totals (filters: since, until, district,
-                            unseen, bbox, limit)
+                            unseen, bbox, min_confidence, limit; order: newest first or largest)
 GET /api/scars/summary      season totals and a per-district table, with FIRMS counts beside them
 GET /api/scars/{id}         one scar: its properties and outline, before/after imagery links, the
                             other scars inside its pictures, the fire detections around it and the
@@ -19,7 +19,7 @@ from __future__ import annotations
 import datetime as dt
 import math
 import re
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from urllib.parse import urlencode
 
 import orjson
@@ -27,7 +27,12 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from blindspot.analytics.burnscar import RULE, audit_summary
+from blindspot.analytics.burnscar import (
+    HAZE_CORRECTED_VERSIONS,
+    RULE,
+    SERVED_VERSIONS,
+    audit_summary,
+)
 from blindspot.api import BBoxDep, SessionDep, respond
 from blindspot.api.cache import (
     cached_route,
@@ -64,6 +69,9 @@ NEARBY_KM = 5.0  # fire detections listed around a scar
 NEARBY_DAYS = 2  # ...from this many days before the clear pass to this many after the burnt one
 KM_PER_DEG = 111.32  # length of one degree of latitude, km
 MAX_FORWARD_HOPS = 8  # a replaced scar's id is followed through at most this many replacements
+# The list's orders: the newest scar first (by exact sensing time), or the largest first. Both end
+# on id, so the same rows always come back in the same order.
+ORDERS = {"newest": "burn_before DESC, area_ha DESC, id", "area": "area_ha DESC, id"}
 
 _FEATURE_COLUMNS = """
     id, area_ha, burn_after, burn_before, gap_days, district, subdistrict, village, village_km,
@@ -84,8 +92,8 @@ def _filters(
     since: dt.date | None, until: dt.date | None, district: str | None, unseen: bool | None,
     bbox: tuple[float, float, float, float] | None, min_confidence: float | None = None,
 ) -> tuple[str, dict[str, Any]]:
-    where = ["model_version = :version"]
-    params: dict[str, Any] = {"version": RULE.version}
+    where = ["model_version = ANY(:versions)"]
+    params: dict[str, Any] = {"versions": list(SERVED_VERSIONS)}
     if min_confidence is not None:
         where.append("confidence >= :min_conf")
         params["min_conf"] = min_confidence
@@ -209,8 +217,12 @@ def scars(
     unseen: bool | None = None,
     limit: Annotated[int, Query(ge=1, le=MAX_LIMIT)] = 5000,
     min_confidence: Annotated[float | None, Query(ge=0, le=1, description="addition: drop weaker candidates")] = None,
+    order: Annotated[Literal["newest", "area"], Query(
+        description="addition: 'newest' (default) lists the newest scar first, then the largest; "
+                    "'area' the largest first")] = "newest",
 ) -> ORJSONResponse:
-    """Burn-scar polygons (newest first, then largest) and totals over everything that matched.
+    """Burn-scar polygons (newest first, then largest; or largest first with order=area) and totals
+    over everything that matched.
 
     `unseen` is true when no fire detection explains the scar, false when one does, and null while
     no fire records cover its window. Totals count all matching scars even when `limit` cuts the list."""
@@ -220,26 +232,30 @@ def scars(
         until = None
     key = canonical_key("scars", bbox=bbox, since=since, until=until,
                         district=district.strip().lower() if district else None, unseen=unseen,
-                        limit=limit, min_confidence=min_confidence)
+                        limit=limit, min_confidence=min_confidence,
+                        order=None if order == "newest" else order)  # the default keeps its old key
     return stored_response(
         session, key, scars_stamp(session, since, until, district, unseen, bbox, min_confidence),
-        lambda: _scars_payload(session, bbox, since, until, district, unseen, limit, min_confidence),
+        lambda: _scars_payload(session, bbox, since, until, district, unseen, limit, min_confidence,
+                               order),
         live_sources=lambda: _sources(session),
         guard=limit > GUARD_LIMIT and not _website_family(bbox, since, until, district, unseen, limit,
-                                                          min_confidence))
+                                                          min_confidence, order))
 
 
 # The live map's list (data.ts SCAR_QUERY) with one replay day or one clicked district: a family
 # the website walks through (Play steps a day every 1.4 s), so it is never refused as novel. Its
 # keys are bounded: `until` up to today (later dates are the plain list), real district names.
+# Newest first only: the website never asks for these largest first, which sorts the whole selection.
 WEBSITE_LIST = {"limit": 2500, "min_confidence": 0.5}
 
 
 def _website_family(
     bbox: tuple[float, float, float, float] | None, since: dt.date | None, until: dt.date | None,
-    district: str | None, unseen: bool | None, limit: int, min_confidence: float | None,
+    district: str | None, unseen: bool | None, limit: int, min_confidence: float | None, order: str,
 ) -> bool:
-    return (limit == WEBSITE_LIST["limit"] and min_confidence == WEBSITE_LIST["min_confidence"]
+    return (order == "newest"
+            and limit == WEBSITE_LIST["limit"] and min_confidence == WEBSITE_LIST["min_confidence"]
             and tuple(bbox or ()) == tuple(parse_bbox(None)) and since is None and unseen is None
             and not (until and district))
 
@@ -273,7 +289,7 @@ def scars_stamp(
 def _scars_payload(
     session: Session, bbox: tuple[float, float, float, float] | None, since: dt.date | None,
     until: dt.date | None, district: str | None, unseen: bool | None, limit: int,
-    min_confidence: float | None,
+    min_confidence: float | None, order: str = "newest",
 ) -> tuple[dict[str, Any], list[SourceRef], int]:
     where, params = _filters(since, until, district, unseen, bbox, min_confidence)
     totals = session.execute(text(f"""
@@ -286,7 +302,7 @@ def _scars_payload(
     rows = session.execute(text(f"""
         SELECT {_FEATURE_COLUMNS}, ST_AsGeoJSON(geom, 6)::json AS geometry
         FROM burn_cluster WHERE {where}
-        ORDER BY burn_before DESC, area_ha DESC, id
+        ORDER BY {ORDERS[order]}
         LIMIT :limit"""), {**params, "limit": limit}).mappings().all()
     features = [
         {"type": "Feature", "id": r["id"], "geometry": r["geometry"], "properties": _properties(r)}
@@ -303,6 +319,7 @@ def _scars_payload(
         "returned": len(features),
         "truncated": len(features) < totals["clusters"],
         "window": {"first_pass": totals["first_pass"], "last_pass": totals["last_pass"]},
+        "order": order,  # addition: which rows a cut list kept (the newest, or the largest)
         "method": _method(),
         "features": {"type": "FeatureCollection", "features": features},
     }
@@ -315,7 +332,9 @@ def _method() -> dict[str, Any]:
         "summary": (
             "Sentinel-2 L2A, cropland only: NIR and SWIR darkened since the previous clear pass "
             f"(dB8A>{RULE.d_b8a}, dB11>{RULE.d_b11}, dB12>{RULE.d_b12}) and the field now looks "
-            f"charred (BAIS2>={RULE.bais2_min}, brightness<={RULE.tbi_max}); passes at most "
+            f"charred (BAIS2>={RULE.bais2_min}, brightness<={RULE.tbi_max}); a smoke-hazy pass is "
+            "first corrected to the last clear one (per-band haze offsets measured on unchanged ground "
+            "in ~5 km cells; haze too thick to correct is left as it is); passes at most "
             f"{RULE.max_gap_days} days apart; clusters of at least {RULE.min_area_ha} ha whose mean "
             f"post-burn NBR is below {RULE.nbr_post_max} (drops flooded fields and cloud shadows). "
             "Candidates: tillage can look similar."
@@ -347,19 +366,19 @@ def summary(
     """Season totals and a per-district table: scarred area, how much of it no fire detection
     explains, and how many FIRMS detections the same district had (Indian polygons only)."""
     start = since or _season_start(dt.datetime.now(dt.UTC).date())
-    params = {"version": RULE.version, "since": _iso_day(start)}
+    params = {"versions": list(SERVED_VERSIONS), "since": _iso_day(start)}
     season = session.execute(text("""
         SELECT count(*) AS clusters, coalesce(sum(area_ha), 0) AS area_ha,
                coalesce(sum(area_ha) FILTER (WHERE unseen), 0) AS unseen_area_ha,
                coalesce(sum(area_ha) FILTER (WHERE unseen IS NOT NULL), 0) AS checked_area_ha,
                max(burn_before) AS last_pass
-        FROM burn_cluster WHERE model_version = :version AND burn_before >= :since"""), params).mappings().one()
+        FROM burn_cluster WHERE model_version = ANY(:versions) AND burn_before >= :since"""), params).mappings().one()
     districts = session.execute(text("""
         SELECT district, max(state) AS state, count(*) AS clusters, sum(area_ha) AS area_ha,
                coalesce(sum(area_ha) FILTER (WHERE unseen), 0) AS unseen_area_ha,
                coalesce(sum(area_ha) FILTER (WHERE unseen IS NOT NULL), 0) AS checked_area_ha,
                array_agg(DISTINCT scope) AS scopes, max(res_m) AS res_m
-        FROM burn_cluster WHERE model_version = :version AND burn_before >= :since
+        FROM burn_cluster WHERE model_version = ANY(:versions) AND burn_before >= :since
         GROUP BY district ORDER BY sum(area_ha) DESC"""), params).mappings().all()
     fires_total: int | None = None
     fires_by_district: dict[str, int] = {}
@@ -534,7 +553,7 @@ def _other_scars(session: Session, row: dict[str, Any], bbox: tuple[float, float
     worked out only for the scars that cross the box's edge."""
     x0, y0, x1, y1 = bbox
     params = {
-        "x0": x0, "y0": y0, "x1": x1, "y1": y1, "id": row["id"], "version": RULE.version,
+        "x0": x0, "y0": y0, "x1": x1, "y1": y1, "id": row["id"], "versions": list(SERVED_VERSIONS),
         "min_conf": OTHERS_MIN_CONFIDENCE, "limit": OTHERS_LIMIT,
         "earlier_by": row["burn_after"] + SAME_PASS, "same_by": row["burn_before"] + SAME_PASS,
         "tol": min(x1 - x0, y1 - y0) / CHIP_PX,
@@ -551,7 +570,7 @@ def _other_scars(session: Session, row: dict[str, Any], bbox: tuple[float, float
                    END AS in_box_ha
             FROM burn_cluster c, box
             WHERE c.geom && box.b AND ST_Intersects(c.geom, box.b)
-              AND c.id <> :id AND c.model_version = :version AND c.confidence >= :min_conf
+              AND c.id <> :id AND c.model_version = ANY(:versions) AND c.confidence >= :min_conf
         ), totals AS (
             SELECT jsonb_object_agg(relation, jsonb_build_object('scars', n, 'area_ha', ha,
                                                                  'area_in_box_ha', in_box)) AS t
@@ -770,6 +789,8 @@ def scar(scar_id: int, session: SessionDep) -> ORJSONResponse:
                                          "ndvi_pre", "ndvi_post")},
         "matched_at": row["matched_at"],
         "model_version": row["model_version"],
+        # addition: whether that rule corrected a hazy pass for haze before judging it (with `hazy`)
+        "haze_corrected": row["model_version"] in HAZE_CORRECTED_VERSIONS,
         "created_at": row["created_at"],
     }
     bbox = _chip_bbox(geometry, row["lat"])

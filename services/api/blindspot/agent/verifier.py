@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
+from blindspot.analytics.burnscar import audit_older_words
 from blindspot.geo import IST
 
 REL_TOL = 0.015  # 1.5%: unit conversions and float noise
@@ -519,6 +520,11 @@ class HonestyFacts:
     precision: float | None = None  # audit: share of candidate unseen burns that were real burns
     precision_ci: tuple[float, float] | None = None
     audited: int | None = None
+    # The audit's own rule and day; audit_current is False when it judged an earlier rule than the
+    # scars' (then every statement of the precision must name that rule: check_honesty).
+    audit_current: bool | None = None
+    audit_date: str | None = None
+    audit_rule: str | None = None
     season: dict[str, Any] | None = None  # {area_ha, unseen_area_ha, unseen_share_pct, markers}
     audit_markers: list[int] = field(default_factory=list)
     top_village: dict[str, Any] | None = None  # {village, district, markers}
@@ -572,6 +578,13 @@ def honesty_facts(payloads: list[Any]) -> HonestyFacts:
             n = value.get("audited", value.get("precision_n"))
             facts.audited = int(n) if isinstance(n, (int, float)) else None
             facts.audit_markers = markers
+            # an audit block (current, date, model_version) or the headline's (audit_*, whose own
+            # model_version is the scars' rule)
+            pre = "audit_" if "audit_current" in value else ""
+            cur, day, rule = (value.get(f"{pre}{k}") for k in ("current", "date", "model_version"))
+            facts.audit_current = cur if isinstance(cur, bool) else None
+            facts.audit_date = day if isinstance(day, str) else None
+            facts.audit_rule = rule if isinstance(rule, str) else None
         ranking = value.get("village_ranking") or value.get("ranking")
         if facts.top_village is None and isinstance(ranking, list) and ranking and isinstance(ranking[0], dict) \
                 and ranking[0].get("village"):
@@ -629,8 +642,11 @@ class HonestyIssue:
             if facts.precision is None:
                 return f"{quoted} states a share or area of candidate unseen burns, but no audit precision is available: leave the number out"
             lo, hi = facts.precision_ci or (None, None)
+            older = (f", and that this audit ({facts.audit_date}) judged the earlier rule {facts.audit_rule}, "
+                     "not the current rule") if _audit_not_current(facts) else ""
             return (f"{quoted} states a share or area of candidate unseen burns without the audit precision "
-                    f"{facts.precision} and its 95% interval {lo}-{hi} from the tool output (and that the share is an upper bound)")
+                    f"{facts.precision} and its 95% interval {lo}-{hi} from the tool output (and that the share is an upper bound"
+                    f"{older})")
         if self.kind == "raw_risk_score":
             return f"{quoted} quotes a raw burn-risk score: it is a relative index, not a probability; name the top-ranked villages instead"
         if self.kind == "auc_not_all_pairs":
@@ -723,8 +739,10 @@ def check_honesty(units: list[str], lang: str, facts: HonestyFacts) -> list[Hone
     risk_words = RISK_WORDS.get(lang, RISK_WORDS["en"]) + RISK_WORDS["en"]
     for index, unit in enumerate(units):
         unit_claims = extract_claims(_prep(unit))
+        # An audit of an earlier rule qualifies only when the unit names that rule (any language).
         qualified = facts.precision is not None and facts.precision_ci is not None and all(
-            _has(unit_claims, [v], ("%", None)) for v in (facts.precision, *facts.precision_ci))
+            _has(unit_claims, [v], ("%", None)) for v in (facts.precision, *facts.precision_ci)) and (
+            not _audit_not_current(facts) or str(facts.audit_rule).lower() in unit.lower())
         for sentence in _sentences(unit):
             text = _prep(sentence)
             claims = extract_claims(text)
@@ -758,6 +776,32 @@ def _cite(markers: list[int]) -> str:
     return f" [{markers[0]}]" if markers else ""
 
 
+def _audit_not_current(facts: HonestyFacts) -> bool:
+    """The audit judged an earlier rule than the scars' own, and the tool output names that rule."""
+    return facts.audit_current is False and bool(facts.audit_rule)
+
+
+_MONTH_NAMES = {
+    "en": ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"),
+    "hi": ("जनवरी", "फ़रवरी", "मार्च", "अप्रैल", "मई", "जून", "जुलाई", "अगस्त", "सितंबर", "अक्टूबर", "नवंबर", "दिसंबर"),
+    "pa": ("ਜਨਵਰੀ", "ਫ਼ਰਵਰੀ", "ਮਾਰਚ", "ਅਪ੍ਰੈਲ", "ਮਈ", "ਜੂਨ", "ਜੁਲਾਈ", "ਅਗਸਤ", "ਸਤੰਬਰ", "ਅਕਤੂਬਰ", "ਨਵੰਬਰ", "ਦਸੰਬਰ"),
+}
+
+
+def older_audit_sentence(lang: str, facts: HonestyFacts, cite: str = "") -> str:
+    """"That audit, of 31 Oct 2026, judged the earlier rule s2burn-rules-2, not the current one.",
+    in `lang`, when the audit judged an earlier rule than the scars' own; "" otherwise."""
+    if not _audit_not_current(facts):
+        return ""
+    day = None
+    if m := _ISO_DATE.match(facts.audit_date or ""):
+        y, mo, d = int(m[1]), int(m[2]), int(m[3])
+        if 1 <= mo <= 12:
+            day = f"{d} {_MONTH_NAMES.get(lang, _MONTH_NAMES['en'])[mo - 1]} {y}"
+    words = audit_older_words(lang, facts.audit_rule, day)  # the brief's CSV says the same
+    return f" {words[:1].upper()}{words[1:]}{cite}{'।' if lang in ('hi', 'pa') else '.'}"
+
+
 def unseen_sentence(lang: str, facts: HonestyFacts) -> str | None:
     """The candidate unseen burns of the season with the audit precision, in `lang`, every number
     from the tool outputs; None when either is missing (then the share is not stated at all)."""
@@ -767,17 +811,18 @@ def unseen_sentence(lang: str, facts: HonestyFacts) -> str | None:
     area, share, n = f"{s['unseen_area_ha']:.0f}", f"{s['unseen_share_pct']:.1f}%", facts.audited
     a, b = _cite(s["markers"]), _cite(facts.audit_markers or s["markers"])
     audit = f"{n} " if n else ""
+    older = older_audit_sentence(lang, facts, b)
     if lang == "hi":
         return (f"संभावित अनदेखी आग (ऐसे जले हुए खेत जिनके लिए किसी उपग्रह ने कोई आग दर्ज नहीं की) {area} हेक्टेयर में हैं, "
                 f"जो मानचित्र पर दर्ज जले क्षेत्र का {share} है{a}। यह हिस्सा ऊपरी सीमा है: {audit}संभावित मामलों की जाँच में "
-                f"{_pct(p)} सचमुच जले हुए निकले (95% CI {_pct(ci[0])}-{_pct(ci[1])}){b}।")
+                f"{_pct(p)} सचमुच जले हुए निकले (95% CI {_pct(ci[0])}-{_pct(ci[1])}){b}।{older}")
     if lang == "pa":
         return (f"ਸੰਭਾਵੀ ਅਣਦੇਖੀਆਂ ਅੱਗਾਂ (ਸੜੇ ਹੋਏ ਖੇਤ ਜਿਨ੍ਹਾਂ ਲਈ ਕਿਸੇ ਉਪਗ੍ਰਹਿ ਨੇ ਕੋਈ ਅੱਗ ਦਰਜ ਨਹੀਂ ਕੀਤੀ) {area} ਹੈਕਟੇਅਰ ਵਿੱਚ ਹਨ, "
                 f"ਜੋ ਨਕਸ਼ੇ ਵਿੱਚ ਦਰਜ ਸੜੇ ਖੇਤਰ ਦਾ {share} ਹੈ{a}। ਇਹ ਹਿੱਸਾ ਉਪਰਲੀ ਹੱਦ ਹੈ: {audit}ਸੰਭਾਵੀ ਮਾਮਲਿਆਂ ਦੀ ਜਾਂਚ ਵਿੱਚ "
-                f"{_pct(p)} ਸੱਚਮੁੱਚ ਸੜੇ ਹੋਏ ਨਿਕਲੇ (95% CI {_pct(ci[0])}-{_pct(ci[1])}){b}।")
+                f"{_pct(p)} ਸੱਚਮੁੱਚ ਸੜੇ ਹੋਏ ਨਿਕਲੇ (95% CI {_pct(ci[0])}-{_pct(ci[1])}){b}।{older}")
     return (f"Candidate unseen burns (burn scars with no satellite fire detection) cover {area} ha, {share} of the "
             f"mapped burn-scar area{a}. That share is an upper bound: in an audit of {audit}candidates, {_pct(p)} were "
-            f"real burns (95% CI {_pct(ci[0])}-{_pct(ci[1])}){b}.")
+            f"real burns (95% CI {_pct(ci[0])}-{_pct(ci[1])}){b}.{older}")
 
 
 def audit_sentence(lang: str, facts: HonestyFacts) -> str | None:
@@ -788,14 +833,15 @@ def audit_sentence(lang: str, facts: HonestyFacts) -> str | None:
         return None
     c = _cite(facts.audit_markers or (facts.season or {}).get("markers") or [])
     lo, hi = _pct1(ci[0]), _pct1(ci[1])
+    older = older_audit_sentence(lang, facts, c)
     if lang == "hi":
         return (f"{f'{n} ' if n else ''}संभावित अनदेखी आग की जाँच में {_pct(p)} सचमुच जले हुए खेत निकले (95% CI {lo}-{hi}), "
-                f"इसलिए संभावित अनदेखी आग के आँकड़े ऊपरी सीमा हैं{c}।")
+                f"इसलिए संभावित अनदेखी आग के आँकड़े ऊपरी सीमा हैं{c}।{older}")
     if lang == "pa":
         return (f"{f'{n} ' if n else ''}ਸੰਭਾਵੀ ਅਣਦੇਖੀਆਂ ਅੱਗਾਂ ਦੀ ਜਾਂਚ ਵਿੱਚ {_pct(p)} ਸੱਚਮੁੱਚ ਸੜੇ ਹੋਏ ਖੇਤ ਨਿਕਲੇ "
-                f"(95% CI {lo}-{hi}), ਇਸ ਲਈ ਸੰਭਾਵੀ ਅਣਦੇਖੀਆਂ ਅੱਗਾਂ ਦੇ ਅੰਕੜੇ ਉਪਰਲੀ ਹੱਦ ਹਨ{c}।")
+                f"(95% CI {lo}-{hi}), ਇਸ ਲਈ ਸੰਭਾਵੀ ਅਣਦੇਖੀਆਂ ਅੱਗਾਂ ਦੇ ਅੰਕੜੇ ਉਪਰਲੀ ਹੱਦ ਹਨ{c}।{older}")
     return (f"In an audit of {f'{n} ' if n else ''}candidate unseen burns, {_pct(p)} were real burns (95% CI {lo}-{hi}), "
-            f"so candidate unseen figures are upper bounds{c}.")
+            f"so candidate unseen figures are upper bounds{c}.{older}")
 
 
 def risk_sentence(lang: str, facts: HonestyFacts) -> str | None:
